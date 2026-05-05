@@ -4,6 +4,7 @@ import (
 	context "context"
 
 	"cosmossdk.io/core/address"
+	"cosmossdk.io/math"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
@@ -55,6 +56,14 @@ type StakingKeeper interface {
 	GetAllDelegatorDelegations(ctx context.Context, delegator sdk.AccAddress) ([]stakingtypes.Delegation, error)
 
 	GetBondedValidatorsByPower(ctx context.Context) ([]stakingtypes.Validator, error)
+
+	// BondDenom returns the denomination used for staking bonds.
+	BondDenom(ctx context.Context) (string, error)
+
+	// AddValidatorTokensOnly increases a bonded validator's token balance without
+	// issuing new delegator shares, raising the per-share exchange rate.
+	// The caller must transfer equivalent coins to the bonded pool before calling this.
+	AddValidatorTokensOnly(ctx context.Context, valAddr sdk.ValAddress, tokensToAdd math.Int) error
 }
 
 // StakingHooks event hooks for staking validator object (noalias)

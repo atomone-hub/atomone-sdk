@@ -68,6 +68,10 @@ func setupTestKeeper(t *testing.T, nakamotoBonusCoefficient math.LegacyDec, heig
 		authtypes.NewModuleAddress("gov").String(),
 	)
 
+	stakingKeeper.EXPECT().BondDenom(gomock.Any()).Return(sdk.DefaultBondDenom, nil).AnyTimes()
+	bankKeeper.EXPECT().SendCoinsFromModuleToModule(gomock.Any(), disttypes.ModuleName, stakingtypes.BondedPoolName, gomock.Any()).Return(nil).AnyTimes()
+	stakingKeeper.EXPECT().AddValidatorTokensOnly(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+
 	require.NoError(t, distrKeeper.FeePool.Set(ctx, disttypes.InitialFeePool()))
 
 	params, err := distrKeeper.Params.Get(ctx)
@@ -101,28 +105,30 @@ func TestAllocateTokensToValidatorWithCommission(t *testing.T) {
 	val.Commission = stakingtypes.NewCommission(math.LegacyNewDecWithPrec(5, 1), math.LegacyNewDecWithPrec(5, 1), math.LegacyNewDec(0))
 	s.stakingKeeper.EXPECT().ValidatorByConsAddr(gomock.Any(), sdk.GetConsAddress(valConsPk0)).Return(val, nil).AnyTimes()
 
-	// allocate tokens
+	// allocate tokens (non-bond denom distributed through F1, bond denom is auto-staked)
 	tokens := sdk.DecCoins{
+		{Denom: "photon", Amount: math.LegacyNewDec(10)},
 		{Denom: sdk.DefaultBondDenom, Amount: math.LegacyNewDec(10)},
 	}
-	require.NoError(t, s.distrKeeper.AllocateTokensToValidator(s.ctx, val, tokens))
-
-	// check commission
-	expected := sdk.DecCoins{
-		{Denom: sdk.DefaultBondDenom, Amount: math.LegacyNewDec(5)},
-	}
+	_, err = s.distrKeeper.AllocateTokensToValidator(s.ctx, val, tokens)
+	require.NoError(t, err)
 
 	valBz, err := s.valCodec.StringToBytes(val.GetOperator())
 	require.NoError(t, err)
 
+	// check commission: 50% of both denoms
+	expectedCommission := sdk.DecCoins{
+		{Denom: "photon", Amount: math.LegacyNewDec(5)},
+		{Denom: sdk.DefaultBondDenom, Amount: math.LegacyNewDec(5)},
+	}
 	valCommission, err := s.distrKeeper.GetValidatorAccumulatedCommission(s.ctx, valBz)
 	require.NoError(t, err)
-	require.Equal(t, expected, valCommission.Commission)
+	require.Equal(t, expectedCommission, valCommission.Commission)
 
-	// check current rewards
+	// check current rewards: only non-bond denom goes to current rewards since bond denom is auto-staked
 	currentRewards, err := s.distrKeeper.GetValidatorCurrentRewards(s.ctx, valBz)
 	require.NoError(t, err)
-	require.Equal(t, expected, currentRewards.Rewards)
+	require.Equal(t, sdk.DecCoins{{Denom: "photon", Amount: math.LegacyNewDec(5)}}, currentRewards.Rewards)
 }
 
 func TestAllocateTokensToManyValidators(t *testing.T) {
@@ -176,7 +182,7 @@ func TestAllocateTokensToManyValidators(t *testing.T) {
 	require.True(t, val1CurrentRewards.Rewards.IsZero())
 
 	// allocate tokens as if both had voted and second was proposer
-	fees := sdk.NewCoins(sdk.NewCoin(sdk.DefaultBondDenom, math.NewInt(100)))
+	fees := sdk.NewCoins(sdk.NewCoin("photon", math.NewInt(100)), sdk.NewCoin(sdk.DefaultBondDenom, math.NewInt(100)))
 	s.bankKeeper.EXPECT().GetAllBalances(gomock.Any(), s.feeCollectorAcc.GetAddress()).Return(fees)
 	s.bankKeeper.EXPECT().SendCoinsFromModuleToModule(gomock.Any(), "fee_collector", disttypes.ModuleName, fees)
 
@@ -186,39 +192,51 @@ func TestAllocateTokensToManyValidators(t *testing.T) {
 	}
 	require.NoError(t, s.distrKeeper.AllocateTokens(s.ctx, 200, votes))
 
-	// 98 outstanding rewards (100 less 2 to community pool)
+	// 2% tax on 100 photon = 2 photon community tax
+	// Each validator gets 98*0.5=49 photon reward
+	// val0 (50% commission): commission={photon:24.5,stake:24.5}, sharedForF1={photon:24.5}
+	//   outstanding = commission + sharedForF1 = {photon:49, stake:24.5}
+	// val1 (0% commission): sharedForF1={photon:49}, outstanding={photon:49}
+	// stake: val0 gets 24 int auto-staked (dust=0.5 -> community pool), val1 gets 49 int auto-staked
+	// community pool: {photon:2, stake:2.5} (2% tax + val0 stake dust 0.5)
+
 	val0OutstandingRewards, err = s.distrKeeper.GetValidatorOutstandingRewards(s.ctx, valAddr0)
 	require.NoError(t, err)
-	require.Equal(t, sdk.DecCoins{{Denom: sdk.DefaultBondDenom, Amount: math.LegacyNewDecWithPrec(490, 1)}}, val0OutstandingRewards.Rewards)
+	require.Equal(t, sdk.DecCoins{
+		{Denom: "photon", Amount: math.LegacyNewDec(49)},
+		{Denom: sdk.DefaultBondDenom, Amount: math.LegacyNewDecWithPrec(245, 1)},
+	}, val0OutstandingRewards.Rewards)
 
 	val1OutstandingRewards, err = s.distrKeeper.GetValidatorOutstandingRewards(s.ctx, valAddr1)
 	require.NoError(t, err)
-	require.Equal(t, sdk.DecCoins{{Denom: sdk.DefaultBondDenom, Amount: math.LegacyNewDecWithPrec(490, 1)}}, val1OutstandingRewards.Rewards)
+	require.Equal(t, sdk.DecCoins{{Denom: "photon", Amount: math.LegacyNewDec(49)}}, val1OutstandingRewards.Rewards)
 
-	// 2 community pool coins
 	feePool, err = s.distrKeeper.FeePool.Get(s.ctx)
 	require.NoError(t, err)
-	require.Equal(t, sdk.DecCoins{{Denom: sdk.DefaultBondDenom, Amount: math.LegacyNewDec(2)}}, feePool.CommunityPool)
+	require.Equal(t, sdk.DecCoins{
+		{Denom: "photon", Amount: math.LegacyNewDec(2)},
+		{Denom: sdk.DefaultBondDenom, Amount: math.LegacyNewDecWithPrec(25, 1)},
+	}, feePool.CommunityPool)
 
-	// 50% commission for first proposer, (0.5 * 98%) * 100 / 2 = 23.25
 	val0Commission, err = s.distrKeeper.GetValidatorAccumulatedCommission(s.ctx, valAddr0)
 	require.NoError(t, err)
-	require.Equal(t, sdk.DecCoins{{Denom: sdk.DefaultBondDenom, Amount: math.LegacyNewDecWithPrec(2450, 2)}}, val0Commission.Commission)
+	require.Equal(t, sdk.DecCoins{
+		{Denom: "photon", Amount: math.LegacyNewDecWithPrec(245, 1)},
+		{Denom: sdk.DefaultBondDenom, Amount: math.LegacyNewDecWithPrec(245, 1)},
+	}, val0Commission.Commission)
 
-	// zero commission for second proposer
 	val1Commission, err = s.distrKeeper.GetValidatorAccumulatedCommission(s.ctx, valAddr1)
 	require.NoError(t, err)
 	require.True(t, val1Commission.Commission.IsZero())
 
-	// just staking.proportional for first proposer less commission = (0.5 * 98%) * 100 / 2 = 24.50
+	// bond denom is auto staked, so only photon goes to current rewards
 	val0CurrentRewards, err = s.distrKeeper.GetValidatorCurrentRewards(s.ctx, valAddr0)
 	require.NoError(t, err)
-	require.Equal(t, sdk.DecCoins{{Denom: sdk.DefaultBondDenom, Amount: math.LegacyNewDecWithPrec(2450, 2)}}, val0CurrentRewards.Rewards)
+	require.Equal(t, sdk.DecCoins{{Denom: "photon", Amount: math.LegacyNewDecWithPrec(245, 1)}}, val0CurrentRewards.Rewards)
 
-	// proposer reward + staking.proportional for second proposer = (0.5 * (98%)) * 100 = 49
 	val1CurrentRewards, err = s.distrKeeper.GetValidatorCurrentRewards(s.ctx, valAddr1)
 	require.NoError(t, err)
-	require.Equal(t, sdk.DecCoins{{Denom: sdk.DefaultBondDenom, Amount: math.LegacyNewDecWithPrec(490, 1)}}, val1CurrentRewards.Rewards)
+	require.Equal(t, sdk.DecCoins{{Denom: "photon", Amount: math.LegacyNewDec(49)}}, val1CurrentRewards.Rewards)
 }
 
 func TestAllocateTokens_NakamotoBonusDisabled(t *testing.T) {
@@ -260,7 +278,8 @@ func TestAllocateTokens_NakamotoBonusDisabled(t *testing.T) {
 		Power:   100,
 	}
 
-	fees := sdk.NewCoins(sdk.NewCoin(sdk.DefaultBondDenom, math.NewInt(100)))
+	// photon distributed through F1, bond denom is auto-staked
+	fees := sdk.NewCoins(sdk.NewCoin("photon", math.NewInt(100)), sdk.NewCoin(sdk.DefaultBondDenom, math.NewInt(100)))
 	s.bankKeeper.EXPECT().GetAllBalances(gomock.Any(), s.feeCollectorAcc.GetAddress()).Return(fees)
 	s.bankKeeper.EXPECT().SendCoinsFromModuleToModule(gomock.Any(), "fee_collector", disttypes.ModuleName, fees)
 
@@ -271,22 +290,26 @@ func TestAllocateTokens_NakamotoBonusDisabled(t *testing.T) {
 
 	require.NoError(t, s.distrKeeper.AllocateTokens(s.ctx, 200, votes))
 
-	// With nakamoto_bonus_enabled = false, all rewards should be proportional (no bonus)
-	// Community tax is 2%, so 98 left, each validator gets 49
-	expectedReward := sdk.DecCoins{{Denom: sdk.DefaultBondDenom, Amount: math.LegacyNewDecWithPrec(490, 1)}}
+	// With nakamoto_bonus_enabled = false, all rewards are proportional (no bonus).
+	// 2% tax: each denom loses 2 -> 98 left, each validator gets 49 photon and 49 bond denom.
+	// 0% commission: bond denom is fully auto-staked (49 int, 0 dust), photon goes to F1.
 	var expectedCommission sdk.DecCoins
+	expectedPhotonReward := sdk.DecCoins{{Denom: "photon", Amount: math.LegacyNewDec(49)}}
 
 	val0OutstandingRewards, err := s.distrKeeper.GetValidatorOutstandingRewards(s.ctx, valAddr0)
 	require.NoError(t, err)
-	require.Equal(t, expectedReward, val0OutstandingRewards.Rewards)
+	require.Equal(t, expectedPhotonReward, val0OutstandingRewards.Rewards)
 
 	val1OutstandingRewards, err := s.distrKeeper.GetValidatorOutstandingRewards(s.ctx, valAddr1)
 	require.NoError(t, err)
-	require.Equal(t, expectedReward, val1OutstandingRewards.Rewards)
+	require.Equal(t, expectedPhotonReward, val1OutstandingRewards.Rewards)
 
 	feePool, err := s.distrKeeper.FeePool.Get(s.ctx)
 	require.NoError(t, err)
-	require.Equal(t, sdk.NewDecCoinsFromCoins(sdk.NewCoin(sdk.DefaultBondDenom, math.NewInt(2))), feePool.CommunityPool)
+	require.Equal(t, sdk.DecCoins{
+		{Denom: "photon", Amount: math.LegacyNewDec(2)},
+		{Denom: sdk.DefaultBondDenom, Amount: math.LegacyNewDec(2)},
+	}, feePool.CommunityPool)
 
 	val0Commission, err := s.distrKeeper.GetValidatorAccumulatedCommission(s.ctx, valAddr0)
 	require.NoError(t, err)
@@ -298,11 +321,11 @@ func TestAllocateTokens_NakamotoBonusDisabled(t *testing.T) {
 
 	val0CurrentRewards, err := s.distrKeeper.GetValidatorCurrentRewards(s.ctx, valAddr0)
 	require.NoError(t, err)
-	require.Equal(t, expectedReward, val0CurrentRewards.Rewards)
+	require.Equal(t, expectedPhotonReward, val0CurrentRewards.Rewards)
 
 	val1CurrentRewards, err := s.distrKeeper.GetValidatorCurrentRewards(s.ctx, valAddr1)
 	require.NoError(t, err)
-	require.Equal(t, expectedReward, val1CurrentRewards.Rewards)
+	require.Equal(t, expectedPhotonReward, val1CurrentRewards.Rewards)
 }
 
 func TestAllocateTokensTruncation(t *testing.T) {
@@ -363,7 +386,8 @@ func TestAllocateTokensTruncation(t *testing.T) {
 	require.True(t, val1CurrentRewards.Rewards.IsZero())
 
 	// allocate tokens as if both had voted and second was proposer
-	fees := sdk.NewCoins(sdk.NewCoin(sdk.DefaultBondDenom, math.NewInt(634195840)))
+	// photon goes through F1, bond denom is auto-staked
+	fees := sdk.NewCoins(sdk.NewCoin("photon", math.NewInt(634195840)), sdk.NewCoin(sdk.DefaultBondDenom, math.NewInt(634195840)))
 	s.bankKeeper.EXPECT().GetAllBalances(gomock.Any(), s.feeCollectorAcc.GetAddress()).Return(fees)
 	s.bankKeeper.EXPECT().SendCoinsFromModuleToModule(gomock.Any(), "fee_collector", disttypes.ModuleName, fees)
 
@@ -411,8 +435,8 @@ func TestAllocateTokensWithNakamotoBonus(t *testing.T) {
 	)
 	s.stakingKeeper.EXPECT().ValidatorByConsAddr(gomock.Any(), sdk.GetConsAddress(valConsPk1)).Return(val1, nil).AnyTimes()
 
-	// 1000 uatom collected
-	fees := sdk.NewCoins(sdk.NewCoin(sdk.DefaultBondDenom, math.NewInt(1000)))
+	// photon goes through F1, bond denom is auto-staked
+	fees := sdk.NewCoins(sdk.NewCoin("photon", math.NewInt(1000)), sdk.NewCoin(sdk.DefaultBondDenom, math.NewInt(1000)))
 	s.bankKeeper.EXPECT().GetAllBalances(gomock.Any(), s.feeCollectorAcc.GetAddress()).Return(fees)
 	s.bankKeeper.EXPECT().SendCoinsFromModuleToModule(gomock.Any(), "fee_collector", disttypes.ModuleName, fees)
 
@@ -423,29 +447,32 @@ func TestAllocateTokensWithNakamotoBonus(t *testing.T) {
 
 	require.NoError(t, s.distrKeeper.AllocateTokens(s.ctx, 1000, votes))
 
-	// Expectation with η = 0.20:
-	// - 2% community tax → 20
-	// - 980 left to distribute
-	// - Nakamoto bonus pool: 0.20 * 980 = 196
-	// - Proportional pool: 980 - 196 = 784
+	// Expectation with η = 0.20, communityTax = 2%, fees = {photon:1000, stake:1000}:
 	//
-	// Nakamoto bonus (equal per validator):
-	// - val0: 196 / 2 = 98
-	// - val1: 196 / 2 = 98
+	// After tax (each denom independently):
+	//   validatorTotal = 980
+	//   nakamotoBonus  = 980 * 0.20 = 196
+	//   proportional   = 980 - 196  = 784
+	//   nbPerValidator = 196 / 2    = 98
 	//
-	// Proportional distribution (by voting power):
-	// - val0: 784 * (800 / 1000) = 627.2
-	// - val1: 784 * (200 / 1000) = 156.8
+	// Per-validator allocation (same math for photon and stake):
+	//   val0 (80%): 784 * 0.8 + 98 = 627.2 + 98 = 725.2
+	//   val1 (20%): 784 * 0.2 + 98 = 156.8 + 98 = 254.8
 	//
-	// Total rewards:
-	// - val0: 98 + 627.2 = 725.2
-	// - val1: 98 + 156.8 = 254.8
+	// bond denom -> auto-staked:
+	//   val0: int 725, dust 0.2 -> community pool
+	//   val1: int 254, dust 0.8 -> community pool
+	//   Community pool: 20 (tax) + 0.2 + 0.8 = 21
+	//
+	// photon -> F1:
+	//   val0 currentRewards = 725.2, val1 currentRewards = 254.8
+	//   Community pool photon: 20 (tax, no dust since 725.2+254.8=980 exactly)
 
 	expectedVal0Reward := sdk.DecCoins{
-		{Denom: sdk.DefaultBondDenom, Amount: math.LegacyNewDecWithPrec(7252, 1)}, // 725.2
+		{Denom: "photon", Amount: math.LegacyNewDecWithPrec(7252, 1)}, // 725.2
 	}
 	expectedVal1Reward := sdk.DecCoins{
-		{Denom: sdk.DefaultBondDenom, Amount: math.LegacyNewDecWithPrec(2548, 1)}, // 254.8
+		{Denom: "photon", Amount: math.LegacyNewDecWithPrec(2548, 1)}, // 254.8
 	}
 
 	val0OutstandingRewards, err := s.distrKeeper.GetValidatorOutstandingRewards(s.ctx, valAddr0)
@@ -458,7 +485,10 @@ func TestAllocateTokensWithNakamotoBonus(t *testing.T) {
 
 	feePool, err := s.distrKeeper.FeePool.Get(s.ctx)
 	require.NoError(t, err)
-	require.Equal(t, sdk.NewDecCoinsFromCoins(sdk.NewCoin(sdk.DefaultBondDenom, math.NewInt(20))), feePool.CommunityPool)
+	require.Equal(t, sdk.DecCoins{
+		{Denom: "photon", Amount: math.LegacyNewDec(20)},
+		{Denom: sdk.DefaultBondDenom, Amount: math.LegacyNewDec(21)},
+	}, feePool.CommunityPool)
 
 	// Zero commission for both validators
 	val0Commission, err := s.distrKeeper.GetValidatorAccumulatedCommission(s.ctx, valAddr0)
@@ -477,12 +507,9 @@ func TestAllocateTokensWithNakamotoBonus(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, expectedVal1Reward, val1CurrentRewards.Rewards)
 
-	// Verify RPS (rewards per stake) - smaller validator should have higher RPS
-	// val0 RPS: 725.2 / 800 = 0.9065
-	// val1 RPS: 254.8 / 200 = 1.274
-	val0RPS := val0OutstandingRewards.Rewards.AmountOf(sdk.DefaultBondDenom).Quo(math.LegacyNewDec(800))
-	val1RPS := val1OutstandingRewards.Rewards.AmountOf(sdk.DefaultBondDenom).Quo(math.LegacyNewDec(200))
-
-	require.True(t, val1RPS.GT(val0RPS),
-		"Small validator RPS should be higher due to Nakamoto Bonus: val1_rps=%s, val0_rps=%s", val1RPS, val0RPS)
+	// The smaller validator (val1) earns more photon per delegator share due to the fixed Nakamoto bonus.
+	// val0 RPS = 725.2 / 800 ≈ 0.9065; val1 RPS = 254.8 / 200 = 1.274
+	val0PhotonRPS := val0CurrentRewards.Rewards.AmountOf("photon").Quo(math.LegacyNewDecFromInt(val0.DelegatorShares.TruncateInt()))
+	val1PhotonRPS := val1CurrentRewards.Rewards.AmountOf("photon").Quo(math.LegacyNewDecFromInt(val1.DelegatorShares.TruncateInt()))
+	require.True(t, val1PhotonRPS.GT(val0PhotonRPS), "val1 (smaller validator) should receive more photon per share via Nakamoto bonus")
 }

@@ -49,6 +49,10 @@ func TestCalculateRewardsBasic(t *testing.T) {
 		authtypes.NewModuleAddress("gov").String(),
 	)
 
+	stakingKeeper.EXPECT().BondDenom(gomock.Any()).Return(sdk.DefaultBondDenom, nil).AnyTimes()
+	bankKeeper.EXPECT().SendCoinsFromModuleToModule(gomock.Any(), disttypes.ModuleName, stakingtypes.BondedPoolName, gomock.Any()).Return(nil).AnyTimes()
+	stakingKeeper.EXPECT().AddValidatorTokensOnly(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+
 	// reset fee pool
 	require.NoError(t, distrKeeper.FeePool.Set(ctx, disttypes.InitialFeePool()))
 	require.NoError(t, distrKeeper.Params.Set(ctx, disttypes.DefaultParams()))
@@ -89,8 +93,12 @@ func TestCalculateRewardsBasic(t *testing.T) {
 
 	// allocate some rewards
 	initial := int64(10)
-	tokens := sdk.DecCoins{{Denom: sdk.DefaultBondDenom, Amount: math.LegacyNewDec(initial)}}
-	require.NoError(t, distrKeeper.AllocateTokensToValidator(ctx, val, tokens))
+	tokens := sdk.DecCoins{
+		{Denom: "photon", Amount: math.LegacyNewDec(initial)},
+		{Denom: sdk.DefaultBondDenom, Amount: math.LegacyNewDec(initial)},
+	}
+	_, err = distrKeeper.AllocateTokensToValidator(ctx, val, tokens)
+	require.NoError(t, err)
 
 	// end period
 	endingPeriod, _ = distrKeeper.IncrementValidatorPeriod(ctx, val)
@@ -99,13 +107,16 @@ func TestCalculateRewardsBasic(t *testing.T) {
 	rewards, err = distrKeeper.CalculateDelegationRewards(ctx, val, del, endingPeriod)
 	require.NoError(t, err)
 
-	// rewards should be half the tokens
-	require.Equal(t, sdk.DecCoins{{Denom: sdk.DefaultBondDenom, Amount: math.LegacyNewDec(initial / 2)}}, rewards)
+	// bond denom auto-staked, photon delegator share (50% of 10 = 5) stays in F1
+	require.Equal(t, sdk.DecCoins{{Denom: "photon", Amount: math.LegacyNewDec(initial / 2)}}, rewards)
 
-	// commission should be the other half
+	// commission: 50% of both denoms
 	valCommission, err := distrKeeper.GetValidatorAccumulatedCommission(ctx, valAddr)
 	require.NoError(t, err)
-	require.Equal(t, sdk.DecCoins{{Denom: sdk.DefaultBondDenom, Amount: math.LegacyNewDec(initial / 2)}}, valCommission.Commission)
+	require.Equal(t, sdk.DecCoins{
+		{Denom: "photon", Amount: math.LegacyNewDec(initial / 2)},
+		{Denom: sdk.DefaultBondDenom, Amount: math.LegacyNewDec(initial / 2)},
+	}, valCommission.Commission)
 }
 
 func TestCalculateRewardsAfterSlash(t *testing.T) {
@@ -133,6 +144,10 @@ func TestCalculateRewardsAfterSlash(t *testing.T) {
 		"fee_collector",
 		authtypes.NewModuleAddress("gov").String(),
 	)
+
+	stakingKeeper.EXPECT().BondDenom(gomock.Any()).Return(sdk.DefaultBondDenom, nil).AnyTimes()
+	bankKeeper.EXPECT().SendCoinsFromModuleToModule(gomock.Any(), disttypes.ModuleName, stakingtypes.BondedPoolName, gomock.Any()).Return(nil).AnyTimes()
+	stakingKeeper.EXPECT().AddValidatorTokensOnly(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 
 	// reset fee pool
 	require.NoError(t, distrKeeper.FeePool.Set(ctx, disttypes.InitialFeePool()))
@@ -189,10 +204,13 @@ func TestCalculateRewardsAfterSlash(t *testing.T) {
 	// increase block height
 	ctx = ctx.WithBlockHeight(ctx.BlockHeight() + 3)
 
-	// allocate some rewards
+	// allocate some rewards — photon stays in F1; bond denom is auto-staked
 	initial := sdk.TokensFromConsensusPower(10, sdk.DefaultPowerReduction)
-	tokens := sdk.DecCoins{{Denom: sdk.DefaultBondDenom, Amount: math.LegacyNewDecFromInt(initial)}}
-	require.NoError(t, distrKeeper.AllocateTokensToValidator(ctx, val, tokens))
+	tokens := sdk.DecCoins{
+		{Denom: "photon", Amount: math.LegacyNewDecFromInt(initial)},
+		{Denom: sdk.DefaultBondDenom, Amount: math.LegacyNewDecFromInt(initial)},
+	}
+	require.NoError(t, func() error { _, e := distrKeeper.AllocateTokensToValidator(ctx, val, tokens); return e }())
 
 	// end period
 	endingPeriod, _ = distrKeeper.IncrementValidatorPeriod(ctx, val)
@@ -201,14 +219,16 @@ func TestCalculateRewardsAfterSlash(t *testing.T) {
 	rewards, err = distrKeeper.CalculateDelegationRewards(ctx, val, del, endingPeriod)
 	require.NoError(t, err)
 
-	// rewards should be half the tokens
-	require.Equal(t, sdk.DecCoins{{Denom: sdk.DefaultBondDenom, Amount: math.LegacyNewDecFromInt(initial.QuoRaw(2))}}, rewards)
+	// bond-denom auto-staked; photon delegator share (50% of initial) stays in F1
+	require.Equal(t, sdk.DecCoins{{Denom: "photon", Amount: math.LegacyNewDecFromInt(initial.QuoRaw(2))}}, rewards)
 
-	// commission should be the other half
+	// commission: 50% of each denom
 	valCommission, err := distrKeeper.GetValidatorAccumulatedCommission(ctx, valAddr)
 	require.NoError(t, err)
-	require.Equal(t, sdk.DecCoins{{Denom: sdk.DefaultBondDenom, Amount: math.LegacyNewDecFromInt(initial.QuoRaw(2))}},
-		valCommission.Commission)
+	require.Equal(t, sdk.DecCoins{
+		{Denom: "photon", Amount: math.LegacyNewDecFromInt(initial.QuoRaw(2))},
+		{Denom: sdk.DefaultBondDenom, Amount: math.LegacyNewDecFromInt(initial.QuoRaw(2))},
+	}, valCommission.Commission)
 }
 
 func TestCalculateRewardsAfterManySlashes(t *testing.T) {
@@ -236,6 +256,10 @@ func TestCalculateRewardsAfterManySlashes(t *testing.T) {
 		"fee_collector",
 		authtypes.NewModuleAddress("gov").String(),
 	)
+
+	stakingKeeper.EXPECT().BondDenom(gomock.Any()).Return(sdk.DefaultBondDenom, nil).AnyTimes()
+	bankKeeper.EXPECT().SendCoinsFromModuleToModule(gomock.Any(), disttypes.ModuleName, stakingtypes.BondedPoolName, gomock.Any()).Return(nil).AnyTimes()
+	stakingKeeper.EXPECT().AddValidatorTokensOnly(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 
 	// reset fee pool
 	require.NoError(t, distrKeeper.FeePool.Set(ctx, disttypes.InitialFeePool()))
@@ -296,8 +320,12 @@ func TestCalculateRewardsAfterManySlashes(t *testing.T) {
 
 	// allocate some rewards
 	initial := sdk.TokensFromConsensusPower(10, sdk.DefaultPowerReduction)
-	tokens := sdk.DecCoins{{Denom: sdk.DefaultBondDenom, Amount: math.LegacyNewDecFromInt(initial)}}
-	require.NoError(t, distrKeeper.AllocateTokensToValidator(ctx, val, tokens))
+	tokens := sdk.DecCoins{
+		{Denom: "photon", Amount: math.LegacyNewDecFromInt(initial)},
+		{Denom: sdk.DefaultBondDenom, Amount: math.LegacyNewDecFromInt(initial)},
+	}
+	_, err = distrKeeper.AllocateTokensToValidator(ctx, val, tokens)
+	require.NoError(t, err)
 
 	// slash the validator by 50% again
 	slashedTokens = distrtestutil.SlashValidator(
@@ -316,7 +344,8 @@ func TestCalculateRewardsAfterManySlashes(t *testing.T) {
 	ctx = ctx.WithBlockHeight(ctx.BlockHeight() + 3)
 
 	// allocate some more rewards
-	require.NoError(t, distrKeeper.AllocateTokensToValidator(ctx, val, tokens))
+	_, err = distrKeeper.AllocateTokensToValidator(ctx, val, tokens)
+	require.NoError(t, err)
 
 	// end period
 	endingPeriod, _ = distrKeeper.IncrementValidatorPeriod(ctx, val)
@@ -325,14 +354,16 @@ func TestCalculateRewardsAfterManySlashes(t *testing.T) {
 	rewards, err = distrKeeper.CalculateDelegationRewards(ctx, val, del, endingPeriod)
 	require.NoError(t, err)
 
-	// rewards should be half the tokens
-	require.Equal(t, sdk.DecCoins{{Denom: sdk.DefaultBondDenom, Amount: math.LegacyNewDecFromInt(initial)}}, rewards)
+	// bond denom auto-staked, photon delegator share stays in F1 (two periods x 50% of initial each)
+	require.Equal(t, sdk.DecCoins{{Denom: "photon", Amount: math.LegacyNewDecFromInt(initial)}}, rewards)
 
-	// commission should be the other half
+	// commission: 50% of each denom x two allocations = initial in each
 	valCommission, err := distrKeeper.GetValidatorAccumulatedCommission(ctx, valAddr)
 	require.NoError(t, err)
-	require.Equal(t, sdk.DecCoins{{Denom: sdk.DefaultBondDenom, Amount: math.LegacyNewDecFromInt(initial)}},
-		valCommission.Commission)
+	require.Equal(t, sdk.DecCoins{
+		{Denom: "photon", Amount: math.LegacyNewDecFromInt(initial)},
+		{Denom: sdk.DefaultBondDenom, Amount: math.LegacyNewDecFromInt(initial)},
+	}, valCommission.Commission)
 }
 
 func TestCalculateRewardsMultiDelegator(t *testing.T) {
@@ -361,6 +392,10 @@ func TestCalculateRewardsMultiDelegator(t *testing.T) {
 		authtypes.NewModuleAddress("gov").String(),
 	)
 
+	stakingKeeper.EXPECT().BondDenom(gomock.Any()).Return(sdk.DefaultBondDenom, nil).AnyTimes()
+	bankKeeper.EXPECT().SendCoinsFromModuleToModule(gomock.Any(), disttypes.ModuleName, stakingtypes.BondedPoolName, gomock.Any()).Return(nil).AnyTimes()
+	stakingKeeper.EXPECT().AddValidatorTokensOnly(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+
 	// reset fee pool
 	require.NoError(t, distrKeeper.FeePool.Set(ctx, disttypes.InitialFeePool()))
 	require.NoError(t, distrKeeper.Params.Set(ctx, disttypes.DefaultParams()))
@@ -388,8 +423,12 @@ func TestCalculateRewardsMultiDelegator(t *testing.T) {
 
 	// allocate some rewards
 	initial := int64(20)
-	tokens := sdk.DecCoins{{Denom: sdk.DefaultBondDenom, Amount: math.LegacyNewDec(initial)}}
-	require.NoError(t, distrKeeper.AllocateTokensToValidator(ctx, val, tokens))
+	tokens := sdk.DecCoins{
+		{Denom: "photon", Amount: math.LegacyNewDec(initial)},
+		{Denom: sdk.DefaultBondDenom, Amount: math.LegacyNewDec(initial)},
+	}
+	_, err = distrKeeper.AllocateTokensToValidator(ctx, val, tokens)
+	require.NoError(t, err)
 
 	// second delegation
 	addr1 := sdk.AccAddress(valConsAddr1)
@@ -407,7 +446,8 @@ func TestCalculateRewardsMultiDelegator(t *testing.T) {
 	ctx = ctx.WithBlockHeight(ctx.BlockHeight() + 1)
 
 	// allocate some more rewards
-	require.NoError(t, distrKeeper.AllocateTokensToValidator(ctx, val, tokens))
+	_, err = distrKeeper.AllocateTokensToValidator(ctx, val, tokens)
+	require.NoError(t, err)
 
 	// end period
 	endingPeriod, _ := distrKeeper.IncrementValidatorPeriod(ctx, val)
@@ -416,20 +456,23 @@ func TestCalculateRewardsMultiDelegator(t *testing.T) {
 	rewards, err := distrKeeper.CalculateDelegationRewards(ctx, val, del0, endingPeriod)
 	require.NoError(t, err)
 
-	// rewards for del0 should be 3/4 initial
-	require.Equal(t, sdk.DecCoins{{Denom: sdk.DefaultBondDenom, Amount: math.LegacyNewDec(initial * 3 / 4)}}, rewards)
+	// bond denom auto-staked, del0 gets photon: period1 (100% shares x 50% of 20 = 10) + period2 (50% shares x 5 = 5) = 15
+	require.Equal(t, sdk.DecCoins{{Denom: "photon", Amount: math.LegacyNewDec(15)}}, rewards)
 
-	// calculate delegation rewards for del2
+	// calculate delegation rewards for del1
 	rewards, err = distrKeeper.CalculateDelegationRewards(ctx, val, del1, endingPeriod)
 	require.NoError(t, err)
 
-	// rewards for del2 should be 1/4 initial
-	require.Equal(t, sdk.DecCoins{{Denom: sdk.DefaultBondDenom, Amount: math.LegacyNewDec(initial * 1 / 4)}}, rewards)
+	// del1 only participates in period2: 50% shares x 5 delegator photon = 5
+	require.Equal(t, sdk.DecCoins{{Denom: "photon", Amount: math.LegacyNewDec(5)}}, rewards)
 
-	// commission should be equal to initial (50% twice)
+	// commission: 50% of each denom x two allocations = initial in each
 	valCommission, err := distrKeeper.GetValidatorAccumulatedCommission(ctx, valAddr)
 	require.NoError(t, err)
-	require.Equal(t, sdk.DecCoins{{Denom: sdk.DefaultBondDenom, Amount: math.LegacyNewDec(initial)}}, valCommission.Commission)
+	require.Equal(t, sdk.DecCoins{
+		{Denom: "photon", Amount: math.LegacyNewDec(initial)},
+		{Denom: sdk.DefaultBondDenom, Amount: math.LegacyNewDec(initial)},
+	}, valCommission.Commission)
 }
 
 func TestWithdrawDelegationRewardsBasic(t *testing.T) {
@@ -458,6 +501,10 @@ func TestWithdrawDelegationRewardsBasic(t *testing.T) {
 		authtypes.NewModuleAddress("gov").String(),
 	)
 
+	stakingKeeper.EXPECT().BondDenom(gomock.Any()).Return(sdk.DefaultBondDenom, nil).AnyTimes()
+	bankKeeper.EXPECT().SendCoinsFromModuleToModule(gomock.Any(), disttypes.ModuleName, stakingtypes.BondedPoolName, gomock.Any()).Return(nil).AnyTimes()
+	stakingKeeper.EXPECT().AddValidatorTokensOnly(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+
 	// reset fee pool
 	require.NoError(t, distrKeeper.FeePool.Set(ctx, disttypes.InitialFeePool()))
 	require.NoError(t, distrKeeper.Params.Set(ctx, disttypes.DefaultParams()))
@@ -484,27 +531,31 @@ func TestWithdrawDelegationRewardsBasic(t *testing.T) {
 
 	// allocate some rewards
 	initial := sdk.TokensFromConsensusPower(10, sdk.DefaultPowerReduction)
-	tokens := sdk.DecCoins{sdk.NewDecCoin(sdk.DefaultBondDenom, initial)}
+	tokens := sdk.DecCoins{
+		sdk.NewDecCoin("photon", initial),
+		sdk.NewDecCoin(sdk.DefaultBondDenom, initial),
+	}
 
-	require.NoError(t, distrKeeper.AllocateTokensToValidator(ctx, val, tokens))
+	_, err = distrKeeper.AllocateTokensToValidator(ctx, val, tokens)
+	require.NoError(t, err)
 
 	// historical count should be 2 (initial + latest for delegation)
 	require.Equal(t, uint64(2), distrKeeper.GetValidatorHistoricalReferenceCount(ctx))
 
-	// withdraw rewards (the bank keeper should be called with the right amount of tokens to transfer)
-	expRewards := sdk.Coins{sdk.NewCoin(sdk.DefaultBondDenom, initial.QuoRaw(2))}
-	bankKeeper.EXPECT().SendCoinsFromModuleToAccount(ctx, disttypes.ModuleName, addr, expRewards)
+	// withdraw rewards: photon delegator share (50% of initial) goes through F1 and should be sent
+	expDelRewards := sdk.Coins{sdk.NewCoin("photon", initial.QuoRaw(2))}
+	bankKeeper.EXPECT().SendCoinsFromModuleToAccount(ctx, disttypes.ModuleName, addr, expDelRewards)
 	_, err = distrKeeper.WithdrawDelegationRewards(ctx, sdk.AccAddress(valAddr), valAddr)
-	require.Nil(t, err)
+	require.NoError(t, err)
 
 	// historical count should still be 2 (added one record, cleared one)
 	require.Equal(t, uint64(2), distrKeeper.GetValidatorHistoricalReferenceCount(ctx))
 
-	// withdraw commission (the bank keeper should be called with the right amount of tokens to transfer)
-	expCommission := sdk.Coins{sdk.NewCoin(sdk.DefaultBondDenom, initial.QuoRaw(2))}
+	// withdraw commission: 50% of each denom
+	expCommission := sdk.Coins{sdk.NewCoin("photon", initial.QuoRaw(2)), sdk.NewCoin(sdk.DefaultBondDenom, initial.QuoRaw(2))}
 	bankKeeper.EXPECT().SendCoinsFromModuleToAccount(ctx, disttypes.ModuleName, addr, expCommission)
 	_, err = distrKeeper.WithdrawValidatorCommission(ctx, valAddr)
-	require.Nil(t, err)
+	require.NoError(t, err)
 }
 
 func TestCalculateRewardsAfterManySlashesInSameBlock(t *testing.T) {
@@ -532,6 +583,10 @@ func TestCalculateRewardsAfterManySlashesInSameBlock(t *testing.T) {
 		"fee_collector",
 		authtypes.NewModuleAddress("gov").String(),
 	)
+
+	stakingKeeper.EXPECT().BondDenom(gomock.Any()).Return(sdk.DefaultBondDenom, nil).AnyTimes()
+	bankKeeper.EXPECT().SendCoinsFromModuleToModule(gomock.Any(), disttypes.ModuleName, stakingtypes.BondedPoolName, gomock.Any()).Return(nil).AnyTimes()
+	stakingKeeper.EXPECT().AddValidatorTokensOnly(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 
 	// reset fee pool
 	require.NoError(t, distrKeeper.FeePool.Set(ctx, disttypes.InitialFeePool()))
@@ -572,8 +627,12 @@ func TestCalculateRewardsAfterManySlashesInSameBlock(t *testing.T) {
 
 	// allocate some rewards
 	initial := math.LegacyNewDecFromInt(sdk.TokensFromConsensusPower(10, sdk.DefaultPowerReduction))
-	tokens := sdk.DecCoins{{Denom: sdk.DefaultBondDenom, Amount: initial}}
-	require.NoError(t, distrKeeper.AllocateTokensToValidator(ctx, val, tokens))
+	tokens := sdk.DecCoins{
+		{Denom: "photon", Amount: initial},
+		{Denom: sdk.DefaultBondDenom, Amount: initial},
+	}
+	_, err = distrKeeper.AllocateTokensToValidator(ctx, val, tokens)
+	require.NoError(t, err)
 
 	valPower := int64(100)
 	// slash the validator by 50% (simulated with manual calls; we assume the validator is bonded)
@@ -605,7 +664,8 @@ func TestCalculateRewardsAfterManySlashesInSameBlock(t *testing.T) {
 	ctx = ctx.WithBlockHeight(ctx.BlockHeight() + 3)
 
 	// allocate some more rewards
-	require.NoError(t, distrKeeper.AllocateTokensToValidator(ctx, val, tokens))
+	_, err = distrKeeper.AllocateTokensToValidator(ctx, val, tokens)
+	require.NoError(t, err)
 
 	// end period
 	endingPeriod, _ = distrKeeper.IncrementValidatorPeriod(ctx, val)
@@ -614,13 +674,16 @@ func TestCalculateRewardsAfterManySlashesInSameBlock(t *testing.T) {
 	rewards, err = distrKeeper.CalculateDelegationRewards(ctx, val, del, endingPeriod)
 	require.NoError(t, err)
 
-	// rewards should be half the tokens
-	require.Equal(t, sdk.DecCoins{{Denom: sdk.DefaultBondDenom, Amount: initial}}, rewards)
+	// bond denom auto-staked, photon delegator share goes through F1 (two allocations × initial/2)
+	require.Equal(t, sdk.DecCoins{{Denom: "photon", Amount: initial}}, rewards)
 
-	// commission should be the other half
+	// commission: 50% of each denom x two allocations = initial in each
 	valCommission, err := distrKeeper.GetValidatorAccumulatedCommission(ctx, valAddr)
 	require.NoError(t, err)
-	require.Equal(t, sdk.DecCoins{{Denom: sdk.DefaultBondDenom, Amount: initial}}, valCommission.Commission)
+	require.Equal(t, sdk.DecCoins{
+		{Denom: "photon", Amount: initial},
+		{Denom: sdk.DefaultBondDenom, Amount: initial},
+	}, valCommission.Commission)
 }
 
 func TestCalculateRewardsMultiDelegatorMultiSlash(t *testing.T) {
@@ -648,6 +711,10 @@ func TestCalculateRewardsMultiDelegatorMultiSlash(t *testing.T) {
 		"fee_collector",
 		authtypes.NewModuleAddress("gov").String(),
 	)
+
+	stakingKeeper.EXPECT().BondDenom(gomock.Any()).Return(sdk.DefaultBondDenom, nil).AnyTimes()
+	bankKeeper.EXPECT().SendCoinsFromModuleToModule(gomock.Any(), disttypes.ModuleName, stakingtypes.BondedPoolName, gomock.Any()).Return(nil).AnyTimes()
+	stakingKeeper.EXPECT().AddValidatorTokensOnly(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 
 	// reset fee pool
 	require.NoError(t, distrKeeper.FeePool.Set(ctx, disttypes.InitialFeePool()))
@@ -677,8 +744,12 @@ func TestCalculateRewardsMultiDelegatorMultiSlash(t *testing.T) {
 
 	// allocate some rewards
 	initial := math.LegacyNewDecFromInt(sdk.TokensFromConsensusPower(30, sdk.DefaultPowerReduction))
-	tokens := sdk.DecCoins{{Denom: sdk.DefaultBondDenom, Amount: initial}}
-	require.NoError(t, distrKeeper.AllocateTokensToValidator(ctx, val, tokens))
+	tokens := sdk.DecCoins{
+		{Denom: "photon", Amount: initial},
+		{Denom: sdk.DefaultBondDenom, Amount: initial},
+	}
+	_, err = distrKeeper.AllocateTokensToValidator(ctx, val, tokens)
+	require.NoError(t, err)
 
 	// slash the validator
 	ctx = ctx.WithBlockHeight(ctx.BlockHeight() + 3)
@@ -721,7 +792,8 @@ func TestCalculateRewardsMultiDelegatorMultiSlash(t *testing.T) {
 	ctx = ctx.WithBlockHeight(ctx.BlockHeight() + 1)
 
 	// allocate some more rewards
-	require.NoError(t, distrKeeper.AllocateTokensToValidator(ctx, val, tokens))
+	_, err = distrKeeper.AllocateTokensToValidator(ctx, val, tokens)
+	require.NoError(t, err)
 
 	// slash the validator again
 	ctx = ctx.WithBlockHeight(ctx.BlockHeight() + 3)
@@ -744,20 +816,23 @@ func TestCalculateRewardsMultiDelegatorMultiSlash(t *testing.T) {
 	rewards, err := distrKeeper.CalculateDelegationRewards(ctx, val, del, endingPeriod)
 	require.NoError(t, err)
 
-	// rewards for del1 should be 2/3 initial (half initial first period, 1/6 initial second period)
-	require.Equal(t, sdk.DecCoins{{Denom: sdk.DefaultBondDenom, Amount: initial.QuoInt64(2).Add(initial.QuoInt64(6))}}, rewards)
+	// del1 had full shares for period1 allocation, 50% for period2; slash adjustments yield 2/3 of total photon rewards
+	require.Equal(t, sdk.DecCoins{{Denom: "photon", Amount: math.LegacyNewDec(20_000_000)}}, rewards)
 
 	// calculate delegation rewards for del2
 	rewards, err = distrKeeper.CalculateDelegationRewards(ctx, val, del2, endingPeriod)
 	require.NoError(t, err)
 
-	// rewards for del2 should be initial / 3
-	require.Equal(t, sdk.DecCoins{{Denom: sdk.DefaultBondDenom, Amount: initial.QuoInt64(3)}}, rewards)
+	// del2 only participates in period2 with 50% shares; slash adjustments yield 1/3 of total photon rewards
+	require.Equal(t, sdk.DecCoins{{Denom: "photon", Amount: math.LegacyNewDec(10_000_000)}}, rewards)
 
-	// commission should be equal to initial (twice 50% commission, unaffected by slashing)
+	// commission: 50% of each denom x two allocations = initial in each
 	valCommission, err := distrKeeper.GetValidatorAccumulatedCommission(ctx, valAddr)
 	require.NoError(t, err)
-	require.Equal(t, sdk.DecCoins{{Denom: sdk.DefaultBondDenom, Amount: initial}}, valCommission.Commission)
+	require.Equal(t, sdk.DecCoins{
+		{Denom: "photon", Amount: initial},
+		{Denom: sdk.DefaultBondDenom, Amount: initial},
+	}, valCommission.Commission)
 }
 
 func TestCalculateRewardsMultiDelegatorMultWithdraw(t *testing.T) {
@@ -786,6 +861,10 @@ func TestCalculateRewardsMultiDelegatorMultWithdraw(t *testing.T) {
 		authtypes.NewModuleAddress("gov").String(),
 	)
 
+	stakingKeeper.EXPECT().BondDenom(gomock.Any()).Return(sdk.DefaultBondDenom, nil).AnyTimes()
+	bankKeeper.EXPECT().SendCoinsFromModuleToModule(gomock.Any(), disttypes.ModuleName, stakingtypes.BondedPoolName, gomock.Any()).Return(nil).AnyTimes()
+	stakingKeeper.EXPECT().AddValidatorTokensOnly(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+
 	// reset fee pool
 	require.NoError(t, distrKeeper.FeePool.Set(ctx, disttypes.InitialFeePool()))
 	require.NoError(t, distrKeeper.Params.Set(ctx, disttypes.DefaultParams()))
@@ -812,8 +891,12 @@ func TestCalculateRewardsMultiDelegatorMultWithdraw(t *testing.T) {
 
 	// allocate some rewards
 	initial := int64(20)
-	tokens := sdk.DecCoins{sdk.NewDecCoin(sdk.DefaultBondDenom, math.NewInt(initial))}
-	require.NoError(t, distrKeeper.AllocateTokensToValidator(ctx, val, tokens))
+	tokens := sdk.DecCoins{
+		sdk.NewDecCoin("photon", math.NewInt(initial)),
+		sdk.NewDecCoin(sdk.DefaultBondDenom, math.NewInt(initial)),
+	}
+	_, err = distrKeeper.AllocateTokensToValidator(ctx, val, tokens)
+	require.NoError(t, err)
 
 	// historical count should be 2 (validator init, delegation init)
 	require.Equal(t, uint64(2), distrKeeper.GetValidatorHistoricalReferenceCount(ctx))
@@ -845,25 +928,24 @@ func TestCalculateRewardsMultiDelegatorMultWithdraw(t *testing.T) {
 	ctx = ctx.WithBlockHeight(ctx.BlockHeight() + 1)
 
 	// allocate some more rewards
-	require.NoError(t, distrKeeper.AllocateTokensToValidator(ctx, val, tokens))
+	_, err = distrKeeper.AllocateTokensToValidator(ctx, val, tokens)
+	require.NoError(t, err)
 
-	// first delegator withdraws
-	expRewards := sdk.Coins{sdk.NewCoin(sdk.DefaultBondDenom, math.NewInt(initial*3/4))}
-	bankKeeper.EXPECT().SendCoinsFromModuleToAccount(ctx, disttypes.ModuleName, addr, expRewards)
+	// first delegator withdraws 15 photon (period1: 100% shares x 10 delegator photon + period2: 50% shares x 10 = 5)
+	bankKeeper.EXPECT().SendCoinsFromModuleToAccount(ctx, disttypes.ModuleName, addr, sdk.Coins{sdk.NewCoin("photon", math.NewInt(15))})
 	_, err = distrKeeper.WithdrawDelegationRewards(ctx, addr, valAddr)
 	require.NoError(t, err)
 
-	// second delegator withdraws
-	expRewards = sdk.Coins{sdk.NewCoin(sdk.DefaultBondDenom, math.NewInt(initial*1/4))}
-	bankKeeper.EXPECT().SendCoinsFromModuleToAccount(ctx, disttypes.ModuleName, sdk.AccAddress(valConsAddr1), expRewards)
+	// second delegator withdraws 5 photon (only period2: 50% shares x 10 delegator photon)
+	bankKeeper.EXPECT().SendCoinsFromModuleToAccount(ctx, disttypes.ModuleName, sdk.AccAddress(valConsAddr1), sdk.Coins{sdk.NewCoin("photon", math.NewInt(5))})
 	_, err = distrKeeper.WithdrawDelegationRewards(ctx, sdk.AccAddress(valConsAddr1), valAddr)
 	require.NoError(t, err)
 
 	// historical count should be 3 (validator init + two delegations)
 	require.Equal(t, uint64(3), distrKeeper.GetValidatorHistoricalReferenceCount(ctx))
 
-	// validator withdraws commission
-	expCommission := sdk.Coins{sdk.NewCoin(sdk.DefaultBondDenom, math.NewInt(initial))}
+	// validator withdraws commission: 50% x 20 x 2 blocks = {20 photon, 20 stake}
+	expCommission := sdk.Coins{sdk.NewCoin("photon", math.NewInt(initial)), sdk.NewCoin(sdk.DefaultBondDenom, math.NewInt(initial))}
 	bankKeeper.EXPECT().SendCoinsFromModuleToAccount(ctx, disttypes.ModuleName, addr, expCommission)
 	_, err = distrKeeper.WithdrawValidatorCommission(ctx, valAddr)
 	require.NoError(t, err)
@@ -894,11 +976,11 @@ func TestCalculateRewardsMultiDelegatorMultWithdraw(t *testing.T) {
 	ctx = ctx.WithBlockHeight(ctx.BlockHeight() + 1)
 
 	// allocate some more rewards
-	require.NoError(t, distrKeeper.AllocateTokensToValidator(ctx, val, tokens))
+	_, err = distrKeeper.AllocateTokensToValidator(ctx, val, tokens)
+	require.NoError(t, err)
 
-	// first delegator withdraws again
-	expCommission = sdk.Coins{sdk.NewCoin(sdk.DefaultBondDenom, math.NewInt(initial*1/4))}
-	bankKeeper.EXPECT().SendCoinsFromModuleToAccount(ctx, disttypes.ModuleName, addr, expCommission)
+	// first delegator withdraws 5 photon (50% shares x 50% of block4 allocation = 5)
+	bankKeeper.EXPECT().SendCoinsFromModuleToAccount(ctx, disttypes.ModuleName, addr, sdk.Coins{sdk.NewCoin("photon", math.NewInt(5))})
 	_, err = distrKeeper.WithdrawDelegationRewards(ctx, addr, valAddr)
 	require.NoError(t, err)
 
@@ -909,29 +991,32 @@ func TestCalculateRewardsMultiDelegatorMultWithdraw(t *testing.T) {
 	rewards, err = distrKeeper.CalculateDelegationRewards(ctx, val, del, endingPeriod)
 	require.NoError(t, err)
 
-	// rewards for del1 should be zero
+	// del1 just withdrew, so no new rewards yet
 	require.True(t, rewards.IsZero())
 
 	// calculate delegation rewards for del2
 	rewards, err = distrKeeper.CalculateDelegationRewards(ctx, val, del2, endingPeriod)
 	require.NoError(t, err)
 
-	// rewards for del2 should be 1/4 initial
-	require.Equal(t, sdk.DecCoins{{Denom: sdk.DefaultBondDenom, Amount: math.LegacyNewDec(initial / 4)}}, rewards)
+	// del2 has accumulated 5 photon from block4 (did not withdraw yet)
+	require.Equal(t, sdk.DecCoins{{Denom: "photon", Amount: math.LegacyNewDec(5)}}, rewards)
 
-	// commission should be half initial
+	// commission should be {photon:initial/2, stake:initial/2} from block4
 	valCommission, err = distrKeeper.GetValidatorAccumulatedCommission(ctx, valAddr)
 	require.NoError(t, err)
-	require.Equal(t, sdk.DecCoins{{Denom: sdk.DefaultBondDenom, Amount: math.LegacyNewDec(initial / 2)}}, valCommission.Commission)
+	require.Equal(t, sdk.DecCoins{
+		{Denom: "photon", Amount: math.LegacyNewDec(initial / 2)},
+		{Denom: sdk.DefaultBondDenom, Amount: math.LegacyNewDec(initial / 2)},
+	}, valCommission.Commission)
 
 	// next block
 	ctx = ctx.WithBlockHeight(ctx.BlockHeight() + 1)
 
 	// allocate some more rewards
-	require.NoError(t, distrKeeper.AllocateTokensToValidator(ctx, val, tokens))
+	require.NoError(t, func() error { _, e := distrKeeper.AllocateTokensToValidator(ctx, val, tokens); return e }())
 
-	// withdraw commission
-	expCommission = sdk.Coins{sdk.NewCoin(sdk.DefaultBondDenom, math.NewInt(initial))}
+	// withdraw commission: block4 (10 photon, 10 stake) + block5 (10 photon, 10 stake) = {20 photon, 20 stake}
+	expCommission = sdk.Coins{sdk.NewCoin("photon", math.NewInt(initial)), sdk.NewCoin(sdk.DefaultBondDenom, math.NewInt(initial))}
 	bankKeeper.EXPECT().SendCoinsFromModuleToAccount(ctx, disttypes.ModuleName, addr, expCommission)
 	_, err = distrKeeper.WithdrawValidatorCommission(ctx, valAddr)
 	require.NoError(t, err)
@@ -943,17 +1028,17 @@ func TestCalculateRewardsMultiDelegatorMultWithdraw(t *testing.T) {
 	rewards, err = distrKeeper.CalculateDelegationRewards(ctx, val, del, endingPeriod)
 	require.NoError(t, err)
 
-	// rewards for del1 should be 1/4 initial
-	require.Equal(t, sdk.DecCoins{{Denom: sdk.DefaultBondDenom, Amount: math.LegacyNewDec(initial / 4)}}, rewards)
+	// del1 gets 50% shares x block5 delegator photon (5) = 5
+	require.Equal(t, sdk.DecCoins{{Denom: "photon", Amount: math.LegacyNewDec(5)}}, rewards)
 
 	// calculate delegation rewards for del2
 	rewards, err = distrKeeper.CalculateDelegationRewards(ctx, val, del2, endingPeriod)
 	require.NoError(t, err)
 
-	// rewards for del2 should be 1/2 initial
-	require.Equal(t, sdk.DecCoins{{Denom: sdk.DefaultBondDenom, Amount: math.LegacyNewDec(initial / 2)}}, rewards)
+	// del2 gets block4 (5) + block5 (5) = 10 photon (del2 never withdrew)
+	require.Equal(t, sdk.DecCoins{{Denom: "photon", Amount: math.LegacyNewDec(10)}}, rewards)
 
-	// commission should be zero
+	// commission should be zero (just withdrew)
 	valCommission, err = distrKeeper.GetValidatorAccumulatedCommission(ctx, valAddr)
 	require.NoError(t, err)
 	require.True(t, valCommission.Commission.IsZero())
@@ -985,6 +1070,10 @@ func Test100PercentCommissionReward(t *testing.T) {
 		authtypes.NewModuleAddress("gov").String(),
 	)
 
+	stakingKeeper.EXPECT().BondDenom(gomock.Any()).Return(sdk.DefaultBondDenom, nil).AnyTimes()
+	bankKeeper.EXPECT().SendCoinsFromModuleToModule(gomock.Any(), disttypes.ModuleName, stakingtypes.BondedPoolName, gomock.Any()).Return(nil).AnyTimes()
+	stakingKeeper.EXPECT().AddValidatorTokensOnly(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+
 	// reset fee pool
 	require.NoError(t, distrKeeper.FeePool.Set(ctx, disttypes.InitialFeePool()))
 	require.NoError(t, distrKeeper.Params.Set(ctx, disttypes.DefaultParams()))
@@ -1012,25 +1101,29 @@ func Test100PercentCommissionReward(t *testing.T) {
 	// allocate some rewards
 	initial := int64(20)
 	tokens := sdk.DecCoins{sdk.NewDecCoin(sdk.DefaultBondDenom, math.NewInt(initial))}
-	require.NoError(t, distrKeeper.AllocateTokensToValidator(ctx, val, tokens))
+	_, err = distrKeeper.AllocateTokensToValidator(ctx, val, tokens)
+	require.NoError(t, err)
 
 	// next block
 	ctx = ctx.WithBlockHeight(ctx.BlockHeight() + 1)
 
 	// allocate some rewards
-	require.NoError(t, distrKeeper.AllocateTokensToValidator(ctx, val, tokens))
+	_, err = distrKeeper.AllocateTokensToValidator(ctx, val, tokens)
+	require.NoError(t, err)
 
 	// next block
 	ctx = ctx.WithBlockHeight(ctx.BlockHeight() + 1)
 
 	// allocate some more rewards
-	require.NoError(t, distrKeeper.AllocateTokensToValidator(ctx, val, tokens))
+	_, err = distrKeeper.AllocateTokensToValidator(ctx, val, tokens)
+	require.NoError(t, err)
 
 	// next block
 	ctx = ctx.WithBlockHeight(ctx.BlockHeight() + 1)
 
 	// allocate some more rewards
-	require.NoError(t, distrKeeper.AllocateTokensToValidator(ctx, val, tokens))
+	_, err = distrKeeper.AllocateTokensToValidator(ctx, val, tokens)
+	require.NoError(t, err)
 
 	rewards, err := distrKeeper.WithdrawDelegationRewards(ctx, addr, valAddr)
 	require.NoError(t, err)
