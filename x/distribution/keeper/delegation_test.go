@@ -51,7 +51,7 @@ func TestCalculateRewardsBasic(t *testing.T) {
 
 	stakingKeeper.EXPECT().BondDenom(gomock.Any()).Return(sdk.DefaultBondDenom, nil).AnyTimes()
 	bankKeeper.EXPECT().SendCoinsFromModuleToModule(gomock.Any(), disttypes.ModuleName, stakingtypes.BondedPoolName, gomock.Any()).Return(nil).AnyTimes()
-	stakingKeeper.EXPECT().AddValidatorTokensOnly(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+	stakingKeeper.EXPECT().AddValidatorTokens(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 
 	// reset fee pool
 	require.NoError(t, distrKeeper.FeePool.Set(ctx, disttypes.InitialFeePool()))
@@ -147,7 +147,7 @@ func TestCalculateRewardsAfterSlash(t *testing.T) {
 
 	stakingKeeper.EXPECT().BondDenom(gomock.Any()).Return(sdk.DefaultBondDenom, nil).AnyTimes()
 	bankKeeper.EXPECT().SendCoinsFromModuleToModule(gomock.Any(), disttypes.ModuleName, stakingtypes.BondedPoolName, gomock.Any()).Return(nil).AnyTimes()
-	stakingKeeper.EXPECT().AddValidatorTokensOnly(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+	stakingKeeper.EXPECT().AddValidatorTokens(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 
 	// reset fee pool
 	require.NoError(t, distrKeeper.FeePool.Set(ctx, disttypes.InitialFeePool()))
@@ -259,7 +259,7 @@ func TestCalculateRewardsAfterManySlashes(t *testing.T) {
 
 	stakingKeeper.EXPECT().BondDenom(gomock.Any()).Return(sdk.DefaultBondDenom, nil).AnyTimes()
 	bankKeeper.EXPECT().SendCoinsFromModuleToModule(gomock.Any(), disttypes.ModuleName, stakingtypes.BondedPoolName, gomock.Any()).Return(nil).AnyTimes()
-	stakingKeeper.EXPECT().AddValidatorTokensOnly(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+	stakingKeeper.EXPECT().AddValidatorTokens(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 
 	// reset fee pool
 	require.NoError(t, distrKeeper.FeePool.Set(ctx, disttypes.InitialFeePool()))
@@ -394,7 +394,7 @@ func TestCalculateRewardsMultiDelegator(t *testing.T) {
 
 	stakingKeeper.EXPECT().BondDenom(gomock.Any()).Return(sdk.DefaultBondDenom, nil).AnyTimes()
 	bankKeeper.EXPECT().SendCoinsFromModuleToModule(gomock.Any(), disttypes.ModuleName, stakingtypes.BondedPoolName, gomock.Any()).Return(nil).AnyTimes()
-	stakingKeeper.EXPECT().AddValidatorTokensOnly(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+	stakingKeeper.EXPECT().AddValidatorTokens(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 
 	// reset fee pool
 	require.NoError(t, distrKeeper.FeePool.Set(ctx, disttypes.InitialFeePool()))
@@ -503,7 +503,7 @@ func TestWithdrawDelegationRewardsBasic(t *testing.T) {
 
 	stakingKeeper.EXPECT().BondDenom(gomock.Any()).Return(sdk.DefaultBondDenom, nil).AnyTimes()
 	bankKeeper.EXPECT().SendCoinsFromModuleToModule(gomock.Any(), disttypes.ModuleName, stakingtypes.BondedPoolName, gomock.Any()).Return(nil).AnyTimes()
-	stakingKeeper.EXPECT().AddValidatorTokensOnly(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+	stakingKeeper.EXPECT().AddValidatorTokens(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 
 	// reset fee pool
 	require.NoError(t, distrKeeper.FeePool.Set(ctx, disttypes.InitialFeePool()))
@@ -586,7 +586,7 @@ func TestCalculateRewardsAfterManySlashesInSameBlock(t *testing.T) {
 
 	stakingKeeper.EXPECT().BondDenom(gomock.Any()).Return(sdk.DefaultBondDenom, nil).AnyTimes()
 	bankKeeper.EXPECT().SendCoinsFromModuleToModule(gomock.Any(), disttypes.ModuleName, stakingtypes.BondedPoolName, gomock.Any()).Return(nil).AnyTimes()
-	stakingKeeper.EXPECT().AddValidatorTokensOnly(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+	stakingKeeper.EXPECT().AddValidatorTokens(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 
 	// reset fee pool
 	require.NoError(t, distrKeeper.FeePool.Set(ctx, disttypes.InitialFeePool()))
@@ -714,7 +714,7 @@ func TestCalculateRewardsMultiDelegatorMultiSlash(t *testing.T) {
 
 	stakingKeeper.EXPECT().BondDenom(gomock.Any()).Return(sdk.DefaultBondDenom, nil).AnyTimes()
 	bankKeeper.EXPECT().SendCoinsFromModuleToModule(gomock.Any(), disttypes.ModuleName, stakingtypes.BondedPoolName, gomock.Any()).Return(nil).AnyTimes()
-	stakingKeeper.EXPECT().AddValidatorTokensOnly(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+	stakingKeeper.EXPECT().AddValidatorTokens(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 
 	// reset fee pool
 	require.NoError(t, distrKeeper.FeePool.Set(ctx, disttypes.InitialFeePool()))
@@ -863,7 +863,7 @@ func TestCalculateRewardsMultiDelegatorMultWithdraw(t *testing.T) {
 
 	stakingKeeper.EXPECT().BondDenom(gomock.Any()).Return(sdk.DefaultBondDenom, nil).AnyTimes()
 	bankKeeper.EXPECT().SendCoinsFromModuleToModule(gomock.Any(), disttypes.ModuleName, stakingtypes.BondedPoolName, gomock.Any()).Return(nil).AnyTimes()
-	stakingKeeper.EXPECT().AddValidatorTokensOnly(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+	stakingKeeper.EXPECT().AddValidatorTokens(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 
 	// reset fee pool
 	require.NoError(t, distrKeeper.FeePool.Set(ctx, disttypes.InitialFeePool()))
@@ -1072,7 +1072,7 @@ func Test100PercentCommissionReward(t *testing.T) {
 
 	stakingKeeper.EXPECT().BondDenom(gomock.Any()).Return(sdk.DefaultBondDenom, nil).AnyTimes()
 	bankKeeper.EXPECT().SendCoinsFromModuleToModule(gomock.Any(), disttypes.ModuleName, stakingtypes.BondedPoolName, gomock.Any()).Return(nil).AnyTimes()
-	stakingKeeper.EXPECT().AddValidatorTokensOnly(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+	stakingKeeper.EXPECT().AddValidatorTokens(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 
 	// reset fee pool
 	require.NoError(t, distrKeeper.FeePool.Set(ctx, disttypes.InitialFeePool()))

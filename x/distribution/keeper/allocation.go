@@ -150,7 +150,7 @@ func (k Keeper) AllocateTokensToValidator(
 		); err != nil {
 			return nil, err
 		}
-		if err := k.stakingKeeper.AddValidatorTokensOnly(ctx, valBz, sharedBondInt); err != nil {
+		if err := k.stakingKeeper.AddValidatorTokens(ctx, valBz, sharedBondInt); err != nil {
 			return nil, err
 		}
 	}

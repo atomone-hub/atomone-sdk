@@ -244,18 +244,18 @@ func (m *MockStakingKeeper) EXPECT() *MockStakingKeeperMockRecorder {
 	return m.recorder
 }
 
-// AddValidatorTokensOnly mocks base method.
-func (m *MockStakingKeeper) AddValidatorTokensOnly(ctx context.Context, valAddr types.ValAddress, tokensToAdd math.Int) error {
+// AddValidatorTokens mocks base method.
+func (m *MockStakingKeeper) AddValidatorTokens(ctx context.Context, valAddr types.ValAddress, tokensToAdd math.Int) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AddValidatorTokensOnly", ctx, valAddr, tokensToAdd)
+	ret := m.ctrl.Call(m, "AddValidatorTokens", ctx, valAddr, tokensToAdd)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// AddValidatorTokensOnly indicates an expected call of AddValidatorTokensOnly.
-func (mr *MockStakingKeeperMockRecorder) AddValidatorTokensOnly(ctx, valAddr, tokensToAdd any) *gomock.Call {
+// AddValidatorTokens indicates an expected call of AddValidatorTokens.
+func (mr *MockStakingKeeperMockRecorder) AddValidatorTokens(ctx, valAddr, tokensToAdd any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddValidatorTokensOnly", reflect.TypeOf((*MockStakingKeeper)(nil).AddValidatorTokensOnly), ctx, valAddr, tokensToAdd)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddValidatorTokens", reflect.TypeOf((*MockStakingKeeper)(nil).AddValidatorTokens), ctx, valAddr, tokensToAdd)
 }
 
 // BondDenom mocks base method.

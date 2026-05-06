@@ -441,7 +441,7 @@ func (s *KeeperTestSuite) TestUnbondingValidator() {
 	require.Equal(stakingtypes.Unbonded, validator.Status)
 }
 
-func (s *KeeperTestSuite) TestAddValidatorTokensOnly_NoSharesIssued() {
+func (s *KeeperTestSuite) TestAddValidatorTokens_NoSharesIssued() {
 	ctx, keeper := s.ctx, s.stakingKeeper
 	require := s.Require()
 
@@ -456,7 +456,7 @@ func (s *KeeperTestSuite) TestAddValidatorTokensOnly_NoSharesIssued() {
 	sharesBefore := validator.DelegatorShares
 
 	rewardTokens := math.NewInt(100)
-	err = keeper.AddValidatorTokensOnly(ctx, valAddr, rewardTokens)
+	err = keeper.AddValidatorTokens(ctx, valAddr, rewardTokens)
 	require.NoError(err)
 
 	updated, err := keeper.GetValidator(ctx, valAddr)
@@ -470,7 +470,7 @@ func (s *KeeperTestSuite) TestAddValidatorTokensOnly_NoSharesIssued() {
 	require.True(updated.TokensFromShares(math.LegacyOneDec()).GT(math.LegacyOneDec()))
 }
 
-func (s *KeeperTestSuite) TestAddValidatorTokensOnly_PowerIndexUpdated() {
+func (s *KeeperTestSuite) TestAddValidatorTokens_PowerIndexUpdated() {
 	ctx, keeper := s.ctx, s.stakingKeeper
 	require := s.Require()
 
@@ -489,7 +489,7 @@ func (s *KeeperTestSuite) TestAddValidatorTokensOnly_PowerIndexUpdated() {
 	require.Equal(int64(1), val.PotentialConsensusPower(keeper.PowerReduction(ctx)))
 
 	// add tokens, potential power should increase to 2
-	err = keeper.AddValidatorTokensOnly(ctx, valAddr, keeper.TokensFromConsensusPower(ctx, 1))
+	err = keeper.AddValidatorTokens(ctx, valAddr, keeper.TokensFromConsensusPower(ctx, 1))
 	require.NoError(err)
 
 	updated, err := keeper.GetValidator(ctx, valAddr)

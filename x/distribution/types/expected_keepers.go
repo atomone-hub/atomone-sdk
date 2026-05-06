@@ -60,10 +60,10 @@ type StakingKeeper interface {
 	// BondDenom returns the denomination used for staking bonds.
 	BondDenom(ctx context.Context) (string, error)
 
-	// AddValidatorTokensOnly increases a bonded validator's token balance without
+	// AddValidatorTokens increases a bonded validator's token balance without
 	// issuing new delegator shares, raising the per-share exchange rate.
 	// The caller must transfer equivalent coins to the bonded pool before calling this.
-	AddValidatorTokensOnly(ctx context.Context, valAddr sdk.ValAddress, tokensToAdd math.Int) error
+	AddValidatorTokens(ctx context.Context, valAddr sdk.ValAddress, tokensToAdd math.Int) error
 }
 
 // StakingHooks event hooks for staking validator object (noalias)

@@ -19,7 +19,7 @@ type bankKeeper interface {
 // stakingKeeper defines the subset of staking keeper methods needed for migration.
 type stakingKeeper interface {
 	BondDenom(ctx context.Context) (string, error)
-	AddValidatorTokensOnly(ctx context.Context, valAddr sdk.ValAddress, tokensToAdd math.Int) error
+	AddValidatorTokens(ctx context.Context, valAddr sdk.ValAddress, tokensToAdd math.Int) error
 }
 
 // distributionKeeper defines the distribution keeper methods needed for migration.
@@ -72,7 +72,7 @@ func MigrateStore(
 				migErr = err
 				return true
 			}
-			if err := sk.AddValidatorTokensOnly(ctx, valAddr, bondInt); err != nil {
+			if err := sk.AddValidatorTokens(ctx, valAddr, bondInt); err != nil {
 				migErr = err
 				return true
 			}
