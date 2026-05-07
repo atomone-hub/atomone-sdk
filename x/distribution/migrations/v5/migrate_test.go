@@ -81,7 +81,10 @@ type testStakingKeeper struct {
 	added     map[string]math.Int
 }
 
-func (s *testStakingKeeper) BondDenom(_ context.Context) (string, error) { return s.bondDenom, nil }
+func (s *testStakingKeeper) BondDenom(_ context.Context) (string, error) {
+	return s.bondDenom, nil
+}
+
 func (s *testStakingKeeper) AddValidatorTokens(_ context.Context, addr sdk.ValAddress, amt math.Int) error {
 	prev, ok := s.added[string(addr)]
 	if !ok {

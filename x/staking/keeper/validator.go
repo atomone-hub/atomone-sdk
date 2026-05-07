@@ -188,6 +188,10 @@ func (k Keeper) RemoveValidatorTokens(ctx context.Context,
 // The caller is responsible for transferring the equivalent coins to the bonded
 // pool module account before calling this function, to satisfy ModuleAccountInvariant.
 func (k Keeper) AddValidatorTokens(ctx context.Context, valAddr sdk.ValAddress, tokensToAdd math.Int) error {
+	if !tokensToAdd.IsPositive() {
+		return nil
+	}
+
 	validator, err := k.GetValidator(ctx, valAddr)
 	if err != nil {
 		return err
