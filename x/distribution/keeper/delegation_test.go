@@ -1,6 +1,7 @@
 package keeper_test
 
 import (
+	"context"
 	"testing"
 
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
@@ -22,6 +23,20 @@ import (
 	disttypes "github.com/cosmos/cosmos-sdk/x/distribution/types"
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
 )
+
+// expectValidator registers a Validator() mock that reads val by closure (not
+// by value at EXPECT time). Tests mutate val via SlashValidator, Delegate,
+// etc.; with shares-based F1 the per-share ratio depends on
+// val.GetDelegatorShares() at period close, so the mock must reflect current
+// state at call time. The `times` argument is the exact Validator() call
+// count expected during the test, summed across all hook paths
+func expectValidator(sk *distrtestutil.MockStakingKeeper, valAddr sdk.ValAddress, val *stakingtypes.Validator, times int) {
+	sk.EXPECT().Validator(gomock.Any(), valAddr).DoAndReturn(
+		func(_ context.Context, _ sdk.ValAddress) (stakingtypes.ValidatorI, error) {
+			return *val, nil
+		},
+	).Times(times)
+}
 
 func TestCalculateRewardsBasic(t *testing.T) {
 	ctrl := gomock.NewController(t)
@@ -66,7 +81,7 @@ func TestCalculateRewardsBasic(t *testing.T) {
 
 	// delegation mock
 	del := stakingtypes.NewDelegation(addr.String(), valAddr.String(), val.DelegatorShares)
-	stakingKeeper.EXPECT().Validator(gomock.Any(), valAddr).Return(val, nil).Times(3)
+	expectValidator(stakingKeeper, valAddr, &val, 2)
 	stakingKeeper.EXPECT().Delegation(gomock.Any(), addr, valAddr).Return(del, nil)
 
 	// run the necessary hooks manually (given that we are not running an actual staking module)
@@ -165,7 +180,7 @@ func TestCalculateRewardsAfterSlash(t *testing.T) {
 	del := stakingtypes.NewDelegation(addr.String(), valAddr.String(), val.DelegatorShares)
 
 	// set mock calls
-	stakingKeeper.EXPECT().Validator(gomock.Any(), valAddr).Return(val, nil).Times(4)
+	expectValidator(stakingKeeper, valAddr, &val, 3)
 	stakingKeeper.EXPECT().Delegation(gomock.Any(), addr, valAddr).Return(del, nil)
 
 	// run the necessary hooks manually (given that we are not running an actual staking module)
@@ -276,7 +291,7 @@ func TestCalculateRewardsAfterManySlashes(t *testing.T) {
 
 	// delegation mocks
 	del := stakingtypes.NewDelegation(addr.String(), valAddr.String(), val.DelegatorShares)
-	stakingKeeper.EXPECT().Validator(gomock.Any(), valAddr).Return(val, nil).Times(4)
+	expectValidator(stakingKeeper, valAddr, &val, 4)
 	stakingKeeper.EXPECT().Delegation(gomock.Any(), addr, valAddr).Return(del, nil)
 
 	// run the necessary hooks manually (given that we are not running an actual staking module)
@@ -311,9 +326,6 @@ func TestCalculateRewardsAfterManySlashes(t *testing.T) {
 		stakingKeeper,
 	)
 	require.True(t, slashedTokens.IsPositive(), "expected positive slashed tokens, got: %s", slashedTokens)
-
-	// expect a call for the next slash with the updated validator
-	stakingKeeper.EXPECT().Validator(gomock.Any(), valAddr).Return(val, nil).Times(1)
 
 	// increase block height
 	ctx = ctx.WithBlockHeight(ctx.BlockHeight() + 3)
@@ -411,7 +423,7 @@ func TestCalculateRewardsMultiDelegator(t *testing.T) {
 	del0 := stakingtypes.NewDelegation(addr0.String(), valAddr.String(), val.DelegatorShares)
 
 	// set mock calls
-	stakingKeeper.EXPECT().Validator(gomock.Any(), valAddr).Return(val, nil).Times(4)
+	expectValidator(stakingKeeper, valAddr, &val, 3)
 	stakingKeeper.EXPECT().Delegation(gomock.Any(), addr0, valAddr).Return(del0, nil).Times(1)
 
 	// run the necessary hooks manually (given that we are not running an actual staking module)
@@ -436,7 +448,6 @@ func TestCalculateRewardsMultiDelegator(t *testing.T) {
 	require.NoError(t, err)
 
 	stakingKeeper.EXPECT().Delegation(gomock.Any(), addr1, valAddr).Return(del1, nil)
-	stakingKeeper.EXPECT().Validator(gomock.Any(), valAddr).Return(val, nil).Times(1)
 
 	// call necessary hooks to update a delegation
 	err = distrKeeper.Hooks().AfterDelegationModified(ctx, addr1, valAddr)
@@ -519,7 +530,7 @@ func TestWithdrawDelegationRewardsBasic(t *testing.T) {
 
 	// delegation mock
 	del := stakingtypes.NewDelegation(addr.String(), valAddr.String(), val.DelegatorShares)
-	stakingKeeper.EXPECT().Validator(gomock.Any(), valAddr).Return(val, nil).Times(5)
+	expectValidator(stakingKeeper, valAddr, &val, 3)
 	stakingKeeper.EXPECT().Delegation(gomock.Any(), addr, valAddr).Return(del, nil).Times(3)
 
 	// run the necessary hooks manually (given that we are not running an actual staking module)
@@ -602,7 +613,7 @@ func TestCalculateRewardsAfterManySlashesInSameBlock(t *testing.T) {
 
 	// delegation mock
 	del := stakingtypes.NewDelegation(addr.String(), valAddr.String(), val.DelegatorShares)
-	stakingKeeper.EXPECT().Validator(gomock.Any(), valAddr).Return(val, nil).Times(5)
+	expectValidator(stakingKeeper, valAddr, &val, 4)
 	stakingKeeper.EXPECT().Delegation(gomock.Any(), addr, valAddr).Return(del, nil)
 
 	// run the necessary hooks manually (given that we are not running an actual staking module)
@@ -731,13 +742,12 @@ func TestCalculateRewardsMultiDelegatorMultiSlash(t *testing.T) {
 
 	// validator and delegation mocks
 	del := stakingtypes.NewDelegation(addr.String(), valAddr.String(), val.DelegatorShares)
-	stakingKeeper.EXPECT().Validator(gomock.Any(), valAddr).Return(val, nil).Times(3)
+	expectValidator(stakingKeeper, valAddr, &val, 5)
 	stakingKeeper.EXPECT().Delegation(gomock.Any(), addr, valAddr).Return(del, nil)
 
 	// run the necessary hooks manually (given that we are not running an actual staking module)
 	err = distrtestutil.CallCreateValidatorHooks(ctx, distrKeeper, addr, valAddr)
 	require.NoError(t, err)
-	stakingKeeper.EXPECT().Validator(gomock.Any(), valAddr).Return(val, nil).Times(2)
 
 	// next block
 	ctx = ctx.WithBlockHeight(ctx.BlockHeight() + 1)
@@ -765,9 +775,6 @@ func TestCalculateRewardsMultiDelegatorMultiSlash(t *testing.T) {
 	)
 	ctx = ctx.WithBlockHeight(ctx.BlockHeight() + 3)
 
-	// update validator mock
-	stakingKeeper.EXPECT().Validator(gomock.Any(), valAddr).Return(val, nil).Times(1)
-
 	// second delegation
 	_, del2, err := distrtestutil.Delegate(
 		ctx,
@@ -780,9 +787,8 @@ func TestCalculateRewardsMultiDelegatorMultiSlash(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	// new delegation mock and update validator mock
+	// new delegation mock; AfterDelegationModified no longer fetches the validator
 	stakingKeeper.EXPECT().Delegation(gomock.Any(), sdk.AccAddress(valConsAddr1), valAddr).Return(del2, nil)
-	stakingKeeper.EXPECT().Validator(gomock.Any(), valAddr).Return(val, nil).Times(1)
 
 	// call necessary hooks to update a delegation
 	err = distrKeeper.Hooks().AfterDelegationModified(ctx, sdk.AccAddress(valConsAddr1), valAddr)
@@ -878,13 +884,12 @@ func TestCalculateRewardsMultiDelegatorMultWithdraw(t *testing.T) {
 
 	// validator and delegation mocks
 	del := stakingtypes.NewDelegation(addr.String(), valAddr.String(), val.DelegatorShares)
-	stakingKeeper.EXPECT().Validator(gomock.Any(), valAddr).Return(val, nil).Times(3)
+	expectValidator(stakingKeeper, valAddr, &val, 6)
 	stakingKeeper.EXPECT().Delegation(gomock.Any(), addr, valAddr).Return(del, nil).Times(5)
 
 	// run the necessary hooks manually (given that we are not running an actual staking module)
 	err = distrtestutil.CallCreateValidatorHooks(ctx, distrKeeper, addr, valAddr)
 	require.NoError(t, err)
-	stakingKeeper.EXPECT().Validator(gomock.Any(), valAddr).Return(val, nil).Times(2)
 
 	// next block
 	ctx = ctx.WithBlockHeight(ctx.BlockHeight() + 1)
@@ -913,9 +918,9 @@ func TestCalculateRewardsMultiDelegatorMultWithdraw(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	// new delegation mock and update validator mock
+	// new delegation mock; Validator() is already covered by the
+	// expectValidator total registered earlier.
 	stakingKeeper.EXPECT().Delegation(gomock.Any(), sdk.AccAddress(valConsAddr1), valAddr).Return(del2, nil).Times(3)
-	stakingKeeper.EXPECT().Validator(gomock.Any(), valAddr).Return(val, nil).Times(6)
 
 	// call necessary hooks to update a delegation
 	err = distrKeeper.Hooks().AfterDelegationModified(ctx, sdk.AccAddress(valConsAddr1), valAddr)
@@ -1087,13 +1092,12 @@ func Test100PercentCommissionReward(t *testing.T) {
 
 	// validator and delegation mocks
 	del := stakingtypes.NewDelegation(addr.String(), valAddr.String(), val.DelegatorShares)
-	stakingKeeper.EXPECT().Validator(gomock.Any(), valAddr).Return(val, nil).Times(3)
+	expectValidator(stakingKeeper, valAddr, &val, 3)
 	stakingKeeper.EXPECT().Delegation(gomock.Any(), addr, valAddr).Return(del, nil).Times(3)
 
 	// run the necessary hooks manually (given that we are not running an actual staking module)
 	err = distrtestutil.CallCreateValidatorHooks(ctx, distrKeeper, addr, valAddr)
 	require.NoError(t, err)
-	stakingKeeper.EXPECT().Validator(gomock.Any(), valAddr).Return(val, nil).Times(2)
 
 	// next block
 	ctx = ctx.WithBlockHeight(ctx.BlockHeight() + 1)

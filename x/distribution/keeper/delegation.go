@@ -26,27 +26,36 @@ func (k Keeper) initializeDelegation(ctx context.Context, val sdk.ValAddress, de
 		return err
 	}
 
-	validator, err := k.stakingKeeper.Validator(ctx, val)
-	if err != nil {
-		return err
-	}
-
 	delegation, err := k.stakingKeeper.Delegation(ctx, del, val)
 	if err != nil {
 		return err
 	}
 
-	// calculate delegation stake in tokens
-	// we don't store directly, so multiply delegation shares * (tokens per share)
-	// note: necessary to truncate so we don't allow withdrawing more rewards than owed
-	stake := validator.TokensFromSharesTruncated(delegation.GetShares())
+	// Snapshot the delegator's share count. F1 ratios are stored as
+	// rewards-per-share (not rewards-per-token), so the delegator's share count
+	// is the right unit to multiply against later. This is invariant to the
+	// per-share exchange rate, which can shift between init and withdrawal due
+	// to auto-staking and slashing — neither modifies validator.DelegatorShares.
+	//
+	// The DelegatorStartingInfo proto field is named `Stake` for historical
+	// reasons (it held tokens-from-shares under the old tokens-based F1). It
+	// now stores the delegator's share count. We keep the proto name for
+	// backwards compatibility with stored state but use `shares` in code so
+	// the semantics are clear.
+	shares := delegation.GetShares()
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
-	return k.SetDelegatorStartingInfo(ctx, val, del, types.NewDelegatorStartingInfo(previousPeriod, stake, uint64(sdkCtx.BlockHeight())))
+	return k.SetDelegatorStartingInfo(ctx, val, del, types.NewDelegatorStartingInfo(previousPeriod, shares, uint64(sdkCtx.BlockHeight())))
 }
 
-// calculate the rewards accrued by a delegation between two periods
+// calculateDelegationRewardsBetween returns the rewards accrued by a delegation
+// across periods [startingPeriod, endingPeriod].
+//
+// The `shares` argument is the delegator's share-count snapshot stored in
+// DelegatorStartingInfo at init time. The proto field is still named `Stake`
+// (see initializeDelegation for the rationale), but in shares-based F1 it
+// holds shares, not tokens-from-shares.
 func (k Keeper) calculateDelegationRewardsBetween(ctx context.Context, val stakingtypes.ValidatorI,
-	startingPeriod, endingPeriod uint64, stake math.LegacyDec,
+	startingPeriod, endingPeriod uint64, shares math.LegacyDec,
 ) (sdk.DecCoins, error) {
 	// sanity check
 	if startingPeriod > endingPeriod {
@@ -54,8 +63,8 @@ func (k Keeper) calculateDelegationRewardsBetween(ctx context.Context, val staki
 	}
 
 	// sanity check
-	if stake.IsNegative() {
-		panic("stake should not be negative")
+	if shares.IsNegative() {
+		panic("shares should not be negative")
 	}
 
 	valBz, err := k.stakingKeeper.ValidatorAddressCodec().StringToBytes(val.GetOperator())
@@ -63,7 +72,7 @@ func (k Keeper) calculateDelegationRewardsBetween(ctx context.Context, val staki
 		panic(err)
 	}
 
-	// return staking * (ending - starting)
+	// rewards = (ratio_at_ending - ratio_at_starting) × delegator_shares
 	starting, err := k.GetValidatorHistoricalRewards(ctx, valBz, startingPeriod)
 	if err != nil {
 		return sdk.DecCoins{}, err
@@ -79,7 +88,7 @@ func (k Keeper) calculateDelegationRewardsBetween(ctx context.Context, val staki
 		panic("negative rewards should not be possible")
 	}
 	// note: necessary to truncate so we don't allow withdrawing more rewards than owed
-	rewards := difference.MulDecTruncate(stake)
+	rewards := difference.MulDecTruncate(shares)
 	return rewards, nil
 }
 
@@ -109,80 +118,28 @@ func (k Keeper) CalculateDelegationRewards(ctx context.Context, val stakingtypes
 	}
 
 	startingPeriod := startingInfo.PreviousPeriod
-	stake := startingInfo.Stake
+	// The DelegatorStartingInfo proto field is named `Stake` but, under
+	// shares-based F1, holds the delegator's share count at init time.
+	startingShares := startingInfo.Stake
 
-	// Iterate through slashes and withdraw with calculated staking for
-	// distribution periods. These period offsets are dependent on *when* slashes
-	// happen - namely, in BeginBlock, after rewards are allocated...
-	// Slashes which happened in the first block would have been before this
-	// delegation existed, UNLESS they were slashes of a redelegation to this
-	// validator which was itself slashed (from a fault committed by the
-	// redelegation source validator) earlier in the same BeginBlock.
-	startingHeight := startingInfo.Height
-	// Slashes this block happened after reward allocation, but we have to account
-	// for them for the stake sanity check below.
-	endingHeight := uint64(sdkCtx.BlockHeight())
-	if endingHeight > startingHeight {
-		k.IterateValidatorSlashEventsBetween(ctx, valAddr, startingHeight, endingHeight,
-			func(_ uint64, event types.ValidatorSlashEvent) (stop bool) {
-				endingPeriod := event.ValidatorPeriod
-				if endingPeriod > startingPeriod {
-					delRewards, err := k.calculateDelegationRewardsBetween(ctx, val, startingPeriod, endingPeriod, stake)
-					if err != nil {
-						panic(err)
-					}
-					rewards = rewards.Add(delRewards...)
-
-					// Note: It is necessary to truncate so we don't allow withdrawing
-					// more rewards than owed.
-					stake = stake.MulTruncate(math.LegacyOneDec().Sub(event.Fraction))
-					startingPeriod = endingPeriod
-				}
-				return false
-			},
-		)
-	}
-
-	// A total stake sanity check; Recalculated final stake should be less than or
-	// equal to current stake here. We cannot use Equals because stake is truncated
-	// when multiplied by slash fractions (see above). We could only use equals if
-	// we had arbitrary-precision rationals.
-	currentStake := val.TokensFromShares(del.GetShares())
-
-	if stake.GT(currentStake) {
-		// AccountI for rounding inconsistencies between:
-		//
-		//     currentStake: calculated as in staking with a single computation
-		//     stake:        calculated as an accumulation of stake
-		//                   calculations across validator's distribution periods
-		//
-		// These inconsistencies are due to differing order of operations which
-		// will inevitably have different accumulated rounding and may lead to
-		// the smallest decimal place being one greater in stake than
-		// currentStake. When we calculated slashing by period, even if we
-		// round down for each slash fraction, it's possible due to how much is
-		// being rounded that we slash less when slashing by period instead of
-		// for when we slash without periods. In other words, the single slash,
-		// and the slashing by period could both be rounding down but the
-		// slashing by period is simply rounding down less, thus making stake >
-		// currentStake
-		//
-		// A small amount of this error is tolerated and corrected for,
-		// however any greater amount should be considered a breach in expected
-		// behavior.
-		marginOfErr := math.LegacySmallestDec().MulInt64(3)
-		if stake.LTE(currentStake.Add(marginOfErr)) {
-			stake = currentStake
-		} else {
-			panic(fmt.Sprintf("calculated final stake for delegator %s greater than current stake"+
-				"\n\tfinal stake:\t%s"+
-				"\n\tcurrent stake:\t%s",
-				del.GetDelegatorAddr(), stake, currentStake))
-		}
+	// Shares only change when the delegator delegates, undelegates, or
+	// redelegates — and any of those goes through BeforeDelegationSharesModified,
+	// which withdraws rewards and re-runs initializeDelegation, refreshing
+	// startingShares. So slashing and auto-staking, which mutate
+	// validator.Tokens but never validator.DelegatorShares, leave
+	// startingShares aligned with del.GetShares() between modifications.
+	currentShares := del.GetShares()
+	if startingShares.GT(currentShares) {
+		// If startingShares exceeds current shares, the delegator's shares
+		// shrank without BeforeDelegationSharesModified firing — a bug.
+		panic(fmt.Sprintf("stored starting shares for delegator %s exceed current shares"+
+			"\n\tstored:\t%s"+
+			"\n\tcurrent:\t%s",
+			del.GetDelegatorAddr(), startingShares, currentShares))
 	}
 
 	// calculate rewards for final period
-	delRewards, err := k.calculateDelegationRewardsBetween(ctx, val, startingPeriod, endingPeriod, stake)
+	delRewards, err := k.calculateDelegationRewardsBetween(ctx, val, startingPeriod, endingPeriod, startingShares)
 	if err != nil {
 		return sdk.DecCoins{}, err
 	}
