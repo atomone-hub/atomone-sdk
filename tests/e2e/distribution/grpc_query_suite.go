@@ -45,7 +45,6 @@ func (s *GRPCQueryTestSuite) SetupSuite() {
 		Address: feeCollectorAddr.String(),
 		Coins:   photonCoins,
 	})
-	bankData.Supply = bankData.Supply.Add(photonCoins...)
 
 	bankDataBz, err := s.cfg.Codec.MarshalJSON(&bankData)
 	s.Require().NoError(err)

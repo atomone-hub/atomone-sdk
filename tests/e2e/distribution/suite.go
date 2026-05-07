@@ -72,7 +72,6 @@ func (s *E2ETestSuite) SetupSuite() {
 		Address: feeCollectorAddr.String(),
 		Coins:   photonCoins,
 	})
-	bankData.Supply = bankData.Supply.Add(photonCoins...)
 
 	bankDataBz, err := s.cfg.Codec.MarshalJSON(&bankData)
 	s.Require().NoError(err)
@@ -86,7 +85,7 @@ func (s *E2ETestSuite) SetupSuite() {
 	s.Require().NoError(s.network.WaitForNextBlock())
 }
 
-// TearDownSuite cleans up the curret test network after _each_ test.
+// TearDownSuite cleans up the current test network after _each_ test.
 func (s *E2ETestSuite) TearDownSuite() {
 	s.T().Log("tearing down e2e test suite1")
 	s.network.Cleanup()
