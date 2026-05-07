@@ -19,6 +19,8 @@ import (
 	clitestutil "github.com/cosmos/cosmos-sdk/testutil/cli"
 	"github.com/cosmos/cosmos-sdk/testutil/network"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
+	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
 	"github.com/cosmos/cosmos-sdk/x/distribution/client/cli"
 	distrtypes "github.com/cosmos/cosmos-sdk/x/distribution/types"
 	minttypes "github.com/cosmos/cosmos-sdk/x/mint/types"
@@ -58,6 +60,24 @@ func (s *E2ETestSuite) SetupSuite() {
 	mintDataBz, err := s.cfg.Codec.MarshalJSON(&mintData)
 	s.Require().NoError(err)
 	genesisState[minttypes.ModuleName] = mintDataBz
+
+	// Seed fee_collector with non-bond denom so non-bond delegator rewards
+	// appear in F1 and remain withdrawable after auto-staking is active.
+	var bankData banktypes.GenesisState
+	s.Require().NoError(s.cfg.Codec.UnmarshalJSON(genesisState[banktypes.ModuleName], &bankData))
+
+	feeCollectorAddr := authtypes.NewModuleAddress(authtypes.FeeCollectorName)
+	photonCoins := sdk.NewCoins(sdk.NewCoin("photon", math.NewInt(10000)))
+	bankData.Balances = append(bankData.Balances, banktypes.Balance{
+		Address: feeCollectorAddr.String(),
+		Coins:   photonCoins,
+	})
+	bankData.Supply = bankData.Supply.Add(photonCoins...)
+
+	bankDataBz, err := s.cfg.Codec.MarshalJSON(&bankData)
+	s.Require().NoError(err)
+	genesisState[banktypes.ModuleName] = bankDataBz
+
 	s.cfg.GenesisState = genesisState
 
 	s.network, err = network.New(s.T(), s.T().TempDir(), s.cfg)
@@ -170,8 +190,9 @@ func (s *E2ETestSuite) TestNewWithdrawRewardsCmd() {
 						// can't use unpackAny as response types are not registered.
 						err = s.cfg.Codec.Unmarshal(msgResponse.Value, &resp)
 						s.Require().NoError(err)
-						s.Require().True(resp.Amount.IsAllGT(sdk.NewCoins(sdk.NewCoin("stake", math.OneInt()))),
-							fmt.Sprintf("expected a positive coin value, got %v", resp.Amount))
+						// Bond denom rewards are auto-staked, only non-bond denom is claimable.
+						s.Require().True(resp.Amount.AmountOf(s.cfg.BondDenom).IsZero(),
+							fmt.Sprintf("bond denom must not appear in delegator rewards (auto-staked), got %v", resp.Amount))
 					case "/cosmos.distribution.v1beta1.MsgWithdrawValidatorCommissionResponse":
 						var resp distrtypes.MsgWithdrawValidatorCommissionResponse
 						// can't use unpackAny as response types are not registered.
@@ -258,8 +279,9 @@ func (s *E2ETestSuite) TestNewWithdrawAllRewardsCmd() {
 						// can't use unpackAny as response types are not registered.
 						err = s.cfg.Codec.Unmarshal(msgResponse.Value, &resp)
 						s.Require().NoError(err)
-						s.Require().True(resp.Amount.IsAllGT(sdk.NewCoins(sdk.NewCoin("stake", math.OneInt()))),
-							fmt.Sprintf("expected a positive coin value, got %v", resp.Amount))
+						// Bond denom rewards are auto-staked, only non-bond denom is claimable.
+						s.Require().True(resp.Amount.AmountOf(s.cfg.BondDenom).IsZero(),
+							fmt.Sprintf("bond denom must not appear in delegator rewards (auto-staked), got %v", resp.Amount))
 					case "/cosmos.distribution.v1beta1.MsgWithdrawValidatorCommissionResponse":
 						var resp distrtypes.MsgWithdrawValidatorCommissionResponse
 						// can't use unpackAny as response types are not registered.
