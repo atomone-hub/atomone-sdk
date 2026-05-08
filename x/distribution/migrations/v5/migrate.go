@@ -1,3 +1,5 @@
+package v5
+
 // Package v5 contains the distribution module's v4->v5 in-place store
 // migration. The migration is invoked once at upgrade height by the module's
 // configurator and converts pre-upgrade chain state to the post-upgrade
@@ -32,7 +34,7 @@
 //     pending rewards (auto-staking the bond denom delegator portion), pay
 //     out the validator's commission to its operator, sweep any residual
 //     outstanding rewards to the community pool, wipe the validator's F1
-//     stores, re-seed period 0/1, and re-initialise the
+//     stores, re-seed period 0/1, and re-initialize the
 //     `DelegatorStartingInfo` for each of its active delegations using the
 //     shares-based semantic.
 //  3. For each orphan (an address with leftover F1 records but no matching
@@ -42,7 +44,6 @@
 // `ValidatorSlashEvent` records are intentionally left in storage. They are
 // no longer consumed by reward computation, but the public ValidatorSlashes
 // gRPC endpoint still exposes them for historical / audit purposes.
-package v5
 
 import (
 	"context"
@@ -207,7 +208,7 @@ func newStateSnapshot(ctx context.Context, dk Migrator) *stateSnapshot {
 }
 
 // processValidator runs the per-validator flow: drain rewards, sweep dust,
-// wipe F1 storage, re-seed period 0/1, and re-initialise startingInfos for
+// wipe F1 storage, re-seed period 0/1, and re-initialize startingInfos for
 // every delegation under this validator.
 func processValidator(
 	ctx context.Context,
@@ -270,7 +271,7 @@ func processValidator(
 		return err
 	}
 
-	// 6. Re-initialise DelegatorStartingInfo for each delegation under this
+	// 6. Re-initialize DelegatorStartingInfo for each delegation under this
 	//    validator, this time with shares-based semantics.
 	for _, d := range dels {
 		del, err := sk.Delegation(ctx, d.delAddr, valAddr)

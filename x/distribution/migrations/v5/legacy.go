@@ -26,7 +26,7 @@ import (
 	dstrtypes "github.com/cosmos/cosmos-sdk/x/distribution/types"
 )
 
-// legacyCalculateDelegationRewards reproduces the pre-upgrade behaviour of
+// legacyCalculateDelegationRewards reproduces the pre-upgrade behavior of
 // keeper.CalculateDelegationRewards: it walks the validator's slash events in
 // [startingHeight, endingHeight) and, at each event's period boundary, splits
 // the reward computation and scales the delegator's stake by (1 - fraction).
@@ -59,7 +59,7 @@ func legacyCalculateDelegationRewards(
 					rewards = rewards.Add(partial...)
 
 					// Note: it is necessary to truncate so we don't allow withdrawing
-					// more rewards than owed. Mirrors the original behaviour exactly.
+					// more rewards than owed. Mirrors the original behavior exactly.
 					stake = stake.MulTruncate(math.LegacyOneDec().Sub(event.Fraction))
 					startingPeriod = eventPeriod
 				}
