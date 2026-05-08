@@ -518,7 +518,7 @@ func randomDeposit(
 	minAmount := sdkmath.ZeroInt()
 	maxAmount := minDepositAmount
 	if initialDeposit {
-		minAmount = k.GetMinInitialDeposit(ctx)[denomIndex].Amount
+		minAmount = k.GetMinInitialDeposit(ctx).AmountOf(denom)
 	}
 
 	// min initial deposit and min deposit grow independently, which can result in
