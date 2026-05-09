@@ -71,12 +71,18 @@ for further details.
 
 > **AtomOne SDK note**: this section describes the legacy rationale
 > for historical purposes. The AtomOne SDK now does in fact auto-stake
-> bond denom delegator rewards every block (see [Auto-Staking of Bond Denom
-> Rewards](#auto-staking-of-bond-denom-rewards)). The "computationally
-> expensive" objection below is addressed by the shares-based F1 model:
-> auto-staking changes `validator.Tokens` without touching
-> `validator.DelegatorShares`, and the F1 ratio is computed per-share, so
-> no per-delegator per-block calculation is needed.
+> both bond denom delegator rewards (every block) and bond denom
+> validator commission (on `MsgWithdrawValidatorCommission` and at a
+> protocol-driven epoch boundary) — see
+> [Auto-Staking of Bond Denom Rewards](#auto-staking-of-bond-denom-rewards).
+> The "computationally expensive" objection below is addressed by the
+> shares-based F1 model: delegator-side auto-stake changes
+> `validator.Tokens` without touching `validator.DelegatorShares`, and
+> the F1 ratio is computed per-share, so no per-delegator per-block
+> calculation is needed. Commission auto-stake runs through the standard
+> staking `Delegate` path (firing the same hooks any user-initiated
+> delegation fires), keeping F1 state consistent without any custom
+> machinery.
 
 Charging commission on Atom provisions while also allowing for Atom-provisions
 to be auto-bonded (distributed directly to the validators bonded stake) is
@@ -95,26 +101,86 @@ to set up a script to periodically withdraw and rebond rewards.
 ## Auto-Staking of Bond Denom Rewards
 
 The AtomOne SDK extends the F1 mechanism with automatic compounding of the
-bond denomination for delegator rewards. Every block, in
-`AllocateTokensToValidator`:
+bond denomination for both delegator rewards and validator commission. The
+two paths use different mechanisms because they have different invariance
+requirements with respect to F1.
 
-* The bond denom portion of each validator's _delegator_ reward share is sent
-  directly from the distribution module to the bonded pool. The integer amount
-  is added to `validator.Tokens` via `AddValidatorTokens`, **without issuing
-  new shares**. The per-share exchange rate (`Tokens / DelegatorShares`) rises,
-  so every existing delegator's stake — measured in tokens — compounds
-  automatically. The decimal remainder (truncation dust) is routed to the
-  community pool.
-* Non-bond denominations (e.g. transaction fees in tokens other than the
-  bond denom) keep flowing through the F1 mechanism and remain
-  withdrawable via `MsgWithdrawDelegatorReward`.
-* Validator commission (all denoms) stays claimable through the F1
-  path.
+### Delegator rewards: per-block auto-stake (every allocation)
 
-Auto-staking is invisible to the F1 calculation because F1 ratios are stored
-per-share, not per-token (see the next section). A bump in `validator.Tokens`
-therefore does not require any per-delegator state update — auto-staking is
-O(validators) per block, with zero per-delegator operations.
+Every block, in `AllocateTokensToValidator`, the bond denom portion of
+each validator's _delegator_ reward share is sent directly from the
+distribution module to the bonded pool. The integer amount is added to
+`validator.Tokens` via `AddValidatorTokens`, **without issuing new
+shares**. The per-share exchange rate (`Tokens / DelegatorShares`) rises,
+so every existing delegator's stake — measured in tokens — compounds
+automatically. The decimal remainder (truncation dust) is routed to the
+community pool.
+
+This path is invisible to the F1 calculation because F1 ratios are stored
+per-share, not per-token (see the next section). A bump in
+`validator.Tokens` therefore does not require any per-delegator state
+update — auto-staking is O(validators) per block, with zero per-delegator
+operations.
+
+Non-bond denominations (e.g. transaction fees in tokens other than the
+bond denom) keep flowing through the F1 mechanism and remain withdrawable
+via `MsgWithdrawDelegatorReward`.
+
+### Commission: routed through the standard Delegate path
+
+Bond denom commission cannot use the same trick. To grow the operator's
+self-delegation specifically (rather than diluting commission across all
+delegators via a per-share exchange-rate bump), commission auto-stake has
+to issue new shares to the operator's delegation. New shares change
+`validator.DelegatorShares`, which is the one variable shares-based F1
+relies on remaining stable between hooks. Mutating it from `BeginBlock`
+without firing hooks would break F1 accounting.
+
+The chosen design routes bond denom commission through the standard
+`staking.Delegate` path — the same path `MsgDelegate` uses — which fires
+`BeforeDelegationSharesModified` and `AfterDelegationModified` hooks
+normally and keeps F1 state consistent end-to-end. Two trigger points
+invoke this:
+
+* **`MsgWithdrawValidatorCommission`** (operator-initiated). When the
+  operator submits a commission withdrawal, the bond denom portion is
+  routed to the operator's account and immediately re-delegated through
+  `staking.Delegate(operator, validator, amount, Unbonded, validator,
+  true)`. The non-bond portion is paid out to the operator's withdraw
+  address as before.
+* **`AfterEpochEnd` hook** (protocol-driven), gated on the
+  `commission_auto_stake_epoch_identifier` distribution param. When the
+  configured epoch fires (default: "week"), the handler iterates the
+  bonded validator set via `GetBondedValidatorsByPower` and invokes the
+  same commission auto-stake helper for each validator with positive
+  bond denom in `accumulatedCommission`. Operators can still withdraw
+  more often if they prefer — the epoch trigger is a floor on the
+  compounding cadence, not a ceiling.
+
+In both triggers the integer bond denom amount goes through the
+distribution module -> operator account -> bonded pool flow that
+`staking.Delegate` already implements; the truncation dust is swept to
+the community pool. Non-bond commission is never touched by the
+auto-stake path — it stays in `accumulatedCommission` for the operator
+to claim manually whenever they want.
+
+Validators outside the bonded set (jailed, unbonding, unbonded) are not
+returned by `GetBondedValidatorsByPower` and are therefore skipped by
+the epoch trigger. They no longer accrue new commission either
+(`AllocateTokens` only iterates `bondedVotes`), so any commission they
+earned during their bonded period sits in `accumulatedCommission` until
+the validator is removed; the existing `AfterValidatorRemoved` hook
+handles the residual via the standard force-payout. The bond denom
+"escape route" through validator dismissal is bounded by one epoch's
+worth of commission per validator lifetime and does not provide a
+material incentive to dismiss a validator in order to liquidate.
+
+Cost model: the per-block auto-stake of delegator rewards is
+O(validators) with no extra storage. The epoch-driven commission
+auto-stake is one `staking.Delegate` per bonded validator with positive
+bond denom commission, executed in the epoch-boundary block; each call
+fires the standard hook flow that already runs on every user-initiated
+delegation.
 
 ## Shares-Based F1 vs Tokens-Based F1
 
@@ -182,7 +248,9 @@ handles the transition in four phases:
    continues to hold. `ValidatorAccumulatedCommission` is left
    untouched on disk. `historical[0]` and `currentRewards` are
    re-seeded with a fresh empty record (mirroring
-   `keeper.initializeValidator`).
+   `keeper.initializeValidator`). From the upgrade height onward, every
+   `MsgWithdrawValidatorCommission` and every commission auto-stake
+   epoch trigger uses the new auto-stake path.
 4. **Re-initialise delegations.** Every snapshotted delegation gets a
    fresh `DelegatorStartingInfo` with `PreviousPeriod = 0` and `Stake`
    holding `delegation.GetShares()`.
@@ -205,7 +273,8 @@ Client-visible behaviour at the upgrade boundary:
 * Commission balances are unchanged across the upgrade. Operators that
   had accumulated commission pre-upgrade still have exactly the same
   amount available to withdraw post-upgrade via
-  `MsgWithdrawValidatorCommission`.
+  `MsgWithdrawValidatorCommission` or the configured newly added epoch
+  trigger. 
 * From the upgrade height onward, `DelegationRewards` and
   `DelegationTotalRewards` queries accrue from the clean post-migration
   F1 state under shares-based semantics.
@@ -732,22 +801,34 @@ The distribution module emits the following events:
 | message             | action        | withdraw_validator_commission |
 | message             | sender        | {senderAddress}               |
 
+`auto_stake_commission` is also emitted whenever the bond denom portion of
+accumulated commission is routed through `staking.Delegate` — both during
+`MsgWithdrawValidatorCommission` and during the epoch-driven trigger (see
+[Auto-Staking of Bond Denom Rewards](#auto-staking-of-bond-denom-rewards)):
+
+| Type                  | Attribute Key | Attribute Value     |
+|-----------------------|---------------|---------------------|
+| auto_stake_commission | amount        | {bondDenomAmount}   |
+| auto_stake_commission | validator     | {validatorAddress}  |
+
 ## Parameters
 
 The distribution module contains the following parameters:
 
-| Key                                    | Type         | Example                    |
-|----------------------------------------|--------------|----------------------------|
-| communitytax                           | string (dec) | "0.020000000000000000" [0] |
-| withdrawaddrenabled                    | bool         | true                       |
-| nakamoto_bonus.enabled                 | bool         | true                       |
-| nakamoto_bonus.period_epoch_identifier | string       | "week" [1]                 |
-| nakamoto_bonus.step                    | string (dec) | "0.010000000000000000"     |
-| nakamoto_bonus.minimum_coefficient     | string (dec) | "0.030000000000000000"     |
-| nakamoto_bonus.maximum_coefficient     | string (dec) | "1.000000000000000000"     |
+| Key                                       | Type         | Example                    |
+|-------------------------------------------|--------------|----------------------------|
+| communitytax                              | string (dec) | "0.020000000000000000" [0] |
+| withdrawaddrenabled                       | bool         | true                       |
+| nakamoto_bonus.enabled                    | bool         | true                       |
+| nakamoto_bonus.period_epoch_identifier    | string       | "week" [1]                 |
+| nakamoto_bonus.step                       | string (dec) | "0.010000000000000000"     |
+| nakamoto_bonus.minimum_coefficient        | string (dec) | "0.030000000000000000"     |
+| nakamoto_bonus.maximum_coefficient        | string (dec) | "1.000000000000000000"     |
+| commission_auto_stake_epoch_identifier    | string       | "week" [2]                 |
 
 * [0] `communitytax` must be positive and cannot exceed 1.00.
 * [1] `period_epoch_identifier` specifies which epoch type triggers coefficient adjustments. Must match an epoch identifier registered in the epochs module (e.g., "day", "week", "month").
+* [2] `commission_auto_stake_epoch_identifier` specifies which epoch type triggers the protocol-driven commission auto-stake (see [Auto-Staking of Bond Denom Rewards](#auto-staking-of-bond-denom-rewards)). An empty string disables the epoch trigger; operators can still trigger the auto-stake by submitting `MsgWithdrawValidatorCommission`. Must match an epoch identifier registered in the epochs module.
 
 :::note
 The reserve pool is the pool of collected funds for use by governance taken via the `CommunityTax`.
@@ -769,6 +850,20 @@ This identifier must match an epoch registered in the epochs module. Common epoc
 
 The epochs module manages the actual timing and triggering of these periods. Changing this parameter
 through governance allows the chain to adjust how frequently the coefficient is recalculated.
+:::
+
+:::note
+The `commission_auto_stake_epoch_identifier` parameter determines when bond denom commission is
+auto-staked into operators' self-delegations. Each bonded validator with positive bond denom in
+`accumulatedCommission` gets one `staking.Delegate` call at the configured epoch boundary. Operators
+can trigger the same auto-stake at any time by submitting `MsgWithdrawValidatorCommission` (which
+also pays out non-bond commission). Setting this parameter to the empty string disables the epoch
+trigger entirely, leaving auto-staking purely operator-driven.
+
+Reasonable values are "day", "week" (default), or "month". Shorter periods compound more frequently
+but at a higher per-block cost at each epoch boundary; daily compounding produces ~99.9999% of the
+continuous-compounding result, weekly compounding ~99.97%. The economic difference between cadences
+is typically negligible.
 :::
 
 ## Client
