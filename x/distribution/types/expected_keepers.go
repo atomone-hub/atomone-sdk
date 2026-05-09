@@ -64,6 +64,21 @@ type StakingKeeper interface {
 	// issuing new delegator shares, raising the per-share exchange rate.
 	// The caller must transfer equivalent coins to the bonded pool before calling this.
 	AddValidatorTokens(ctx context.Context, valAddr sdk.ValAddress, tokensToAdd math.Int) error
+
+	// GetValidator returns the concrete Validator for the given operator
+	// address. Distribution needs the concrete type (rather than the
+	// ValidatorI returned by Validator(...)) to pass into Delegate.
+	GetValidator(ctx context.Context, valAddr sdk.ValAddress) (stakingtypes.Validator, error)
+
+	// Delegate performs a delegation through the standard staking path,
+	// firing BeforeDelegationSharesModified and AfterDelegationModified
+	// hooks. Distribution uses this to auto-stake the bond denom portion
+	// of accumulated validator commission into the operator's
+	// self-delegation, both at MsgWithdrawValidatorCommission time and
+	// at the configured epoch boundary.
+	Delegate(ctx context.Context, delAddr sdk.AccAddress, bondAmt math.Int,
+		tokenSrc stakingtypes.BondStatus, validator stakingtypes.Validator,
+		subtractAccount bool) (math.LegacyDec, error)
 }
 
 // StakingHooks event hooks for staking validator object (noalias)

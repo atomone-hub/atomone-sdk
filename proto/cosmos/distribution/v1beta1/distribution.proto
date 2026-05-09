@@ -58,6 +58,15 @@ message Params {
   bool withdraw_addr_enabled = 4;
 
   NakamotoBonus nakamoto_bonus = 5 [(gogoproto.nullable) = false, (amino.dont_omitempty) = true];
+
+  // commission_auto_stake_epoch_identifier is the epoch identifier (e.g.
+  // "week", "day") at which the bond denom portion of every bonded
+  // validator's accumulated commission is automatically routed through
+  // the staking Delegate path, compounding into the operator's
+  // self-delegation. An empty string disables the epoch trigger;
+  // operators can still trigger the same auto-stake by submitting
+  // MsgWithdrawValidatorCommission.
+  string commission_auto_stake_epoch_identifier = 6;
 }
 
 // ValidatorHistoricalRewards represents historical rewards for a validator.

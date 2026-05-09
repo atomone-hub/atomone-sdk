@@ -130,6 +130,11 @@ func (s *E2ETestSuite) TestNewWithdrawRewardsCmd() {
 			},
 		},
 		{
+			// Withdraw with --commission auto-stakes the bond denom portion of
+			// commission through the standard staking Delegate path, which
+			// fires hooks that withdraw the operator's delegator rewards
+			// too — substantially more gas than a plain withdraw, so the
+			// default 200k limit is insufficient. Bump explicitly.
 			"valid transaction (with commission)",
 			sdk.ValAddress(val.Address),
 			[]string{
@@ -138,6 +143,7 @@ func (s *E2ETestSuite) TestNewWithdrawRewardsCmd() {
 				fmt.Sprintf("--%s=true", cli.FlagCommission),
 				fmt.Sprintf("--%s=%s", flags.FlagBroadcastMode, flags.BroadcastSync),
 				fmt.Sprintf("--%s=%s", flags.FlagFees, sdk.NewCoins(sdk.NewCoin(s.cfg.BondDenom, math.NewInt(10))).String()),
+				fmt.Sprintf("--%s=500000", flags.FlagGas),
 			},
 			false, 0, &sdk.TxResponse{},
 			[]string{
@@ -197,8 +203,12 @@ func (s *E2ETestSuite) TestNewWithdrawRewardsCmd() {
 						// can't use unpackAny as response types are not registered.
 						err = s.cfg.Codec.Unmarshal(msgResponse.Value, &resp)
 						s.Require().NoError(err)
-						s.Require().True(resp.Amount.IsAllGT(sdk.NewCoins(sdk.NewCoin("stake", math.OneInt()))),
-							fmt.Sprintf("expected a positive coin value, got %v", resp.Amount))
+						// Bond denom commission is auto-staked into the
+						// operator's self-delegation rather than paid out;
+						// only non-bond commission appears in the response
+						// Amount.
+						s.Require().True(resp.Amount.AmountOf(s.cfg.BondDenom).IsZero(),
+							fmt.Sprintf("bond denom must not appear in commission response (auto-staked), got %v", resp.Amount))
 					}
 				}
 			}
@@ -286,8 +296,12 @@ func (s *E2ETestSuite) TestNewWithdrawAllRewardsCmd() {
 						// can't use unpackAny as response types are not registered.
 						err = s.cfg.Codec.Unmarshal(msgResponse.Value, &resp)
 						s.Require().NoError(err)
-						s.Require().True(resp.Amount.IsAllGT(sdk.NewCoins(sdk.NewCoin("stake", math.OneInt()))),
-							fmt.Sprintf("expected a positive coin value, got %v", resp.Amount))
+						// Bond denom commission is auto-staked into the
+						// operator's self-delegation rather than paid out;
+						// only non-bond commission appears in the response
+						// Amount.
+						s.Require().True(resp.Amount.AmountOf(s.cfg.BondDenom).IsZero(),
+							fmt.Sprintf("bond denom must not appear in commission response (auto-staked), got %v", resp.Amount))
 					}
 				}
 			}
