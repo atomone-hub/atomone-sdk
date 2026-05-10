@@ -155,10 +155,12 @@ and on a chain that has had slashes the legacy values, read under the new
 interpretation, would over-pay delegators on slashed validators.
 
 The v4->v5 in-place store migration (`x/distribution/migrations/v5`)
-handles the transition in five phases:
+handles the transition in four phases:
 
 1. **Snapshot.** Every active `(validator, delegator)` pair with F1
-   starting info is collected up front and grouped by validator.
+   starting info, plus every validator's accumulated commission, is
+   collected up front and grouped by validator. The commission snapshot
+   is what the wipe step preserves.
 2. **Drain pending rewards under legacy semantics.** For each validator
    the migration runs the legacy tokens-based `IncrementValidatorPeriod`
    to close the current period at pre-upgrade exchange rates, then for
@@ -168,17 +170,20 @@ handles the transition in five phases:
    auto-staked into the bonded pool (the integer portion goes via
    `AddValidatorTokens` — same path runtime auto-staking uses every
    block); non-bond-denom rewards are paid to the delegator's withdraw
-   address; decimal dust is swept to the community pool.
-3. **Force-withdraw commission.** Each validator's accumulated
-   commission is paid out to the operator address. Commission stays
-   fully claimable in F1, so the bond denom commission is paid out
-   to the operator like any other denom (not auto-staked).
-4. **Reset F1 state.** All `ValidatorHistoricalRewards`,
-   `ValidatorCurrentRewards`, `ValidatorOutstandingRewards`, and
-   `ValidatorAccumulatedCommission` records are deleted (with any
-   residual outstanding-rewards dust swept to the community pool) and
-   re-seeded with a fresh period 0 / period 1 pair.
-5. **Re-initialise delegations.** Every snapshotted delegation gets a
+   address; decimal dust is swept to the community pool. Validator
+   commission is preserved.
+3. **Wipe F1 stores while preserving commission.** All
+   `ValidatorHistoricalRewards` and `ValidatorCurrentRewards` records
+   are deleted; the post-delegator-payout dust in
+   `ValidatorOutstandingRewards` (the difference between outstanding
+   and the preserved commission) is swept to the community pool;
+   outstanding is then reset to exactly the preserved commission, so
+   the "module balance == sum of outstanding claims" invariant
+   continues to hold. `ValidatorAccumulatedCommission` is left
+   untouched on disk. `historical[0]` and `currentRewards` are
+   re-seeded with a fresh empty record (mirroring
+   `keeper.initializeValidator`).
+4. **Re-initialise delegations.** Every snapshotted delegation gets a
    fresh `DelegatorStartingInfo` with `PreviousPeriod = 0` and `Stake`
    holding `delegation.GetShares()`.
 
@@ -189,11 +194,18 @@ calculation in either pre- or post-upgrade form.
 
 Client-visible behaviour at the upgrade boundary:
 
-* Every active delegator receives a one-time forced reward withdrawal at
-  upgrade height — the exact amount that
+* Every active delegator receives a one-time forced reward withdrawal
+  at upgrade height — the exact amount that
   `WithdrawDelegationRewards` would have produced on the previous
-  binary. Wallets and explorers should expect a balance bump for active
-  delegators in the upgrade block.
+  binary, with the bond denom portion auto-staked instead of paid out
+  (`validator.Tokens` rises and the per-share exchange rate reflects
+  the compounded bond denom rewards). Wallets and explorers should
+  expect a balance bump for active delegators in the upgrade block on
+  non-bond denominations only.
+* Commission balances are unchanged across the upgrade. Operators that
+  had accumulated commission pre-upgrade still have exactly the same
+  amount available to withdraw post-upgrade via
+  `MsgWithdrawValidatorCommission`.
 * From the upgrade height onward, `DelegationRewards` and
   `DelegationTotalRewards` queries accrue from the clean post-migration
   F1 state under shares-based semantics.

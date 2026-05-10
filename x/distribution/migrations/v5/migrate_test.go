@@ -188,10 +188,12 @@ func TestMigrateStore_NoState(t *testing.T) {
 }
 
 // TestMigrateStore_SelfDelegationOnly covers the sole-delegator-equals-operator
-// path. With one validator and only its self-delegation, every bond denom
-// reward eventually ends up in validator.Tokens (delegator portion via
-// auto-stake; commission portion paid back to the operator who bonds it
-// later) and every non-bond reward ends up in the operator's bank balance.
+// path. With one validator and only its self-delegation, the bond denom
+// delegator-share portion auto-stakes (validator.Tokens grows; per-share
+// exchange rate rises), the non-bond delegator-share portion pays out to
+// the operator's bank balance, and accumulated commission is preserved
+// verbatim across the migration — operators continue to claim it via
+// MsgWithdrawValidatorCommission post-upgrade.
 func TestMigrateStore_SelfDelegationOnly(t *testing.T) {
 	t.Parallel()
 	f := initFixture(t)
@@ -215,6 +217,11 @@ func TestMigrateStore_SelfDelegationOnly(t *testing.T) {
 	})
 	require.NoError(t, err)
 
+	preCommission, err := f.distrKeeper.GetValidatorAccumulatedCommission(f.sdkCtx, f.valAddr)
+	require.NoError(t, err)
+	require.False(t, preCommission.Commission.IsZero(),
+		"setup invariant: validator should have accrued some commission")
+
 	prevTokens := val.Tokens
 	delAddr := sdk.AccAddress(f.valAddr)
 	prePhoton := f.bankKeeper.GetBalance(f.sdkCtx, delAddr, "photon")
@@ -224,11 +231,24 @@ func TestMigrateStore_SelfDelegationOnly(t *testing.T) {
 	updatedVal, err := f.stakingKeeper.GetValidator(f.sdkCtx, f.valAddr)
 	require.NoError(t, err)
 	require.True(t, updatedVal.Tokens.GT(prevTokens),
-		"validator.Tokens should grow from auto-staked bond-denom delegator rewards")
+		"validator.Tokens should grow from auto-staked bond denom delegator rewards")
 
 	postPhoton := f.bankKeeper.GetBalance(f.sdkCtx, delAddr, "photon")
 	require.True(t, postPhoton.Amount.GT(prePhoton.Amount),
 		"operator (=sole delegator) photon balance should grow from non-bond F1 payout")
+
+	// Commission is preserved verbatim across the migration
+	postCommission, err := f.distrKeeper.GetValidatorAccumulatedCommission(f.sdkCtx, f.valAddr)
+	require.NoError(t, err)
+	require.Equal(t, preCommission.Commission, postCommission.Commission,
+		"accumulatedCommission must be preserved across the migration")
+
+	// OutstandingRewards is reset to exactly the preserved commission
+	// (post-delegator-payout dust was swept to the community pool).
+	postOutstanding, err := f.distrKeeper.GetValidatorOutstandingRewards(f.sdkCtx, f.valAddr)
+	require.NoError(t, err)
+	require.Equal(t, preCommission.Commission, postOutstanding.Rewards,
+		"outstandingRewards must equal preserved commission post-migration")
 
 	current, err := f.distrKeeper.GetValidatorCurrentRewards(f.sdkCtx, f.valAddr)
 	require.NoError(t, err)
@@ -247,8 +267,9 @@ func TestMigrateStore_SelfDelegationOnly(t *testing.T) {
 // delegator-payout paths. An external account delegates separately from the
 // validator's self-delegation so the bond denom delegator-share rewards are
 // auto-staked (validator.Tokens grows; external delegator's bond balance
-// unchanged) while non-bond rewards are paid out. Commission is NOT auto-staked,
-// so the operator's bond balance grows by the bond denom commission portion.
+// unchanged) while non-bond rewards are paid out. Commission is preserved
+// verbatim across the migration (no force-pay): the operator's
+// accumulatedCommission record is identical pre- and post-migration.
 func TestMigrateStore_OperatorAndExternalDelegator(t *testing.T) {
 	t.Parallel()
 	f := initFixture(t)
@@ -281,23 +302,51 @@ func TestMigrateStore_OperatorAndExternalDelegator(t *testing.T) {
 
 	preDelBond := f.bankKeeper.GetBalance(f.sdkCtx, delAddr, sdk.DefaultBondDenom)
 	preDelPhoton := f.bankKeeper.GetBalance(f.sdkCtx, delAddr, "photon")
+	preOpBond := f.bankKeeper.GetBalance(f.sdkCtx, sdk.AccAddress(f.valAddr), sdk.DefaultBondDenom)
 	prevTokens := val.Tokens
+
+	preCommission, err := f.distrKeeper.GetValidatorAccumulatedCommission(f.sdkCtx, f.valAddr)
+	require.NoError(t, err)
+	require.False(t, preCommission.Commission.IsZero(),
+		"setup invariant: validator should have accrued some commission")
 
 	f.runMigration(t)
 
 	updatedVal, err := f.stakingKeeper.GetValidator(f.sdkCtx, f.valAddr)
 	require.NoError(t, err)
 	require.True(t, updatedVal.Tokens.GT(prevTokens),
-		"validator.Tokens should grow from auto-staked bond-denom delegator rewards")
+		"validator.Tokens should grow from auto-staked bond denom delegator rewards")
 
 	postDelBond := f.bankKeeper.GetBalance(f.sdkCtx, delAddr, sdk.DefaultBondDenom)
 	require.True(t, postDelBond.Amount.Equal(preDelBond.Amount),
-		"external delegator's bond-denom balance must be unchanged (auto-staked, not paid out); got %s -> %s",
+		"external delegator's bond denom balance must be unchanged (auto-staked, not paid out); got %s -> %s",
 		preDelBond, postDelBond)
 
 	postDelPhoton := f.bankKeeper.GetBalance(f.sdkCtx, delAddr, "photon")
 	require.True(t, postDelPhoton.Amount.GT(preDelPhoton.Amount),
 		"external delegator's photon balance should grow from non-bond F1 payout")
+
+	// Commission is left untouched at migration: the operator's
+	// bond denom and photon bank balances are unchanged from commission
+	// (the only deltas would come from the operator's own delegator-share
+	// payout, but in this fixture the operator only has self-delegation
+	// shares and those went via the auto-stake path for bond and via F1
+	// payout for photon). The accumulatedCommission record is preserved
+	// verbatim.
+	postOpBond := f.bankKeeper.GetBalance(f.sdkCtx, sdk.AccAddress(f.valAddr), sdk.DefaultBondDenom)
+	require.True(t, postOpBond.Amount.Equal(preOpBond.Amount),
+		"operator bond denom balance must be unchanged (commission preserved); got %s -> %s",
+		preOpBond, postOpBond)
+
+	postCommission, err := f.distrKeeper.GetValidatorAccumulatedCommission(f.sdkCtx, f.valAddr)
+	require.NoError(t, err)
+	require.Equal(t, preCommission.Commission, postCommission.Commission,
+		"accumulatedCommission must be preserved across the migration")
+
+	postOutstanding, err := f.distrKeeper.GetValidatorOutstandingRewards(f.sdkCtx, f.valAddr)
+	require.NoError(t, err)
+	require.Equal(t, preCommission.Commission, postOutstanding.Rewards,
+		"outstandingRewards must equal preserved commission post-migration")
 
 	info, err := f.distrKeeper.GetDelegatorStartingInfo(f.sdkCtx, f.valAddr, delAddr)
 	require.NoError(t, err)

@@ -206,9 +206,13 @@ func newStateSnapshot(ctx context.Context, dk Migrator) *stateSnapshot {
 	return s
 }
 
-// processValidator runs the per-validator flow: drain rewards, sweep dust,
-// wipe F1 storage, re-seed period 0/1, and re-initialize startingInfos for
-// every delegation under this validator.
+// processValidator runs the per-validator flow: drain delegator rewards,
+// sweep dust, wipe F1 storage, re-seed period 0/1, and re-initialize
+// startingInfos for every delegation under this validator. Commission
+// is **not** drained or otherwise touched by the migration.
+// ValidatorAccumulatedCommission has no schema-level semantic shift
+// between v4 and v5 (unlike CumulativeRewardRatio and
+// DelegatorStartingInfo.Stake).
 func processValidator(
 	ctx context.Context,
 	dk Migrator,
@@ -251,26 +255,23 @@ func processValidator(
 		}
 	}
 
-	// 3. Pay out commission to the operator.
-	if commission, ok := snap.commissions[valKey]; ok {
-		if err := payOutRewards(ctx, dk, bk, sk, fp, valAddr, sdk.AccAddress(valBz), commission, bondDenom, false /* autoStakeBond */); err != nil {
-			return err
-		}
-	}
-
-	// 4. Sweep any residual outstanding-rewards dust to the community pool,
-	//    then wipe F1 storage for this validator.
-	if err := sweepAndWipeF1(ctx, dk, fp, snap, valAddr); err != nil {
+	// 3. Sweep dust + wipe F1 storage, preserving accumulatedCommission
+	//    untouched. OutstandingRewards is reset to exactly the preserved
+	//    commission so the "module balance == sum of outstanding claims"
+	//    invariant continues to hold post-migration.
+	preservedCommission, _ := snap.commissions[valKey]
+	if err := wipeF1PreservingCommission(ctx, dk, fp, snap, valAddr, preservedCommission); err != nil {
 		return err
 	}
 
-	// 5. Re-seed F1 with a fresh period 0 / period 1 pair, mirroring the
-	//    keeper's initializeValidator path.
+	// 4. Re-seed F1 with a fresh period 0 / period 1 pair, mirroring the
+	//    keeper's initializeValidator path. Commission and outstanding
+	//    rewards were preserved/restored in step 3 and are not touched here.
 	if err := seedFreshF1(ctx, dk, valAddr); err != nil {
 		return err
 	}
 
-	// 6. Re-initialize DelegatorStartingInfo for each delegation under this
+	// 5. Re-initialize DelegatorStartingInfo for each delegation under this
 	//    validator, this time with shares-based semantics.
 	for _, d := range dels {
 		del, err := sk.Delegation(ctx, d.delAddr, valAddr)
@@ -293,32 +294,13 @@ func processValidator(
 }
 
 // wipeOrphan handles an address that has leftover F1 records but no matching
-// validator in the staking module. Sweeps outstanding rewards to the
-// community pool and removes every F1 record (including any leftover
-// delegator starting infos) so the post-migration store is clean.
+// validator in the staking module. There is no operator to receive the
+// accumulated commission of an orphaned record, so everything (including
+// commission) is swept to the community pool and deleted. This is the
+// terminal cleanup path; the live-validator path uses
+// wipeF1PreservingCommission instead so operators keep the commission
+// they are owed across the upgrade.
 func wipeOrphan(
-	ctx context.Context,
-	dk Migrator,
-	fp *dstrtypes.FeePool,
-	snap *stateSnapshot,
-	valAddr sdk.ValAddress,
-) error {
-	if err := sweepAndWipeF1(ctx, dk, fp, snap, valAddr); err != nil {
-		return err
-	}
-	for _, d := range snap.delegations[string(valAddr)] {
-		if err := dk.DeleteDelegatorStartingInfo(ctx, valAddr, d.delAddr); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// sweepAndWipeF1 sweeps any outstanding rewards (which after a successful
-// payout phase should only be rounding dust) into the community pool, then
-// deletes every F1 record for the validator. Used both for live validators
-// (before re-seeding) and for orphans (terminal).
-func sweepAndWipeF1(
 	ctx context.Context,
 	dk Migrator,
 	fp *dstrtypes.FeePool,
@@ -343,24 +325,83 @@ func sweepAndWipeF1(
 	if err := dk.DeleteValidatorOutstandingRewards(ctx, valAddr); err != nil {
 		return err
 	}
-	return dk.DeleteValidatorAccumulatedCommission(ctx, valAddr)
+	if err := dk.DeleteValidatorAccumulatedCommission(ctx, valAddr); err != nil {
+		return err
+	}
+	for _, d := range snap.delegations[string(valAddr)] {
+		if err := dk.DeleteDelegatorStartingInfo(ctx, valAddr, d.delAddr); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
-// seedFreshF1 writes the canonical "freshly created validator" F1 records:
-// historical[0] with empty cumulative ratio and refCount=1, current period 1
-// with empty rewards, empty accumulated commission and outstanding rewards.
-// Mirrors keeper.initializeValidator.
+// wipeF1PreservingCommission deletes the F1 stores that have a schema-level
+// semantic shift between v4 and v5 (historical and current rewards) and
+// resets outstanding rewards to exactly the preserved commission, so the
+// module-balance invariant ("module balance == sum of outstanding claims")
+// continues to hold post-migration. AccumulatedCommission is not touched
+// since it has no semantic shift between schemas.
+//
+// `preservedCommission` is the snapshot of accumulatedCommission taken in
+// Phase 1; the migration's payout step intentionally never subtracts from
+// it, so it equals the current on-disk value at the time this is called.
+//
+// Any outstanding rewards beyond the commission portion (i.e., the dust
+// left over from rounding in the delegator-payout step) are swept to the
+// community pool — that's the only thing actually deleted from the
+// operator's perspective.
+func wipeF1PreservingCommission(
+	ctx context.Context,
+	dk Migrator,
+	fp *dstrtypes.FeePool,
+	snap *stateSnapshot,
+	valAddr sdk.ValAddress,
+	preservedCommission sdk.DecCoins,
+) error {
+	outstanding, err := dk.GetValidatorOutstandingRewards(ctx, valAddr)
+	if err != nil {
+		return err
+	}
+
+	// Sweep dust = outstanding - preservedCommission.
+	// outstanding may be slightly less than commission due to truncation
+	// during delegator payouts, so use SafeSub-style logic via Sub: if it
+	// would go negative on any denom we treat dust as zero for that denom.
+	dust, hasNeg := outstanding.Rewards.SafeSub(preservedCommission)
+	if hasNeg {
+		// Should not happen under correct accounting; fall back to no
+		// sweep rather than panicking on a defensive edge case
+		dust = sdk.DecCoins{}
+	}
+	if !dust.IsZero() {
+		fp.CommunityPool = fp.CommunityPool.Add(dust...)
+	}
+
+	for _, period := range snap.periods[string(valAddr)] {
+		if err := dk.DeleteValidatorHistoricalReward(ctx, valAddr, period); err != nil {
+			return err
+		}
+	}
+	if err := dk.DeleteValidatorCurrentRewards(ctx, valAddr); err != nil {
+		return err
+	}
+	// Reset outstanding to exactly the preserved commission. AccumulatedCommission
+	// itself is left untouched on disk
+	return dk.SetValidatorOutstandingRewards(ctx, valAddr,
+		dstrtypes.ValidatorOutstandingRewards{Rewards: preservedCommission})
+}
+
+// seedFreshF1 writes the canonical "freshly created validator" F1 records
+// for historical[0] and current period 1, mirroring
+// keeper.initializeValidator. AccumulatedCommission and OutstandingRewards
+// are deliberately not touched here — wipeF1PreservingCommission has
+// already left them in the correct post-migration state.
 func seedFreshF1(ctx context.Context, dk Migrator, valAddr sdk.ValAddress) error {
 	if err := dk.SetValidatorHistoricalRewards(ctx, valAddr, 0, dstrtypes.NewValidatorHistoricalRewards(sdk.DecCoins{}, 1)); err != nil {
 		return err
 	}
-	if err := dk.SetValidatorCurrentRewards(ctx, valAddr, dstrtypes.NewValidatorCurrentRewards(sdk.DecCoins{}, 1)); err != nil {
-		return err
-	}
-	if err := dk.SetValidatorAccumulatedCommission(ctx, valAddr, dstrtypes.InitialValidatorAccumulatedCommission()); err != nil {
-		return err
-	}
-	return dk.SetValidatorOutstandingRewards(ctx, valAddr, dstrtypes.ValidatorOutstandingRewards{Rewards: sdk.DecCoins{}})
+	return dk.SetValidatorCurrentRewards(ctx, valAddr, dstrtypes.NewValidatorCurrentRewards(sdk.DecCoins{}, 1))
 }
 
 // bumpRefCount increments the historical record's reference count for the
