@@ -43,6 +43,7 @@ func (m Migrator) Migrate4to5(ctx sdk.Context) error {
 	return v5.MigrateStore(
 		ctx, m.keeper,
 		m.keeper.storeService, m.keeper.cdc,
-		m.keeper.FeePool, m.keeper.bankKeeper, m.keeper.stakingKeeper,
+		m.keeper.FeePool, m.keeper.Params,
+		m.keeper.bankKeeper, m.keeper.stakingKeeper,
 	)
 }

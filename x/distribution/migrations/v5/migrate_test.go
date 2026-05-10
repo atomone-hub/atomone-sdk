@@ -149,7 +149,8 @@ func (f *fixture) runMigration(t testing.TB) {
 			f.sdkCtx, f.distrKeeper,
 			runtime.NewKVStoreService(f.storeKeys[distrtypes.StoreKey]),
 			f.cdc,
-			f.distrKeeper.FeePool, f.bankKeeper, f.stakingKeeper,
+			f.distrKeeper.FeePool, f.distrKeeper.Params,
+			f.bankKeeper, f.stakingKeeper,
 		),
 	)
 }
@@ -185,6 +186,31 @@ func TestMigrateStore_NoState(t *testing.T) {
 	fp, err := f.distrKeeper.FeePool.Get(f.sdkCtx)
 	require.NoError(t, err)
 	require.True(t, fp.CommunityPool.IsZero())
+}
+
+// TestMigrateStore_InitCommissionAutoStakeEpochIdentifier asserts the
+// migration writes the default identifier into Params at the v4->v5
+// boundary.
+func TestMigrateStore_InitCommissionAutoStakeEpochIdentifier(t *testing.T) {
+	t.Parallel()
+	f := initFixture(t)
+	require.NoError(t, f.distrKeeper.FeePool.Set(f.sdkCtx, distrtypes.InitialFeePool()))
+
+	// Simulate a pre-upgrade Params: same as DefaultParams but with the
+	// new field empty (proto zero value), which is what loading a v4
+	// Params record under the v5 schema would produce.
+	preUpgrade := distrtypes.DefaultParams()
+	preUpgrade.CommissionAutoStakeEpochIdentifier = ""
+	require.NoError(t, f.distrKeeper.Params.Set(f.sdkCtx, preUpgrade))
+
+	f.runMigration(t)
+
+	post, err := f.distrKeeper.Params.Get(f.sdkCtx)
+	require.NoError(t, err)
+	require.Equal(t, distrtypes.DefaultCommissionAutoStakeEpochIdentifier, post.CommissionAutoStakeEpochIdentifier)
+	// Existing fields preserved (community tax, nakamoto bonus, etc.).
+	require.Equal(t, preUpgrade.CommunityTax, post.CommunityTax)
+	require.Equal(t, preUpgrade.NakamotoBonus, post.NakamotoBonus)
 }
 
 // TestMigrateStore_SelfDelegationOnly covers the sole-delegator-equals-operator

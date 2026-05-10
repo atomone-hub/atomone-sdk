@@ -27,17 +27,18 @@ package v5
 //
 // The flow is:
 //
-//  1. Snapshot every (validator, delegation, accumulated commission,
+//  1. Initialize new Params fields introduced in v5
+//  2. Snapshot every (validator, delegation, accumulated commission,
 //     historical period) record the migration needs before mutating the
 //     stores.
-//  2. For each validator currently in staking (in deterministic key order):
+//  3. For each validator currently in staking (in deterministic key order):
 //     close its current period under legacy F1, pay out each delegation's
 //     pending rewards (auto-staking the bond denom delegator portion),
 //     wipe the F1 stores while preserving accumulatedCommission and
 //     setting outstandingRewards to exactly that preserved commission,
 //     re-seed period 0/1, and re-initialize the `DelegatorStartingInfo`
 //     for each of its active delegations using the shares-based semantic.
-//  3. For each orphan (an address with leftover F1 records but no matching
+//  4. For each orphan (an address with leftover F1 records but no matching
 //     validator in staking): sweep all outstanding state to the community
 //     pool — including accumulated commission, since there is no operator
 //     to preserve it for — and wipe storage.
@@ -112,15 +113,23 @@ type Migrator interface {
 // reward computation and is otherwise unreachable from the post-upgrade
 // keeper API, which deliberately does not expose a public slash-event
 // iterator.
+//
+// The Params item is taken so the migration can initialize new fields added
+// in v5
 func MigrateStore(
 	ctx sdk.Context,
 	dk Migrator,
 	storeService storetypes.KVStoreService,
 	cdc codec.BinaryCodec,
 	feePool collections.Item[dstrtypes.FeePool],
+	params collections.Item[dstrtypes.Params],
 	bk bankKeeper,
 	sk stakingKeeper,
 ) error {
+	if err := initNewParams(ctx, params); err != nil {
+		return err
+	}
+
 	bondDenom, err := sk.BondDenom(ctx)
 	if err != nil {
 		return err
@@ -441,6 +450,16 @@ func orphanKeys(snap *stateSnapshot, live map[string]struct{}) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// initNewParams writes defaults for fields newly added to Params in v5.
+func initNewParams(ctx sdk.Context, params collections.Item[dstrtypes.Params]) error {
+	p, err := params.Get(ctx)
+	if err != nil {
+		return err
+	}
+	p.CommissionAutoStakeEpochIdentifier = dstrtypes.DefaultCommissionAutoStakeEpochIdentifier
+	return params.Set(ctx, p)
 }
 
 // payOutRewards routes a delegator's (or operator's) reward DecCoins after
