@@ -5,9 +5,9 @@ package v5
 // configurator and converts pre-upgrade chain state to the post-upgrade
 // shares-based F1 + auto-staked bond-denom-rewards model.
 //
-// The migration fully drains pending F1 rewards and rebuilds the F1 stores
-// from scratch under the new semantics. The reason is the change in storage
-// interpretation:
+// The migration is deliberately limited to the F1 stores that have a
+// schema-level semantic shift between v4 and v5. The reason is the change
+// in storage interpretation:
 //
 //   - Pre-upgrade: ValidatorHistoricalRewards.CumulativeRewardRatio is
 //     "rewards per token" (post-slash tokens at period close);
@@ -27,19 +27,20 @@ package v5
 //
 // The flow is:
 //
-//  1. Snapshot every (validator, delegation, accumulated commission, historical
-//     period) record we will need before we start mutating the stores.
+//  1. Snapshot every (validator, delegation, accumulated commission,
+//     historical period) record the migration needs before mutating the
+//     stores.
 //  2. For each validator currently in staking (in deterministic key order):
 //     close its current period under legacy F1, pay out each delegation's
-//     pending rewards (auto-staking the bond denom delegator portion), pay
-//     out the validator's commission to its operator, sweep any residual
-//     outstanding rewards to the community pool, wipe the validator's F1
-//     stores, re-seed period 0/1, and re-initialize the
-//     `DelegatorStartingInfo` for each of its active delegations using the
-//     shares-based semantic.
+//     pending rewards (auto-staking the bond denom delegator portion),
+//     wipe the F1 stores while preserving accumulatedCommission and
+//     setting outstandingRewards to exactly that preserved commission,
+//     re-seed period 0/1, and re-initialize the `DelegatorStartingInfo`
+//     for each of its active delegations using the shares-based semantic.
 //  3. For each orphan (an address with leftover F1 records but no matching
-//     validator in staking): sweep its outstanding rewards to the community
-//     pool, wipe its F1 storage and any leftover delegator starting infos.
+//     validator in staking): sweep all outstanding state to the community
+//     pool — including accumulated commission, since there is no operator
+//     to preserve it for — and wipe storage.
 //
 // `ValidatorSlashEvent` records are intentionally left in storage. They are
 // no longer consumed by reward computation, but the public ValidatorSlashes
