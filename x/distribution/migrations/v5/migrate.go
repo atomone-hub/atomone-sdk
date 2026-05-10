@@ -260,7 +260,7 @@ func processValidator(
 	//    untouched. OutstandingRewards is reset to exactly the preserved
 	//    commission so the "module balance == sum of outstanding claims"
 	//    invariant continues to hold post-migration.
-	preservedCommission, _ := snap.commissions[valKey]
+	preservedCommission := snap.commissions[valKey]
 	if err := wipeF1PreservingCommission(ctx, dk, fp, snap, valAddr, preservedCommission); err != nil {
 		return err
 	}
