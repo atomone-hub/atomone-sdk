@@ -60,12 +60,13 @@ func GenDepositParamsDepositPeriod(r *rand.Rand) time.Duration {
 
 // GenDepositParamsMinDeposit returns randomized DepositParamsMinDeposit
 func GenDepositParamsMinDeposit(r *rand.Rand) sdk.Coins {
-	return sdk.NewCoins(sdk.NewInt64Coin(sdk.DefaultBondDenom, int64(simulation.RandIntBetween(r, 1, 1e3))))
+	return sdk.NewCoins(sdk.NewInt64Coin(sdk.DefaultBondDenom, int64(simulation.RandIntBetween(r, 100, 1e3))))
 }
 
-// GenDepositMinInitialRatio returns randomized DepositMinInitialRatio
+// GenDepositMinInitialDepositRatio returns a randomized ratio used to derive
+// minInitialDepositFloor from minDepositFloor
 func GenDepositMinInitialDepositRatio(r *rand.Rand) math.LegacyDec {
-	return math.LegacyNewDec(int64(simulation.RandIntBetween(r, 0, 99))).Quo(math.LegacyNewDec(100))
+	return math.LegacyNewDec(int64(simulation.RandIntBetween(r, 1, 100))).Quo(math.LegacyNewDec(100))
 }
 
 // GenVotingParamsVotingPeriod returns randomized VotingParamsVotingPeriod
@@ -277,6 +278,12 @@ func RandomizedGenState(simState *module.SimulationState) {
 	simState.AppParams.GetOrGenerate(
 		DepositParamsMinInitialDepositFloor, &minInitialDepositFloor, simState.Rand,
 		func(r *rand.Rand) {
+			// minInitialDepositFloor is derived from minDepositFloor by a random
+			// ratio in (0, 1). The generators are constrained so that
+			// `ratio x amount` truncated is always at least 1 for every coin
+			// in minDepositFloor (see GenDepositParamsMinDeposit and
+			// GenDepositMinInitialDepositRatio), so the result is guaranteed
+			// to be a valid, non-empty sdk.Coins.
 			ratio := GenDepositMinInitialDepositRatio(r)
 			minInitialDepositFloor = sdk.NewCoins()
 			for _, coin := range minDepositFloor {
