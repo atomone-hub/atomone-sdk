@@ -42,12 +42,15 @@
       }
     },
     {
-      "url": "./tmp-swagger-gen/cosmos/evidence/v1beta1/query.swagger.json",
+      "url": "./tmp-swagger-gen/cosmos/dynamicfee/v1/query.swagger.json",
       "operationIds": {
         "rename": {
-          "Params": "EvidenceParams"
+          "Params": "DynamicfeeParams"
         }
       }
+    },
+    {
+      "url": "./tmp-swagger-gen/cosmos/epochs/v1beta1/query.swagger.json"
     },
     {
       "url": "./tmp-swagger-gen/cosmos/gov/v1beta1/query.swagger.json",
@@ -106,12 +109,6 @@
       }
     },
     {
-      "url": "./tmp-swagger-gen/cosmos/tx/v1beta1/service.swagger.json",
-      "dereference": {
-        "circular": "ignore"
-      }
-    },
-    {
       "url": "./tmp-swagger-gen/cosmos/upgrade/v1beta1/query.swagger.json",
       "operationIds": {
         "rename": {
@@ -124,43 +121,6 @@
       "operationIds": {
         "rename": {
           "Params": "AuthzParams"
-        }
-      }
-    },
-    {
-      "url": "./tmp-swagger-gen/cosmos/feegrant/v1beta1/query.swagger.json",
-      "operationIds": {
-        "rename": {
-          "Params": "FeegrantParams"
-        }
-      }
-    },
-    {
-      "url": "./tmp-swagger-gen/cosmos/nft/v1beta1/query.swagger.json",
-      "operationIds": {
-        "rename": {
-          "Params": "NftParams",
-          "Balance": "NftBalance"
-        }
-      }
-    },
-    {
-      "url": "./tmp-swagger-gen/cosmos/group/v1/query.swagger.json",
-      "operationIds": {
-        "rename": {
-          "Params": "GroupParams",
-          "Proposal": "GroupProposal",
-          "TallyResult": "GroupTallyResult"
-        }
-      }
-    },
-    {
-      "url": "./tmp-swagger-gen/cosmos/circuit/v1/query.swagger.json",
-      "operationIds": {
-        "rename": {
-          "Accounts": "CircuitAccounts",
-          "Account": "CircuitAccount",
-          "Params": "CircuitParams"
         }
       }
     },
