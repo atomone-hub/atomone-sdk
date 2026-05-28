@@ -61,6 +61,10 @@ func (keeper Keeper) IncreaseGovernorShares(ctx sdk.Context, governorAddr types.
 	if err := keeper.ValidatorSharesByGovernor.Set(ctx, collections.Join(governorAddr, validatorAddr), valShares); err != nil {
 		panic(err)
 	}
+	// keep the reverse index in sync
+	if err := keeper.GovernorsByValidator.Set(ctx, collections.Join(validatorAddr, governorAddr)); err != nil {
+		panic(err)
+	}
 }
 
 // DecreaseGovernorShares decreases the governor validator shares in the store
@@ -78,6 +82,10 @@ func (keeper Keeper) DecreaseGovernorShares(ctx sdk.Context, governorAddr types.
 	}
 	if share.Shares.IsZero() {
 		if err := keeper.ValidatorSharesByGovernor.Remove(ctx, collections.Join(governorAddr, validatorAddr)); err != nil {
+			panic(err)
+		}
+		// drop the reverse-index entry alongside the primary
+		if err := keeper.GovernorsByValidator.Remove(ctx, collections.Join(validatorAddr, governorAddr)); err != nil {
 			panic(err)
 		}
 	} else {

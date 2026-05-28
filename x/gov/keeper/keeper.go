@@ -68,6 +68,10 @@ type Keeper struct {
 	GovernanceDelegations                 collections.Map[sdk.AccAddress, v1.GovernanceDelegation]
 	GovernanceDelegationsByGovernor       collections.Map[collections.Pair[types.GovernorAddress, sdk.AccAddress], v1.GovernanceDelegation]
 	ValidatorSharesByGovernor             collections.Map[collections.Pair[types.GovernorAddress, sdk.ValAddress], v1.GovernorValShares]
+	// GovernorsByValidator is the reverse index of ValidatorSharesByGovernor, keyed by
+	// (validator, governor). Used to efficiently enumerate governors affected by a
+	// validator-state change (slash, begin-unbonding).
+	GovernorsByValidator collections.KeySet[collections.Pair[sdk.ValAddress, types.GovernorAddress]]
 }
 
 // GetAuthority returns the x/gov module's authority.
@@ -131,6 +135,7 @@ func NewKeeper(
 		GovernanceDelegations:                 collections.NewMap(sb, types.GovernanceDelegationKeyPrefix, "governance_delegations", sdk.AccAddressKey, codec.CollValue[v1.GovernanceDelegation](cdc)),
 		GovernanceDelegationsByGovernor:       collections.NewMap(sb, types.GovernanceDelegationsByGovernorKeyPrefix, "governance_delegations_by_governor", collections.PairKeyCodec(types.GovernorAddressKey, sdk.AccAddressKey), codec.CollValue[v1.GovernanceDelegation](cdc)),
 		ValidatorSharesByGovernor:             collections.NewMap(sb, types.ValidatorSharesByGovernorKeyPrefix, "validator_shares_by_governor", collections.PairKeyCodec(types.GovernorAddressKey, sdk.ValAddressKey), codec.CollValue[v1.GovernorValShares](cdc)),
+		GovernorsByValidator:                  collections.NewKeySet(sb, types.GovernorsByValidatorKeyPrefix, "governors_by_validator", collections.PairKeyCodec(sdk.ValAddressKey, types.GovernorAddressKey)),
 	}
 	schema, err := sb.Build()
 	if err != nil {
