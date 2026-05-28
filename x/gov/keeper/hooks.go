@@ -144,7 +144,8 @@ func (h Hooks) BeforeValidatorSlashed(ctx context.Context, valAddr sdk.ValAddres
 	valBondedTokens := validator.GetBondedTokens()
 
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
-	return h.walkGovernorsForValidator(ctx, valAddr, func(govAddr types.GovernorAddress, governor v1.Governor) error {
+	return h.walkGovernorsForValidator(ctx, valAddr, func(governor v1.Governor) error {
+		govAddr := governor.GetAddress()
 		delegation, err := h.k.sk.GetDelegation(ctx, sdk.AccAddress(govAddr), valAddr)
 		if err != nil {
 			// index pointed here but the delegation is gone: defensively skip
@@ -188,7 +189,7 @@ func (h Hooks) AfterValidatorBonded(_ context.Context, _ sdk.ConsAddress, _ sdk.
 // post-transition bonded total — no exclusion or adjustment is needed.
 func (h Hooks) AfterValidatorBeginUnbonding(ctx context.Context, _ sdk.ConsAddress, valAddr sdk.ValAddress) error {
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
-	return h.walkGovernorsForValidator(ctx, valAddr, func(govAddr types.GovernorAddress, governor v1.Governor) error {
+	return h.walkGovernorsForValidator(ctx, valAddr, func(governor v1.Governor) error {
 		if h.k.ValidateGovernorMinSelfDelegation(sdkCtx, governor) {
 			return nil
 		}
@@ -202,7 +203,7 @@ func (h Hooks) AfterValidatorBeginUnbonding(ctx context.Context, _ sdk.ConsAddre
 func (h Hooks) walkGovernorsForValidator(
 	ctx context.Context,
 	valAddr sdk.ValAddress,
-	fn func(govAddr types.GovernorAddress, governor v1.Governor) error,
+	fn func(governor v1.Governor) error,
 ) error {
 	rng := collections.NewPrefixedPairRange[sdk.ValAddress, types.GovernorAddress](valAddr)
 	return h.k.GovernorsByValidator.Walk(ctx, rng, func(key collections.Pair[sdk.ValAddress, types.GovernorAddress]) (bool, error) {
@@ -215,7 +216,7 @@ func (h Hooks) walkGovernorsForValidator(
 		if !governor.IsActive() {
 			return false, nil
 		}
-		return false, fn(govAddr, governor)
+		return false, fn(governor)
 	})
 }
 
