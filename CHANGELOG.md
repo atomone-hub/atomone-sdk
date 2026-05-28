@@ -85,6 +85,7 @@ Ref: https://keepachangelog.com/en/1.0.0/
 * (x/gov) [#71](https://github.com/atomone-hub/cosmos-sdk/pull/71) Validate minimum self-delegation for imported governors in InitGenesis
 * (x/gov) [#87](https://github.com/atomone-hub/cosmos-sdk/pull/87) Add safeguard to prevent proposals to be added to the quorum check queue if functionality is disabled by setting `QuorumCheckCount` to 0.
 * (x/auth) [#96](https://github.com/atomone-hub/cosmos-sdk/pull/96) Update `address_by_id` endpoint to use `account_id` instead of deprecated `id`.
+* (x/gov) [#98](https://github.com/atomone-hub/cosmos-sdk/pull/98) Keep governor IsActive in sync with min self-delegation.
 
 ## [v0.50.15](https://github.com/cosmos/cosmos-sdk/releases/tag/v0.50.15) - 2025-12-12
 
