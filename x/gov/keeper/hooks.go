@@ -148,8 +148,8 @@ func (h Hooks) BeforeValidatorSlashed(ctx context.Context, valAddr sdk.ValAddres
 		govAddr := governor.GetAddress()
 		delegation, err := h.k.sk.GetDelegation(ctx, sdk.AccAddress(govAddr), valAddr)
 		if err != nil {
-			// index pointed here but the delegation is gone: defensively skip
-			return nil
+			// the reverse index claims this governor delegates here but staking disagrees
+			panic("governor reverse index out of sync with staking delegation")
 		}
 		totalBonded, err := h.k.GetGovernorBondedTokens(sdkCtx, govAddr)
 		if err != nil {
@@ -198,8 +198,8 @@ func (h Hooks) AfterValidatorBeginUnbonding(ctx context.Context, _ sdk.ConsAddre
 }
 
 // walkGovernorsForValidator iterates the reverse index for the given validator,
-// loads each active governor, and invokes fn. Inactive governors and missing
-// records are skipped — fn only runs for actionable, currently-active governors.
+// loads each governor and invokes fn only for active ones. A missing governor
+// record for an index entry indicates state corruption and panics.
 func (h Hooks) walkGovernorsForValidator(
 	ctx context.Context,
 	valAddr sdk.ValAddress,
@@ -210,8 +210,8 @@ func (h Hooks) walkGovernorsForValidator(
 		govAddr := key.K2()
 		governor, err := h.k.Governors.Get(ctx, govAddr)
 		if err != nil {
-			// index entry without a governor record: stale entry, skip
-			return false, nil
+			// the reverse index points to a governor that doesn't exist
+			panic("governor reverse index references a non-existent governor")
 		}
 		if !governor.IsActive() {
 			return false, nil
