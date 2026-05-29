@@ -137,7 +137,7 @@ func newFixture(t *testing.T, ctx sdk.Context, numVals, numDelegators,
 }
 
 // setValidatorStatus mutates the fixture-tracked validator's status. Used to simulate
-// post-transition state (e.g. Bonded → Unbonding) ahead of invoking a staking hook.
+// post-transition state (e.g. Bonded to Unbonding) ahead of invoking a staking hook.
 func (s *fixture) setValidatorStatus(valIdx int, status stakingtypes.BondStatus) {
 	s.validators[valIdx].Status = status
 }

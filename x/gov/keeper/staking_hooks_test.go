@@ -2,6 +2,7 @@ package keeper_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -225,7 +226,7 @@ func TestAfterValidatorBeginUnbonding(t *testing.T) {
 		setup func(*fixture) (valAddr sdk.ValAddress, governors []types.GovernorAddress, expectActive []bool)
 	}{
 		{
-			name: "single-validator governor: validator unbonds → goes inactive",
+			name: "single-validator governor: validator unbonds, governor goes inactive",
 			setup: func(s *fixture) (sdk.ValAddress, []types.GovernorAddress, []bool) {
 				govAddr := s.activeGovernors[0].GetAddress()
 				delAddr := sdk.AccAddress(govAddr)
@@ -418,21 +419,52 @@ func TestActiveGovernorsByDelegatedValidator(t *testing.T) {
 			expectActive:     boolPtr(true),
 		},
 		{
-			name: "status flip: deactivation clears all entries; reactivation backfills from current staking",
+			name: "MsgUpdateGovernorStatus active to inactive clears every index entry the governor holds",
 			run: func(t *testing.T, s *fixture, k *keeper.Keeper) types.GovernorAddress {
 				gov := s.activeGovernors[0].GetAddress()
 				acc := sdk.AccAddress(gov)
 				s.delegate(acc, s.valAddrs[0], fullMin)
 				s.delegate(acc, s.valAddrs[1], fullMin)
 				require.NoError(t, k.DelegateToGovernor(s.ctx, acc, gov))
-				governor, err := k.Governors.Get(s.ctx, gov)
+				allowImmediateStatusChange(t, s, k, gov)
+				msgServer := keeper.NewMsgServerImpl(k)
+				_, err := msgServer.UpdateGovernorStatus(s.ctx, &v1.MsgUpdateGovernorStatus{
+					Address: sdk.AccAddress(gov).String(),
+					Status:  v1.Inactive,
+				})
 				require.NoError(t, err)
-				require.NoError(t, k.SetGovernorInactive(s.ctx, governor))
-				// at this point both entries should be cleared; backfill restores them
-				require.NoError(t, k.SetActiveGovernorIndexEntries(s.ctx, gov))
+				return gov
+			},
+			expectIndexed: map[int]bool{0: false, 1: false},
+			expectActive:  boolPtr(false),
+		},
+		{
+			name: "MsgUpdateGovernorStatus inactive to active backfills the index from the governor's current staking",
+			run: func(t *testing.T, s *fixture, k *keeper.Keeper) types.GovernorAddress {
+				gov := s.activeGovernors[0].GetAddress()
+				acc := sdk.AccAddress(gov)
+				s.delegate(acc, s.valAddrs[0], fullMin)
+				s.delegate(acc, s.valAddrs[1], fullMin)
+				require.NoError(t, k.DelegateToGovernor(s.ctx, acc, gov))
+				allowImmediateStatusChange(t, s, k, gov)
+				msgServer := keeper.NewMsgServerImpl(k)
+				// deactivate so the active-to-inactive cleanup runs first; the gov
+				// self-delegation persists, so the reactivation hits the
+				// setActiveGovernorIndexEntries branch (not DelegateToGovernor).
+				_, err := msgServer.UpdateGovernorStatus(s.ctx, &v1.MsgUpdateGovernorStatus{
+					Address: sdk.AccAddress(gov).String(),
+					Status:  v1.Inactive,
+				})
+				require.NoError(t, err)
+				_, err = msgServer.UpdateGovernorStatus(s.ctx, &v1.MsgUpdateGovernorStatus{
+					Address: sdk.AccAddress(gov).String(),
+					Status:  v1.Active,
+				})
+				require.NoError(t, err)
 				return gov
 			},
 			expectIndexed: map[int]bool{0: true, 1: true},
+			expectActive:  boolPtr(true),
 		},
 	}
 
@@ -470,4 +502,22 @@ func assertIndexed(t *testing.T, ctx sdk.Context, k *keeper.Keeper, valAddr sdk.
 	has, err := k.ActiveGovernorsByDelegatedValidator.Has(ctx, collections.Join(valAddr, govAddr))
 	require.NoError(t, err)
 	assert.Equal(t, want, has, "ActiveGovernorsByDelegatedValidator[%s,%s]", valAddr.String(), govAddr.String())
+}
+
+// allowImmediateStatusChange zeroes GovernorStatusChangePeriod and pushes the
+// governor's LastStatusChangeTime into the past so a test can flip status via
+// MsgUpdateGovernorStatus without waiting out the cooldown.
+func allowImmediateStatusChange(t *testing.T, s *fixture, k *keeper.Keeper, govAddr types.GovernorAddress) {
+	t.Helper()
+	params, err := k.Params.Get(s.ctx)
+	require.NoError(t, err)
+	zero := time.Duration(0)
+	params.GovernorStatusChangePeriod = &zero
+	require.NoError(t, k.Params.Set(s.ctx, params))
+
+	g, err := k.Governors.Get(s.ctx, govAddr)
+	require.NoError(t, err)
+	past := s.ctx.BlockTime().Add(-time.Hour)
+	g.LastStatusChangeTime = &past
+	require.NoError(t, k.Governors.Set(s.ctx, govAddr, g))
 }
