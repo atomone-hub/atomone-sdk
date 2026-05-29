@@ -2,6 +2,7 @@ package gov
 
 import (
 	"fmt"
+	"strings"
 
 	"cosmossdk.io/collections"
 	"cosmossdk.io/math"
@@ -167,19 +168,22 @@ func InitGenesis(ctx sdk.Context, ak types.AccountKeeper, bk types.BankKeeper, k
 	// track active governors to skip their self-delegations in the second loop
 	activeGovernors := make(map[string]struct{})
 	for _, governor := range data.Governors {
+		// defensive sanitization
+		governor.GovernorAddress = strings.ToLower(governor.GovernorAddress)
 		// check that base account exists
-		accAddr := sdk.AccAddress(governor.GetAddress())
+		govAddr := governor.GetAddress()
+		accAddr := sdk.AccAddress(govAddr.Bytes())
 		acc := ak.GetAccount(ctx, accAddr)
 		if acc == nil {
 			panic(fmt.Sprintf("account %s does not exist", accAddr.String()))
 		}
 
-		if err := k.Governors.Set(ctx, governor.GetAddress(), *governor); err != nil {
+		if err := k.Governors.Set(ctx, govAddr, *governor); err != nil {
 			panic(err)
 		}
 		if governor.IsActive() {
 			// validate min self-delegation
-			bondedTokens, err := k.GetGovernorBondedTokens(ctx, governor.GetAddress())
+			bondedTokens, err := k.GetGovernorBondedTokens(ctx, govAddr)
 			if err != nil {
 				panic(err)
 			}
@@ -187,10 +191,10 @@ func InitGenesis(ctx sdk.Context, ak types.AccountKeeper, bk types.BankKeeper, k
 				panic(types.ErrInsufficientGovernorDelegation.Wrapf("minimum self-delegation required: %s, total bonded tokens: %s", minSelfDelegation, bondedTokens))
 			}
 
-			activeGovernors[governor.GetAddress().String()] = struct{}{}
-			err = k.DelegateToGovernor(ctx, accAddr, governor.GetAddress())
+			activeGovernors[governor.GovernorAddress] = struct{}{}
+			err = k.DelegateToGovernor(ctx, accAddr, govAddr)
 			if err != nil {
-				panic(fmt.Sprintf("failed to delegate to governor %s: %v", governor.GetAddress().String(), err))
+				panic(fmt.Sprintf("failed to delegate to governor %s: %v", governor.GovernorAddress, err))
 			}
 		}
 	}
@@ -202,7 +206,7 @@ func InitGenesis(ctx sdk.Context, ak types.AccountKeeper, bk types.BankKeeper, k
 		// skip self-delegations for active governors (already handled in first loop)
 		delGovAddr := types.GovernorAddress(delAddr)
 		if delGovAddr.Equals(govAddr) {
-			if _, isActive := activeGovernors[delGovAddr.String()]; isActive {
+			if _, isActive := activeGovernors[delegation.GovernorAddress]; isActive {
 				continue
 			}
 		}

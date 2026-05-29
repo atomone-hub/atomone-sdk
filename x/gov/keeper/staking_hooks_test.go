@@ -164,8 +164,8 @@ func TestBeforeValidatorSlashed(t *testing.T) {
 				govAddr := s.inactiveGovernor.GetAddress()
 				delAddr := sdk.AccAddress(govAddr)
 				s.delegate(delAddr, s.valAddrs[0], fullMin)
-				// no DelegateToGovernor for inactive governor (they have no gov self-delegation);
-				// the hook walks the reverse index, which is empty for this case.
+				// no DelegateToGovernor for an inactive governor: the hook walks
+				// ActiveGovernorsByDelegatedValidator, which is empty for this case.
 				return s.valAddrs[0], halfSlash, []types.GovernorAddress{govAddr}, []bool{false}
 			},
 		},
@@ -272,7 +272,7 @@ func TestAfterValidatorBeginUnbonding(t *testing.T) {
 			},
 		},
 		{
-			name: "inactive governor: hook skips (reverse index has no entry without gov self-delegation)",
+			name: "inactive governor: hook skips (no index entry without an active gov self-delegation)",
 			setup: func(s *fixture) (sdk.ValAddress, []types.GovernorAddress, []bool) {
 				govAddr := s.inactiveGovernor.GetAddress()
 				delAddr := sdk.AccAddress(govAddr)
@@ -325,52 +325,149 @@ func TestAfterValidatorBeginUnbonding(t *testing.T) {
 	}
 }
 
-// TestGovernorsByValidatorIndex covers the reverse-index maintenance contract:
-// an entry exists in GovernorsByValidator iff a corresponding entry exists in
-// ValidatorSharesByGovernor. The index drives BeforeValidatorSlashed and
-// AfterValidatorBeginUnbonding lookups, so its integrity is load-bearing.
-func TestGovernorsByValidatorIndex(t *testing.T) {
-	govKeeper, accKeeper, bankKeeper, stakingKeeper, distrKeeper, _, ctx := setupGovKeeper(t, mockAccountKeeperExpectations)
-	s := newFixture(t, ctx, 2, 2, 2, govKeeper, mocks{
-		accKeeper:          accKeeper,
-		bankKeeper:         bankKeeper,
-		stakingKeeper:      stakingKeeper,
-		distributionKeeper: distrKeeper,
-	})
-
-	govAddr := s.activeGovernors[0].GetAddress()
-	delAddr := sdk.AccAddress(govAddr)
+// TestActiveGovernorsByDelegatedValidator exercises the full maintenance contract:
+// an entry exists for (val, gov) iff gov is an active governor whose own account
+// has a staking delegation to val. Each case runs a scenario through the production
+// hook / keeper surface, then asserts on the index entries, the cumulative shares
+// (where relevant), and the governor's active status.
+func TestActiveGovernorsByDelegatedValidator(t *testing.T) {
 	fullMin := v1.DefaultMinGovernorSelfDelegation.Int64()
 
-	// initial state: no entries
-	assertIndexed(t, ctx, govKeeper, s.valAddrs[0], govAddr, false)
-	assertIndexed(t, ctx, govKeeper, s.valAddrs[1], govAddr, false)
+	boolPtr := func(b bool) *bool { return &b }
 
-	// stake to val[0] then delegate-to-governor: IncreaseGovernorShares fires and adds the index entry
-	s.delegate(delAddr, s.valAddrs[0], fullMin)
-	require.NoError(t, govKeeper.DelegateToGovernor(s.ctx, delAddr, govAddr))
-	assertIndexed(t, ctx, govKeeper, s.valAddrs[0], govAddr, true)
-	assertIndexed(t, ctx, govKeeper, s.valAddrs[1], govAddr, false)
+	tests := []struct {
+		name string
+		// run drives the scenario and returns the governor whose state to inspect.
+		run func(t *testing.T, s *fixture, k *keeper.Keeper) types.GovernorAddress
+		// expectIndexed[i] is the expected presence in
+		// ActiveGovernorsByDelegatedValidator[s.valAddrs[i], gov].
+		expectIndexed map[int]bool
+		// expectCumulative[i] is the expected presence in
+		// ValidatorSharesByGovernor[gov, s.valAddrs[i]] (nil to skip).
+		expectCumulative map[int]bool
+		// expectActive: nil to skip
+		expectActive *bool
+	}{
+		{
+			name: "lifecycle: self-stake + DelegateToGovernor adds entry; AfterDelegationModified adds a second; BeforeDelegationRemoved drops the first",
+			run: func(t *testing.T, s *fixture, k *keeper.Keeper) types.GovernorAddress {
+				gov := s.activeGovernors[0].GetAddress()
+				acc := sdk.AccAddress(gov)
+				s.delegate(acc, s.valAddrs[0], fullMin)
+				require.NoError(t, k.DelegateToGovernor(s.ctx, acc, gov))
+				s.delegate(acc, s.valAddrs[1], fullMin)
+				require.NoError(t, k.StakingHooks().AfterDelegationModified(s.ctx, acc, s.valAddrs[1]))
+				// re-running AfterDelegationModified is idempotent
+				require.NoError(t, k.StakingHooks().AfterDelegationModified(s.ctx, acc, s.valAddrs[1]))
+				// full-unbond val[0]; val[1] keeps the governor above threshold
+				require.NoError(t, k.StakingHooks().BeforeDelegationRemoved(s.ctx, acc, s.valAddrs[0]))
+				return gov
+			},
+			expectIndexed: map[int]bool{0: false, 1: true},
+			expectActive:  boolPtr(true),
+		},
+		{
+			name: "gov-delegator does not pollute: governor stakes val[0]; a separate delegator stakes val[1] and gov-delegates to the governor",
+			run: func(t *testing.T, s *fixture, k *keeper.Keeper) types.GovernorAddress {
+				gov := s.activeGovernors[0].GetAddress()
+				acc := sdk.AccAddress(gov)
+				del := s.delAddrs[0]
+				s.delegate(acc, s.valAddrs[0], fullMin)
+				require.NoError(t, k.DelegateToGovernor(s.ctx, acc, gov))
+				s.delegate(del, s.valAddrs[1], fullMin)
+				require.NoError(t, k.DelegateToGovernor(s.ctx, del, gov))
+				return gov
+			},
+			expectIndexed:    map[int]bool{0: true, 1: false},
+			expectCumulative: map[int]bool{0: true, 1: true},
+		},
+		{
+			name: "non-governor delegator AfterDelegationModified must not error and must not add an index entry",
+			run: func(t *testing.T, s *fixture, k *keeper.Keeper) types.GovernorAddress {
+				gov := s.activeGovernors[0].GetAddress()
+				acc := sdk.AccAddress(gov)
+				del := s.delAddrs[0]
+				s.delegate(acc, s.valAddrs[0], fullMin)
+				require.NoError(t, k.DelegateToGovernor(s.ctx, acc, gov))
+				s.delegate(del, s.valAddrs[1], fullMin)
+				require.NoError(t, k.DelegateToGovernor(s.ctx, del, gov))
+				// explicit re-fire of the staking hook with a non-governor delegator
+				require.NoError(t, k.StakingHooks().AfterDelegationModified(s.ctx, del, s.valAddrs[1]))
+				return gov
+			},
+			expectIndexed: map[int]bool{0: true, 1: false},
+		},
+		{
+			name: "governor full-unbonds val[0] while a delegator still stakes there: cumulative stays, index entry is removed",
+			run: func(t *testing.T, s *fixture, k *keeper.Keeper) types.GovernorAddress {
+				gov := s.activeGovernors[0].GetAddress()
+				acc := sdk.AccAddress(gov)
+				del := s.delAddrs[0]
+				// val[1] keeps the governor above threshold after the val[0] unbond
+				s.delegate(acc, s.valAddrs[0], fullMin)
+				s.delegate(acc, s.valAddrs[1], fullMin)
+				require.NoError(t, k.DelegateToGovernor(s.ctx, acc, gov))
+				// delegator also stakes to val[0] so cumulative > governor's own
+				s.delegate(del, s.valAddrs[0], fullMin)
+				require.NoError(t, k.DelegateToGovernor(s.ctx, del, gov))
+				require.NoError(t, k.StakingHooks().BeforeDelegationRemoved(s.ctx, acc, s.valAddrs[0]))
+				return gov
+			},
+			expectIndexed:    map[int]bool{0: false, 1: true},
+			expectCumulative: map[int]bool{0: true, 1: true},
+			expectActive:     boolPtr(true),
+		},
+		{
+			name: "status flip: deactivation clears all entries; reactivation backfills from current staking",
+			run: func(t *testing.T, s *fixture, k *keeper.Keeper) types.GovernorAddress {
+				gov := s.activeGovernors[0].GetAddress()
+				acc := sdk.AccAddress(gov)
+				s.delegate(acc, s.valAddrs[0], fullMin)
+				s.delegate(acc, s.valAddrs[1], fullMin)
+				require.NoError(t, k.DelegateToGovernor(s.ctx, acc, gov))
+				governor, err := k.Governors.Get(s.ctx, gov)
+				require.NoError(t, err)
+				require.NoError(t, k.SetGovernorInactive(s.ctx, governor))
+				// at this point both entries should be cleared; backfill restores them
+				require.NoError(t, k.SetActiveGovernorIndexEntries(s.ctx, gov))
+				return gov
+			},
+			expectIndexed: map[int]bool{0: true, 1: true},
+		},
+	}
 
-	// add a second validator delegation through the hooks path: IncreaseGovernorShares adds the second index entry
-	s.delegate(delAddr, s.valAddrs[1], fullMin)
-	govKeeper.IncreaseGovernorShares(s.ctx, govAddr, s.valAddrs[1], math.LegacyNewDec(fullMin))
-	assertIndexed(t, ctx, govKeeper, s.valAddrs[0], govAddr, true)
-	assertIndexed(t, ctx, govKeeper, s.valAddrs[1], govAddr, true)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			govKeeper, accKeeper, bankKeeper, stakingKeeper, distrKeeper, _, ctx := setupGovKeeper(t, mockAccountKeeperExpectations)
+			s := newFixture(t, ctx, 2, 2, 2, govKeeper, mocks{
+				accKeeper:          accKeeper,
+				bankKeeper:         bankKeeper,
+				stakingKeeper:      stakingKeeper,
+				distributionKeeper: distrKeeper,
+			})
 
-	// partially decrease val[0]: entry remains while shares > 0
-	govKeeper.DecreaseGovernorShares(s.ctx, govAddr, s.valAddrs[0], math.LegacyNewDec(fullMin/2))
-	assertIndexed(t, ctx, govKeeper, s.valAddrs[0], govAddr, true)
+			gov := tt.run(t, s, govKeeper)
 
-	// fully decrease val[0]: index entry must be removed alongside the primary record
-	govKeeper.DecreaseGovernorShares(s.ctx, govAddr, s.valAddrs[0], math.LegacyNewDec(fullMin-fullMin/2))
-	assertIndexed(t, ctx, govKeeper, s.valAddrs[0], govAddr, false)
-	assertIndexed(t, ctx, govKeeper, s.valAddrs[1], govAddr, true)
+			for valIdx, want := range tt.expectIndexed {
+				assertIndexed(t, ctx, govKeeper, s.valAddrs[valIdx], gov, want)
+			}
+			for valIdx, want := range tt.expectCumulative {
+				has, err := govKeeper.ValidatorSharesByGovernor.Has(s.ctx, collections.Join(gov, s.valAddrs[valIdx]))
+				require.NoError(t, err)
+				assert.Equal(t, want, has, "ValidatorSharesByGovernor[%s,%s]", gov.String(), s.valAddrs[valIdx].String())
+			}
+			if tt.expectActive != nil {
+				stored, err := govKeeper.Governors.Get(s.ctx, gov)
+				require.NoError(t, err)
+				assert.Equal(t, *tt.expectActive, stored.IsActive(), "governor active status")
+			}
+		})
+	}
 }
 
 func assertIndexed(t *testing.T, ctx sdk.Context, k *keeper.Keeper, valAddr sdk.ValAddress, govAddr types.GovernorAddress, want bool) {
 	t.Helper()
-	has, err := k.GovernorsByValidator.Has(ctx, collections.Join(valAddr, govAddr))
+	has, err := k.ActiveGovernorsByDelegatedValidator.Has(ctx, collections.Join(valAddr, govAddr))
 	require.NoError(t, err)
-	assert.Equal(t, want, has, "GovernorsByValidator[%s,%s]", valAddr.String(), govAddr.String())
+	assert.Equal(t, want, has, "ActiveGovernorsByDelegatedValidator[%s,%s]", valAddr.String(), govAddr.String())
 }

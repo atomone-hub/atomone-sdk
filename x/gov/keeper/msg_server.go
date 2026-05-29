@@ -489,17 +489,24 @@ func (k msgServer) UpdateGovernorStatus(goCtx context.Context, msg *v1.MsgUpdate
 			panic(err)
 		}
 		if errors.Is(err, collections.ErrNotFound) {
-			err := k.DelegateToGovernor(ctx, addr, govAddr)
-			if err != nil {
+			if err := k.DelegateToGovernor(ctx, addr, govAddr); err != nil {
 				return nil, err
 			}
 		} else if delegation.GovernorAddress != govAddr.String() {
-			err := k.RedelegateToGovernor(ctx, addr, govAddr)
-			if err != nil {
+			if err := k.RedelegateToGovernor(ctx, addr, govAddr); err != nil {
 				return nil, err
 			}
 		}
+		// transition to active: populate the ActiveGovernorsByDelegatedValidatorerse index for this governor
+		if err := k.setActiveGovernorIndexEntries(ctx, govAddr); err != nil {
+			return nil, err
+		}
 		status = govtypes.AttributeValueStatusActive
+	} else {
+		// transition to inactive: clear the ActiveGovernorsByDelegatedValidatorerse index for this governor
+		if err := k.removeActiveGovernorIndexEntries(ctx, govAddr); err != nil {
+			return nil, err
+		}
 	}
 
 	ctx.EventManager().EmitEvents(sdk.Events{
