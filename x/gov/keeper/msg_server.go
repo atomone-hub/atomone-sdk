@@ -497,13 +497,13 @@ func (k msgServer) UpdateGovernorStatus(goCtx context.Context, msg *v1.MsgUpdate
 				return nil, err
 			}
 		}
-		// transition to active: populate the ActiveGovernorsByDelegatedValidatorerse index for this governor
+		// transition to active: populate the ActiveGovernorsByDelegatedValidator index for this governor
 		if err := k.setActiveGovernorIndexEntries(ctx, govAddr); err != nil {
 			return nil, err
 		}
 		status = govtypes.AttributeValueStatusActive
 	} else {
-		// transition to inactive: clear the ActiveGovernorsByDelegatedValidatorerse index for this governor
+		// transition to inactive: clear the ActiveGovernorsByDelegatedValidator index for this governor
 		if err := k.removeActiveGovernorIndexEntries(ctx, govAddr); err != nil {
 			return nil, err
 		}

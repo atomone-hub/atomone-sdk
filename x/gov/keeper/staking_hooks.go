@@ -49,13 +49,12 @@ func (h Hooks) BeforeDelegationSharesModified(ctx context.Context, delAddr sdk.A
 	return nil
 }
 
-// AfterDelegationModified is called when a delegation is created or modified
+// AfterDelegationModified is called when a delegation is created or modified.
 // We trigger a governor shares increase here adding all delegation shares.
 // It is balanced by the full-amount decrease in BeforeDelegationSharesModified.
-// If the delegator is the governor's account and the governor is active keep
-// ActiveGovernorsByDelegatedValidator index in sync. If the governor is no
-// longer meeting the min self-delegation after the modification, status is
-// flipped to inactive which also cleans up the index.
+// If the delegator is an active governor's account, revalidate min self-delegation
+// (flipping the governor inactive if it no longer holds) and keep the
+// ActiveGovernorsByDelegatedValidator index in sync.
 func (h Hooks) AfterDelegationModified(ctx context.Context, delAddr sdk.AccAddress, valAddr sdk.ValAddress) error {
 	// does the delegator have a governance delegation?
 	govDelegation, err := h.k.GovernanceDelegations.Get(ctx, delAddr)
@@ -97,14 +96,10 @@ func (h Hooks) AfterDelegationModified(ctx context.Context, delAddr sdk.AccAddre
 		panic("active governor delegating to another governor")
 	}
 
-	// active governor self-delegation: keep ActiveGovernorsByDelegatedValidator index in sync and revalidate min self-delegation
-	if err := h.k.ActiveGovernorsByDelegatedValidator.Set(ctx, collections.Join(valAddr, delGovAddr)); err != nil {
-		return err
-	}
 	if !h.k.ValidateGovernorMinSelfDelegation(sdkCtx, governor) {
 		return h.setGovernorInactive(ctx, sdkCtx, governor)
 	}
-	return nil
+	return h.k.ActiveGovernorsByDelegatedValidator.Set(ctx, collections.Join(valAddr, delGovAddr))
 }
 
 // BeforeDelegationRemoved is called when a delegation is removed
