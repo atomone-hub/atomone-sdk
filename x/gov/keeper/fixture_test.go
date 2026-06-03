@@ -99,22 +99,22 @@ func newFixture(t *testing.T, ctx sdk.Context, numVals, numDelegators,
 				return nil
 			}).AnyTimes()
 	mocks.stakingKeeper.EXPECT().GetValidator(ctx, gomock.Any()).DoAndReturn(
-		func(ctx context.Context, addr sdk.ValAddress) (stakingtypes.ValidatorI, bool) {
+		func(ctx context.Context, addr sdk.ValAddress) (stakingtypes.Validator, error) {
 			for i := 0; i < len(valAddrs); i++ {
 				if valAddrs[i].String() == addr.String() {
-					return s.validators[i], true
+					return s.validators[i], nil
 				}
 			}
-			return nil, false
+			return stakingtypes.Validator{}, stakingtypes.ErrNoValidatorFound
 		}).AnyTimes()
 	mocks.stakingKeeper.EXPECT().GetDelegation(ctx, gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, del sdk.AccAddress, val sdk.ValAddress) (stakingtypes.Delegation, bool) {
+		func(_ context.Context, del sdk.AccAddress, val sdk.ValAddress) (stakingtypes.Delegation, error) {
 			for _, d := range s.delegations {
 				if d.DelegatorAddress == del.String() && d.ValidatorAddress == val.String() {
-					return d, true
+					return d, nil
 				}
 			}
-			return stakingtypes.Delegation{}, false
+			return stakingtypes.Delegation{}, stakingtypes.ErrNoDelegation
 		}).AnyTimes()
 
 	// Create active governors
@@ -134,6 +134,12 @@ func newFixture(t *testing.T, ctx sdk.Context, numVals, numDelegators,
 	require.NoError(t, err)
 	s.inactiveGovernor = governor
 	return s
+}
+
+// setValidatorStatus mutates the fixture-tracked validator's status. Used to simulate
+// post-transition state (e.g. Bonded to Unbonding) ahead of invoking a staking hook.
+func (s *fixture) setValidatorStatus(valIdx int, status stakingtypes.BondStatus) {
+	s.validators[valIdx].Status = status
 }
 
 // delegate updates the tallyFixture delegations and validators fields.

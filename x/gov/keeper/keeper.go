@@ -68,6 +68,9 @@ type Keeper struct {
 	GovernanceDelegations                 collections.Map[sdk.AccAddress, v1.GovernanceDelegation]
 	GovernanceDelegationsByGovernor       collections.Map[collections.Pair[types.GovernorAddress, sdk.AccAddress], v1.GovernanceDelegation]
 	ValidatorSharesByGovernor             collections.Map[collections.Pair[types.GovernorAddress, sdk.ValAddress], v1.GovernorValShares]
+	// ActiveGovernorsByDelegatedValidator records governors that have staking delegations to a given validator. Used to efficiently enumerate governors affected by a
+	// validator-state change (slash, begin-unbonding).
+	ActiveGovernorsByDelegatedValidator collections.KeySet[collections.Pair[sdk.ValAddress, types.GovernorAddress]]
 }
 
 // GetAuthority returns the x/gov module's authority.
@@ -131,6 +134,7 @@ func NewKeeper(
 		GovernanceDelegations:                 collections.NewMap(sb, types.GovernanceDelegationKeyPrefix, "governance_delegations", sdk.AccAddressKey, codec.CollValue[v1.GovernanceDelegation](cdc)),
 		GovernanceDelegationsByGovernor:       collections.NewMap(sb, types.GovernanceDelegationsByGovernorKeyPrefix, "governance_delegations_by_governor", collections.PairKeyCodec(types.GovernorAddressKey, sdk.AccAddressKey), codec.CollValue[v1.GovernanceDelegation](cdc)),
 		ValidatorSharesByGovernor:             collections.NewMap(sb, types.ValidatorSharesByGovernorKeyPrefix, "validator_shares_by_governor", collections.PairKeyCodec(types.GovernorAddressKey, sdk.ValAddressKey), codec.CollValue[v1.GovernorValShares](cdc)),
+		ActiveGovernorsByDelegatedValidator:   collections.NewKeySet(sb, types.GovernorsByValidatorKeyPrefix, "governors_by_validator", collections.PairKeyCodec(sdk.ValAddressKey, types.GovernorAddressKey)),
 	}
 	schema, err := sb.Build()
 	if err != nil {

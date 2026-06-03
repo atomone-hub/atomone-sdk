@@ -39,6 +39,7 @@ var (
 	GovernanceDelegationKeyPrefix            = collections.NewPrefix(129)
 	ValidatorSharesByGovernorKeyPrefix       = collections.NewPrefix(130)
 	GovernanceDelegationsByGovernorKeyPrefix = collections.NewPrefix(131)
+	GovernorsByValidatorKeyPrefix            = collections.NewPrefix(132)
 
 	// GovernorAddressKey follows the same semantics as AccAddressKey.
 	GovernorAddressKey collcodec.KeyCodec[GovernorAddress] = governorAddressKey{
