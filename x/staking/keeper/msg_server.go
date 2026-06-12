@@ -1,6 +1,7 @@
 package keeper
 
 import (
+	"bytes"
 	"context"
 	"strconv"
 	"time"
@@ -69,8 +70,9 @@ func (k msgServer) CreateValidator(ctx context.Context, msg *types.MsgCreateVali
 		return nil, errorsmod.Wrapf(sdkerrors.ErrInvalidType, "Expecting cryptotypes.PubKey, got %T", pk)
 	}
 
-	if _, err := k.GetValidatorByConsAddr(ctx, sdk.GetConsAddress(pk)); err == nil {
-		return nil, types.ErrValidatorPubKeyExists
+	err = k.checkConsKeyAlreadyUsed(ctx, pk)
+	if err != nil {
+		return nil, err
 	}
 
 	bondDenom, err := k.BondDenom(ctx)
@@ -597,6 +599,108 @@ func (k msgServer) CancelUnbondingDelegation(ctx context.Context, msg *types.Msg
 	)
 
 	return &types.MsgCancelUnbondingDelegationResponse{}, nil
+}
+
+// RotateConsPubKey defines a method for rotating a validator's consensus public key.
+func (k msgServer) RotateConsPubKey(ctx context.Context, msg *types.MsgRotateConsPubKey) (res *types.MsgRotateConsPubKeyResponse, err error) {
+	cv := msg.NewPubkey.GetCachedValue()
+	pk, ok := cv.(cryptotypes.PubKey)
+	if !ok {
+		return nil, errorsmod.Wrapf(sdkerrors.ErrInvalidType, "expecting cryptotypes.PubKey, got %T", cv)
+	}
+
+	err = k.checkConsKeyAlreadyUsed(ctx, pk)
+	if err != nil {
+		return nil, err
+	}
+
+	valAddr, err := k.validatorAddressCodec.StringToBytes(msg.ValidatorAddress)
+	if err != nil {
+		return nil, err
+	}
+
+	validator, err := k.Keeper.GetValidator(ctx, valAddr)
+	if err != nil {
+		return nil, err
+	}
+
+	if validator.GetOperator() == "" {
+		return nil, types.ErrNoValidatorFound
+	}
+
+	if status := validator.GetStatus(); status != types.Bonded {
+		return nil, errorsmod.Wrapf(sdkerrors.ErrInvalidType, "validator status is not bonded, got %x", status)
+	}
+
+	if err := k.ExceedsMaxRotations(ctx, valAddr); err != nil {
+		return nil, err
+	}
+
+	params, err := k.GetParams(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	err = k.Keeper.bankKeeper.SendCoinsFromAccountToModule(ctx, sdk.AccAddress(valAddr), types.DistributionModuleName, sdk.NewCoins(params.KeyRotationFee))
+	if err != nil {
+		return nil, err
+	}
+
+	err = k.setConsPubKeyRotationHistory(
+		ctx,
+		valAddr,
+		validator.ConsensusPubkey,
+		msg.NewPubkey,
+		params.KeyRotationFee,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return res, nil
+}
+
+// checkConsKeyAlreadyUsed returns an error if the consensus public key is already used,
+// in ConsAddrToValidatorIdentifierMap, OldToNewConsAddrMap, or in the current block (RotationHistory).
+func (k msgServer) checkConsKeyAlreadyUsed(ctx context.Context, newConsPubKey cryptotypes.PubKey) error {
+	newConsAddr := sdk.ConsAddress(newConsPubKey.Address())
+
+	store := k.storeService.OpenKVStore(ctx)
+
+	bz, err := store.Get(types.GetConsAddrToValidatorIdentifierMapKey(newConsAddr))
+	if err != nil {
+		return err
+	}
+	if bz != nil {
+		return sdkerrors.ErrInvalidAddress.Wrap("public key was already used")
+	}
+
+	// Check in the current block rotations.
+	rotationHistory, err := k.GetBlockConsPubKeyRotationHistory(ctx)
+	if err != nil {
+		return err
+	}
+	for _, rotation := range rotationHistory {
+		cachedValue := rotation.NewConsPubkey.GetCachedValue()
+		if cachedValue == nil {
+			return sdkerrors.ErrInvalidAddress.Wrap("new public key is nil")
+		}
+		rotatedPk, ok := cachedValue.(cryptotypes.PubKey)
+		if !ok {
+			continue
+		}
+		if bytes.Equal(rotatedPk.Address(), newConsAddr) {
+			return sdkerrors.ErrInvalidAddress.Wrap("public key was already used")
+		}
+	}
+
+	// Check if NewPubKey is not duplicated on ValidatorsByConsAddr.
+	_, err = k.Keeper.ValidatorByConsAddr(ctx, newConsAddr)
+	if err == nil {
+		return types.ErrValidatorPubKeyExists
+	}
+
+	return nil
 }
 
 // UpdateParams defines a method to perform updation of params exist in x/staking module.

@@ -23,6 +23,9 @@ const (
 
 	// RouterKey is the msg router key for the staking module
 	RouterKey = ModuleName
+
+	// DistributionModuleName duplicates the distribution module's name to avoid a cyclic dependency with x/distribution.
+	DistributionModuleName = "distribution"
 )
 
 // Keys for store prefixes
@@ -57,6 +60,13 @@ var (
 	ParamsKey = []byte{0x51} // prefix for parameters for module x/staking
 
 	DelegationByValIndexKey = []byte{0x71} // key for delegations by a validator
+
+	ValidatorConsPubKeyRotationHistoryKey       = []byte{0x65} // prefix for consPubkey rotation history by validator
+	BlockConsPubKeyRotationHistoryKey           = []byte{0x66} // prefix for consPubkey rotation history by height
+	ValidatorConsensusKeyRotationRecordQueueKey = []byte{0x67} // this key is used to set the unbonding period time on each rotation
+	ValidatorConsensusKeyRotationRecordIndexKey = []byte{0x68} // this key is used to restrict the validator next rotation within waiting (unbonding) period
+	OldToNewConsAddrMap                         = []byte{0x69} // prefix for old cons addr to new cons addr
+	ConsAddrToValidatorIdentifierMapPrefix      = []byte{0x6A} // prefix for cons addr to initial cons addr
 
 	// NOTE: keys in range 0x81–0x87 were previously used in liquid staking forks of the staking module.
 	// Module developers MUST NOT use these keys and MUST consider them "reserved".
@@ -426,4 +436,29 @@ func GetHistoricalInfoKey(height int64) []byte {
 	heightBytes := make([]byte, 8)
 	binary.BigEndian.PutUint64(heightBytes, uint64(height))
 	return append(HistoricalInfoKey, heightBytes...)
+}
+
+// GetValidatorConsPubKeyRotationHistoryKey returns the key for a validator's consensus pubkey rotation history entry
+func GetValidatorConsPubKeyRotationHistoryKey(valAddr []byte, height uint64) []byte {
+	return append(append(ValidatorConsPubKeyRotationHistoryKey, valAddr...), sdk.Uint64ToBigEndian(height)...)
+}
+
+// GetValidatorConsKeyRotationIndexKey returns the key for tracking rotation index by validator address and time
+func GetValidatorConsKeyRotationIndexKey(valAddr []byte, ts time.Time) []byte {
+	return append(append(ValidatorConsensusKeyRotationRecordIndexKey, valAddr...), sdk.FormatTimeBytes(ts)...)
+}
+
+// GetValidatorConsKeyRotationQueueKey returns the key for rotation queue by time
+func GetValidatorConsKeyRotationQueueKey(ts time.Time) []byte {
+	return append(ValidatorConsensusKeyRotationRecordQueueKey, sdk.FormatTimeBytes(ts)...)
+}
+
+// GetOldToNewConsAddrMapKey returns the key for old-to-new consensus address mapping
+func GetOldToNewConsAddrMapKey(consAddr []byte) []byte {
+	return append(OldToNewConsAddrMap, consAddr...)
+}
+
+// GetConsAddrToValidatorIdentifierMapKey returns the key for consensus addr to validator identifier mapping
+func GetConsAddrToValidatorIdentifierMapKey(consAddr []byte) []byte {
+	return append(ConsAddrToValidatorIdentifierMapPrefix, consAddr...)
 }

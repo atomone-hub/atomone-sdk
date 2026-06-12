@@ -52,7 +52,22 @@ func (k Keeper) GetValidatorByConsAddr(ctx context.Context, consAddr sdk.ConsAdd
 	}
 
 	if opAddr == nil {
-		return validator, types.ErrNoValidatorFound
+		// Validator not found with current consAddr; check if the key was rotated
+		// by looking up the old-to-new consensus address mapping.
+		newConsAddr, err := store.Get(types.GetOldToNewConsAddrMapKey(consAddr))
+		if err != nil {
+			return types.Validator{}, err
+		}
+		if newConsAddr != nil {
+			opAddr, err = store.Get(types.GetValidatorByConsAddrKey(newConsAddr))
+			if err != nil {
+				return types.Validator{}, err
+			}
+		}
+
+		if opAddr == nil {
+			return types.Validator{}, types.ErrNoValidatorFound
+		}
 	}
 
 	return k.GetValidator(ctx, opAddr)
