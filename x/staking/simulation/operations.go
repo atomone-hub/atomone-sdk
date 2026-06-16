@@ -747,7 +747,7 @@ func SimulateMsgBeginRedelegate(
 // SimulateMsgRotateConsPubKey generates a MsgRotateConsPubKey with a random new consensus pubkey.
 func SimulateMsgRotateConsPubKey(txGen client.TxConfig, ak types.AccountKeeper, bk types.BankKeeper, k *keeper.Keeper) simtypes.Operation {
 	return func(
-		r *rand.Rand, app *baseapp.BaseApp, ctx sdk.Context, accs []simtypes.Account, chainID string,
+		r *rand.Rand, app *baseapp.BaseApp, ctx sdk.Context, accs []simtypes.Account, _ string,
 	) (simtypes.OperationMsg, []simtypes.FutureOperation, error) {
 		msgType := sdk.MsgTypeURL(&types.MsgRotateConsPubKey{})
 

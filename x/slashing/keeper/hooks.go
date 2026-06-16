@@ -105,5 +105,5 @@ func (h Hooks) AfterConsensusPubKeyUpdate(ctx context.Context, oldPubKey, newPub
 		return err
 	}
 
-	return h.k.deleteAddrPubkeyRelation(ctx, crypto.Address(oldPubKey.Address()))
+	return h.k.deleteAddrPubkeyRelation(ctx, oldPubKey.Address())
 }

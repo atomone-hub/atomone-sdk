@@ -251,7 +251,7 @@ func (h Hooks) AfterUnbondingInitiated(_ context.Context, _ uint64) error {
 	return nil
 }
 
-func (h Hooks) AfterConsensusPubKeyUpdate(_ context.Context, _ cryptotypes.PubKey, _ cryptotypes.PubKey, _ sdk.Coin) error {
+func (h Hooks) AfterConsensusPubKeyUpdate(_ context.Context, _, _ cryptotypes.PubKey, _ sdk.Coin) error {
 	return nil
 }
 
