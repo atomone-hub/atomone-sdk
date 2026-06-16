@@ -109,7 +109,7 @@ func (s *KeeperTestSuite) TestDelegation() {
 	require.NoError(err)
 	require.Equal(3, len(resVals.Validators))
 
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		resVal, err := keeper.GetDelegatorValidator(ctx, addrDels[0], valAddrs[i])
 		require.Nil(err)
 		require.Equal(valAddrs[i].String(), resVal.GetOperator())
@@ -830,7 +830,7 @@ func (s *KeeperTestSuite) TestRedelegationMaxEntries() {
 
 	// redelegations should pass
 	var completionTime time.Time
-	for i := uint32(0); i < maxEntries; i++ {
+	for range maxEntries {
 		var err error
 		completionTime, err = keeper.BeginRedelegation(ctx, val0AccAddr, addrVals[0], addrVals[1], math.LegacyNewDec(1))
 		require.NoError(err)

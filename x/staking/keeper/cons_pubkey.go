@@ -3,6 +3,7 @@ package keeper
 import (
 	"bytes"
 	"context"
+	"slices"
 	"time"
 
 	errorsmod "cosmossdk.io/errors"
@@ -215,10 +216,8 @@ func (k Keeper) setConsKeyQueue(ctx context.Context, ts time.Time, valAddr sdk.V
 	}
 
 	// Only append if not already present.
-	for _, addr := range addrs.Addresses {
-		if addr == valAddrStr {
-			return nil
-		}
+	if slices.Contains(addrs.Addresses, valAddrStr) {
+		return nil
 	}
 
 	addrs.Addresses = append(addrs.Addresses, valAddrStr)

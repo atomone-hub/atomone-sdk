@@ -3,6 +3,7 @@ package keeper
 import (
 	"bytes"
 	"context"
+	"slices"
 	"strconv"
 	"time"
 
@@ -94,13 +95,7 @@ func (k msgServer) CreateValidator(ctx context.Context, msg *types.MsgCreateVali
 	cp := sdkCtx.ConsensusParams()
 	if cp.Validator != nil {
 		pkType := pk.Type()
-		hasKeyType := false
-		for _, keyType := range cp.Validator.PubKeyTypes {
-			if pkType == keyType {
-				hasKeyType = true
-				break
-			}
-		}
+		hasKeyType := slices.Contains(cp.Validator.PubKeyTypes, pkType)
 		if !hasKeyType {
 			return nil, errorsmod.Wrapf(
 				types.ErrValidatorPubKeyTypeNotSupported,
@@ -611,6 +606,20 @@ func (k msgServer) RotateConsPubKey(ctx context.Context, msg *types.MsgRotateCon
 	pk, ok := cv.(cryptotypes.PubKey)
 	if !ok {
 		return nil, errorsmod.Wrapf(sdkerrors.ErrInvalidType, "expecting cryptotypes.PubKey, got %T", cv)
+	}
+
+	// check if the new public key type is valid
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	cp := sdkCtx.ConsensusParams()
+	if cp.Validator != nil {
+		pkType := pk.Type()
+		hasKeyType := slices.Contains(cp.Validator.PubKeyTypes, pkType)
+		if !hasKeyType {
+			return nil, errorsmod.Wrapf(
+				types.ErrValidatorPubKeyTypeNotSupported,
+				"got: %s, expected: %s", pk.Type(), cp.Validator.PubKeyTypes,
+			)
+		}
 	}
 
 	err = k.checkConsKeyAlreadyUsed(ctx, pk)
