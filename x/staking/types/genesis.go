@@ -5,6 +5,7 @@ import (
 
 	"github.com/cosmos/cosmos-sdk/codec"
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
+	cryptotypes "github.com/cosmos/cosmos-sdk/crypto/types"
 )
 
 // NewGenesisState creates a new GenesisState instance
@@ -43,4 +44,15 @@ func (g GenesisState) UnpackInterfaces(c codectypes.AnyUnpacker) error {
 		}
 	}
 	return nil
+}
+
+// UnpackInterfaces implements UnpackInterfacesMessage.UnpackInterfaces.
+// It populates the cached values of the embedded Any pubkeys so that they are
+// available after the history entry is deserialized from the store.
+func (h ConsPubKeyRotationHistory) UnpackInterfaces(unpacker codectypes.AnyUnpacker) error {
+	var pk cryptotypes.PubKey
+	if err := unpacker.UnpackAny(h.OldConsPubkey, &pk); err != nil {
+		return err
+	}
+	return unpacker.UnpackAny(h.NewConsPubkey, &pk)
 }
