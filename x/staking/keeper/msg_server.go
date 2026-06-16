@@ -603,6 +603,10 @@ func (k msgServer) CancelUnbondingDelegation(ctx context.Context, msg *types.Msg
 
 // RotateConsPubKey defines a method for rotating a validator's consensus public key.
 func (k msgServer) RotateConsPubKey(ctx context.Context, msg *types.MsgRotateConsPubKey) (res *types.MsgRotateConsPubKeyResponse, err error) {
+	if err := msg.Validate(k.validatorAddressCodec); err != nil {
+		return nil, err
+	}
+
 	cv := msg.NewPubkey.GetCachedValue()
 	pk, ok := cv.(cryptotypes.PubKey)
 	if !ok {
@@ -641,7 +645,9 @@ func (k msgServer) RotateConsPubKey(ctx context.Context, msg *types.MsgRotateCon
 		return nil, err
 	}
 
-	err = k.Keeper.bankKeeper.SendCoinsFromAccountToModule(ctx, sdk.AccAddress(valAddr), types.DistributionModuleName, sdk.NewCoins(params.KeyRotationFee))
+	// Send the rotation fee to the community pool via the distribution keeper.
+	// Using FundCommunityPool updates the distribution module's FeePool invariant.
+	err = k.Keeper.distributionKeeper.FundCommunityPool(ctx, sdk.NewCoins(params.KeyRotationFee), sdk.AccAddress(valAddr))
 	if err != nil {
 		return nil, err
 	}

@@ -9,9 +9,77 @@ import (
 	"cosmossdk.io/errors"
 	storetypes "cosmossdk.io/store/types"
 
+	cryptotypes "github.com/cosmos/cosmos-sdk/crypto/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/x/slashing/types"
 )
+
+// getPreviousConsKey checks if the key was rotated, returns the old consKey to
+// get the missed blocks because missed blocks are still pointing to the old key.
+func (k Keeper) getPreviousConsKey(ctx context.Context, addr sdk.ConsAddress) (sdk.ConsAddress, error) {
+	oldPk, err := k.sk.ValidatorIdentifier(ctx, addr)
+	if err != nil {
+		return nil, err
+	}
+
+	if oldPk != nil {
+		return oldPk, nil
+	}
+
+	return addr, nil
+}
+
+// performConsensusPubKeyUpdate updates the cons address to its pub key relation.
+// It migrates signing info and missed blocks from the old pubkey to the new pubkey.
+func (k Keeper) performConsensusPubKeyUpdate(ctx context.Context, oldPubKey, newPubKey cryptotypes.PubKey) error {
+	// Connect new consensus address with PubKey.
+	if err := k.AddPubkey(ctx, newPubKey); err != nil {
+		return err
+	}
+
+	oldConsAddr := sdk.ConsAddress(oldPubKey.Address())
+	newConsAddr := sdk.ConsAddress(newPubKey.Address())
+
+	// Migrate ValidatorSigningInfo from oldPubKey to newPubKey.
+	signingInfo, err := k.GetValidatorSigningInfo(ctx, oldConsAddr)
+	if err != nil {
+		return types.ErrInvalidConsPubKey.Wrap("failed to get signing info for old public key")
+	}
+
+	if err := k.SetValidatorSigningInfo(ctx, newConsAddr, signingInfo); err != nil {
+		return err
+	}
+
+	if err := k.deleteValidatorSigningInfo(ctx, oldConsAddr); err != nil {
+		return err
+	}
+
+	// Migrate missed block bitmap from oldPubKey to newPubKey.
+	signedBlocksWindow, err := k.SignedBlocksWindow(ctx)
+	if err != nil {
+		return err
+	}
+
+	for i := int64(0); i < signedBlocksWindow; i++ {
+		missed, err := k.GetMissedBlockBitmapValue(ctx, oldConsAddr, i)
+		if err != nil {
+			return err
+		}
+		if missed {
+			if err := k.SetMissedBlockBitmapValue(ctx, newConsAddr, i, true); err != nil {
+				return err
+			}
+		}
+	}
+
+	return k.DeleteMissedBlockBitmap(ctx, oldConsAddr)
+}
+
+// deleteValidatorSigningInfo removes the validator signing info for a consensus address.
+func (k Keeper) deleteValidatorSigningInfo(ctx context.Context, consAddr sdk.ConsAddress) error {
+	store := k.storeService.OpenKVStore(ctx)
+	return store.Delete(types.ValidatorSigningInfoKey(consAddr))
+}
 
 // GetValidatorSigningInfo retruns the ValidatorSigningInfo for a specific validator
 // ConsAddress. If not found it returns ErrNoSigningInfoFound, but other errors
@@ -136,6 +204,13 @@ func (k Keeper) setMissedBlockBitmapChunk(ctx context.Context, addr sdk.ConsAddr
 // IndexOffset modulo SignedBlocksWindow. This index is used to fetch the chunk
 // in the bitmap and the relative bit in that chunk.
 func (k Keeper) GetMissedBlockBitmapValue(ctx context.Context, addr sdk.ConsAddress, index int64) (bool, error) {
+	// Check if the key was rotated; if so, use the returned consKey to get the missed blocks
+	// because missed blocks are still pointing to the old key.
+	addr, err := k.getPreviousConsKey(ctx, addr)
+	if err != nil {
+		return false, err
+	}
+
 	// get the chunk or "word" in the logical bitmap
 	chunkIndex := index / types.MissedBlockBitmapChunkSize
 
@@ -165,6 +240,13 @@ func (k Keeper) GetMissedBlockBitmapValue(ctx context.Context, addr sdk.ConsAddr
 // index is used to fetch the chunk in the bitmap and the relative bit in that
 // chunk.
 func (k Keeper) SetMissedBlockBitmapValue(ctx context.Context, addr sdk.ConsAddress, index int64, missed bool) error {
+	// Check if the key was rotated; if so, use the returned consKey to set the missed blocks
+	// because missed blocks are still pointing to the old key.
+	addr, err := k.getPreviousConsKey(ctx, addr)
+	if err != nil {
+		return err
+	}
+
 	// get the chunk or "word" in the logical bitmap
 	chunkIndex := index / types.MissedBlockBitmapChunkSize
 
@@ -199,6 +281,13 @@ func (k Keeper) SetMissedBlockBitmapValue(ctx context.Context, addr sdk.ConsAddr
 
 // DeleteMissedBlockBitmap removes a validator's missed block bitmap from state.
 func (k Keeper) DeleteMissedBlockBitmap(ctx context.Context, addr sdk.ConsAddress) error {
+	// Check if the key was rotated; if so, use the returned consKey to delete the missed blocks
+	// because missed blocks are still pointing to the old key.
+	addr, err := k.getPreviousConsKey(ctx, addr)
+	if err != nil {
+		return err
+	}
+
 	store := k.storeService.OpenKVStore(ctx)
 	prefix := types.ValidatorMissedBlockBitmapPrefixKey(addr)
 	iter, err := store.Iterator(prefix, storetypes.PrefixEndBytes(prefix))
@@ -223,6 +312,13 @@ func (k Keeper) DeleteMissedBlockBitmap(ctx context.Context, addr sdk.ConsAddres
 // Note: A callback will only be executed over all bitmap chunks that exist in
 // state.
 func (k Keeper) IterateMissedBlockBitmap(ctx context.Context, addr sdk.ConsAddress, cb func(index int64, missed bool) (stop bool)) error {
+	// Check if the key was rotated; if so, use the returned consKey to iterate the missed blocks
+	// because missed blocks are still pointing to the old key.
+	addr, err := k.getPreviousConsKey(ctx, addr)
+	if err != nil {
+		return err
+	}
+
 	store := k.storeService.OpenKVStore(ctx)
 	prefix := types.ValidatorMissedBlockBitmapPrefixKey(addr)
 	iter, err := store.Iterator(prefix, storetypes.PrefixEndBytes(prefix))

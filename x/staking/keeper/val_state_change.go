@@ -307,6 +307,12 @@ func (k Keeper) ApplyAndReturnValidatorSetUpdates(ctx context.Context) (updates 
 		}
 	}
 
+	// Prune the height-indexed rotation history for the current block now that it
+	// has been processed. The validator-indexed history (prefix 0x65) is retained.
+	if err := k.DeleteBlockConsPubKeyRotationHistory(ctx); err != nil {
+		return nil, err
+	}
+
 	// Update the pools based on the recent updates in the validator set:
 	// - The tokens from the non-bonded candidates that enter the new validator set need to be transferred
 	// to the Bonded pool.

@@ -35,12 +35,18 @@ type BankKeeper interface {
 
 	GetSupply(ctx context.Context, denom string) sdk.Coin
 
-	SendCoinsFromModuleToModule(ctx context.Context, senderPool, recipientPool string, amt sdk.Coins) error
 	SendCoinsFromAccountToModule(ctx context.Context, senderAddr sdk.AccAddress, recipientModule string, amt sdk.Coins) error
+	SendCoinsFromModuleToModule(ctx context.Context, senderPool, recipientPool string, amt sdk.Coins) error
 	UndelegateCoinsFromModuleToAccount(ctx context.Context, senderModule string, recipientAddr sdk.AccAddress, amt sdk.Coins) error
 	DelegateCoinsFromAccountToModule(ctx context.Context, senderAddr sdk.AccAddress, recipientModule string, amt sdk.Coins) error
 
 	BurnCoins(ctx context.Context, name string, amt sdk.Coins) error
+}
+
+// DistributionKeeper defines the expected interface needed to fund the community pool.
+// This avoids a cyclic dependency with x/distribution.
+type DistributionKeeper interface {
+	FundCommunityPool(ctx context.Context, amount sdk.Coins, sender sdk.AccAddress) error
 }
 
 // ValidatorSet expected properties for the set of all validators (noalias)

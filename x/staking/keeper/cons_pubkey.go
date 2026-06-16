@@ -53,8 +53,16 @@ func (k Keeper) setConsPubKeyRotationHistory(ctx context.Context, valAddr sdk.Va
 		return err
 	}
 
+	// Store in the validator-indexed history (permanent record).
 	key := types.GetValidatorConsPubKeyRotationHistoryKey(valAddr, height)
 	if err := store.Set(key, bz); err != nil {
+		return err
+	}
+
+	// Also store in the height-indexed history (pruned after processing) to allow
+	// efficient EndBlock iteration by current block height.
+	blockKey := types.GetBlockConsPubKeyRotationHistoryKey(height, valAddr)
+	if err := store.Set(blockKey, bz); err != nil {
 		return err
 	}
 
@@ -239,6 +247,30 @@ func (k Keeper) PurgeAllMaturedConsKeyRotatedKeys(ctx context.Context, maturedTi
 	return nil
 }
 
+// DeleteBlockConsPubKeyRotationHistory removes the height-indexed rotation history
+// entries for the current block. Called after EndBlock processing to keep the
+// height index pruned.
+func (k Keeper) DeleteBlockConsPubKeyRotationHistory(ctx context.Context) error {
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
+	store := k.storeService.OpenKVStore(ctx)
+	currentHeight := uint64(sdkCtx.BlockHeight())
+
+	prefix := types.GetBlockConsPubKeyRotationHistoryPrefix(currentHeight)
+	iterator, err := store.Iterator(prefix, storetypes.PrefixEndBytes(prefix))
+	if err != nil {
+		return err
+	}
+	defer iterator.Close()
+
+	for ; iterator.Valid(); iterator.Next() {
+		if err := store.Delete(iterator.Key()); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 // deleteConsKeyIndexKey deletes all rotation index entries for a validator
 // with timestamps up to and including ts.
 func (k Keeper) deleteConsKeyIndexKey(ctx context.Context, valAddr sdk.ValAddress, ts time.Time) error {
@@ -308,12 +340,14 @@ func (k Keeper) getAndRemoveAllMaturedRotatedKeys(ctx context.Context, matureTim
 }
 
 // GetBlockConsPubKeyRotationHistory returns all rotation history entries for the current block height.
+// Uses the height-indexed store prefix for efficient lookup.
 func (k Keeper) GetBlockConsPubKeyRotationHistory(ctx context.Context) ([]types.ConsPubKeyRotationHistory, error) {
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	store := k.storeService.OpenKVStore(ctx)
 	currentHeight := uint64(sdkCtx.BlockHeight())
 
-	iterator, err := store.Iterator(types.ValidatorConsPubKeyRotationHistoryKey, storetypes.PrefixEndBytes(types.ValidatorConsPubKeyRotationHistoryKey))
+	prefix := types.GetBlockConsPubKeyRotationHistoryPrefix(currentHeight)
+	iterator, err := store.Iterator(prefix, storetypes.PrefixEndBytes(prefix))
 	if err != nil {
 		return nil, err
 	}
@@ -325,9 +359,7 @@ func (k Keeper) GetBlockConsPubKeyRotationHistory(ctx context.Context) ([]types.
 		if err := k.cdc.Unmarshal(iterator.Value(), &h); err != nil {
 			return nil, err
 		}
-		if h.Height == currentHeight {
-			histories = append(histories, h)
-		}
+		histories = append(histories, h)
 	}
 
 	return histories, nil

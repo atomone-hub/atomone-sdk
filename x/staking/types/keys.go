@@ -443,6 +443,17 @@ func GetValidatorConsPubKeyRotationHistoryKey(valAddr []byte, height uint64) []b
 	return append(append(ValidatorConsPubKeyRotationHistoryKey, valAddr...), sdk.Uint64ToBigEndian(height)...)
 }
 
+// GetBlockConsPubKeyRotationHistoryKey returns the key for a height-indexed consensus pubkey rotation history entry.
+// This allows efficient iteration by block height in EndBlock without scanning all history.
+func GetBlockConsPubKeyRotationHistoryKey(height uint64, valAddr []byte) []byte {
+	return append(append(BlockConsPubKeyRotationHistoryKey, sdk.Uint64ToBigEndian(height)...), valAddr...)
+}
+
+// GetBlockConsPubKeyRotationHistoryPrefix returns the prefix for all rotation history entries at a given height.
+func GetBlockConsPubKeyRotationHistoryPrefix(height uint64) []byte {
+	return append(BlockConsPubKeyRotationHistoryKey, sdk.Uint64ToBigEndian(height)...)
+}
+
 // GetValidatorConsKeyRotationIndexKey returns the key for tracking rotation index by validator address and time
 func GetValidatorConsKeyRotationIndexKey(valAddr []byte, ts time.Time) []byte {
 	return append(append(ValidatorConsensusKeyRotationRecordIndexKey, valAddr...), sdk.FormatTimeBytes(ts)...)

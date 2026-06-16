@@ -28,6 +28,7 @@ type Keeper struct {
 	cdc                   codec.BinaryCodec
 	authKeeper            types.AccountKeeper
 	bankKeeper            types.BankKeeper
+	distributionKeeper    types.DistributionKeeper
 	hooks                 types.StakingHooks
 	authority             string
 	validatorAddressCodec addresscodec.Codec
@@ -98,6 +99,13 @@ func (k *Keeper) SetHooks(sh types.StakingHooks) {
 	}
 
 	k.hooks = sh
+}
+
+// SetDistributionKeeper sets the distribution keeper used to fund the community pool
+// during consensus key rotation. This is a setter to break the cyclic dependency
+// between x/staking and x/distribution.
+func (k *Keeper) SetDistributionKeeper(dk types.DistributionKeeper) {
+	k.distributionKeeper = dk
 }
 
 // GetLastTotalPower loads the last total validator power.
