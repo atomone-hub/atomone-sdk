@@ -10,6 +10,7 @@ import (
 	"github.com/cosmos/cosmos-sdk/baseapp"
 	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/codec"
+	"github.com/cosmos/cosmos-sdk/crypto/keys/ed25519"
 	"github.com/cosmos/cosmos-sdk/testutil"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	simtypes "github.com/cosmos/cosmos-sdk/types/simulation"
@@ -780,16 +781,6 @@ func SimulateMsgRotateConsPubKey(txGen client.TxConfig, ak types.AccountKeeper, 
 			return simtypes.NoOpMsg(types.ModuleName, msgType, "unable to find account"), nil, fmt.Errorf("validator %s not found", val.GetOperator())
 		}
 
-		cons, err := val.GetConsAddr()
-		if err != nil {
-			return simtypes.NoOpMsg(types.ModuleName, msgType, "cannot get conskey"), nil, err
-		}
-
-		acc, _ := simtypes.RandomAcc(r, accs)
-		if sdk.ConsAddress(cons).String() == sdk.ConsAddress(acc.ConsKey.PubKey().Address()).String() {
-			return simtypes.NoOpMsg(types.ModuleName, msgType, "new pubkey and current pubkey should be different"), nil, nil
-		}
-
 		account := ak.GetAccount(ctx, simAccount.Address)
 		if account == nil {
 			return simtypes.NoOpMsg(types.ModuleName, msgType, "unable to find account"), nil, nil
@@ -809,19 +800,15 @@ func SimulateMsgRotateConsPubKey(txGen client.TxConfig, ak types.AccountKeeper, 
 			return simtypes.NoOpMsg(types.ModuleName, msgType, "rotations limit reached within unbonding period"), nil, nil
 		}
 
-		_, err = k.GetValidatorByConsAddr(ctx, cons)
-		if err != nil {
-			return simtypes.NoOpMsg(types.ModuleName, msgType, "cannot get validator"), nil, err
-		}
+		// Generate a fresh random key pair deterministically from the RNG so that
+		// each rotation within a block uses a unique pubkey. Reusing a simulation
+		// account's ConsKey can cause duplicate pubkeys across rotations, which the
+		// keeper's checkConsKeyAlreadyUsed correctly rejects.
+		var seed [32]byte
+		_, _ = r.Read(seed[:])
+		newPk := ed25519.GenPrivKeyFromSecret(seed[:]).PubKey()
 
-		// check whether the new cons key associated with another validator
-		newConsAddr := sdk.ConsAddress(acc.ConsKey.PubKey().Address())
-		_, err = k.GetValidatorByConsAddr(ctx, newConsAddr)
-		if err == nil {
-			return simtypes.NoOpMsg(types.ModuleName, msgType, "cons key already used"), nil, nil
-		}
-
-		msg, err := types.NewMsgRotateConsPubKey(valAddr, acc.ConsKey.PubKey())
+		msg, err := types.NewMsgRotateConsPubKey(valAddr, newPk)
 		if err != nil {
 			return simtypes.NoOpMsg(types.ModuleName, msgType, "unable to build msg"), nil, err
 		}
