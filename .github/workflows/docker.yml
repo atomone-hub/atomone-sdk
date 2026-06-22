@@ -1,6 +1,6 @@
 name: Build & Push
 # Build & Push builds the simapp docker image on every push to main and
-# and pushes the image to https://ghcr.io/cosmos/simapp
+# and pushes the image to https://ghcr.io/atomone-hub/simapp
 on:
   pull_request:
     paths:
@@ -26,7 +26,7 @@ env:
   # Use docker.io for Docker Hub if empty
   REGISTRY: ghcr.io
   # github.repository as <account>/<repo>
-  IMAGE_NAME: cosmos/simapp
+  IMAGE_NAME: atomone-hub/simapp
 
 jobs:
   build:
