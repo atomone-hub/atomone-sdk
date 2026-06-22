@@ -40,16 +40,15 @@ Ref: https://keepachangelog.com/en/1.0.0/
 
 ### Features
 
-* (x/staking) [#99](https://github.com/atomone-hub/cosmos-sdk/issues/99) Add consensus key rotation (`MsgRotateConsPubKey`) to `x/staking` module.
-
 ### Improvements
 
 ### Bug Fixes
 
-## [v0.500.0-rc.1](https://github.com/atomone-hub/cosmos-sdk/releases/tag/v0.500.0-rc.1) - 2026-04-17
+## [v0.500.0](https://github.com/atomone-hub/cosmos-sdk/releases/tag/v0.500.0) - 2026-06-22
 
 ### Features
 
+* (x/staking) [#99](https://github.com/atomone-hub/cosmos-sdk/issues/99) Add consensus key rotation (`MsgRotateConsPubKey`) to `x/staking` module.
 * (x/gov) [#36](https://github.com/atomone-hub/cosmos-sdk/pull/36) Add Governors to `x/gov` module.
 * (x/gov) [#17](https://github.com/atomone-hub/cosmos-sdk/pull/17) Upstream `x/gov` modules changes from [AtomOne](https://github.com/atomone-hub/atomone/tree/966c800/x/gov)
 * (baseapp) [#1](https://github.com/atomone-hub/cosmos-sdk/pull/1) `SetProtocolVersion` has been renamed to `SetAppVersion`. It now updates the consensus params in baseapp's `ParamStore`.
