@@ -27,8 +27,6 @@ related Cosmos SDK work that the v0.50.x line does not include. See the
   [`x/distribution` README](x/distribution/README.md).
 - **Validator commission updates (`x/staking`).** Existing validator commissions are
   updated when the commission parameters change.
-- **Legacy global account number (`x/auth`).** Support for querying the legacy global
-  account number in historical state.
 - **Custom ABCI query router (`baseapp`).** Re-added for custom ABCI queries — the
   Cosmos SDK removed it.
 - **Mono `go.mod`.** Non-forked `cosmossdk.io/*` modules were removed from the
@@ -53,3 +51,7 @@ SDK code:
   See [ADR-016](docs/architecture/adr-016-validator-consensus-key-rotation.md).
 - **Grant-pruning limits (`x/authz`).** At most 200 expired grants pruned per block,
   plus a `PruneExpiredGrants` message. Backport of Cosmos SDK #18737.
+- **Legacy global account number (`x/auth`).** Falls back to the legacy global
+  account-number key when querying historical state from before the counter was
+  migrated to collections storage. Backport from the crypto.com (Cronos) Cosmos SDK
+  fork (#1353).
