@@ -248,7 +248,10 @@ func validateKeyRotationFee(i any) error {
 	if v.IsNil() {
 		return fmt.Errorf("cons pubkey rotation fee cannot be nil: %s", v)
 	}
-	if v.IsLTE(sdk.NewInt64Coin(sdk.DefaultBondDenom, 0)) {
+	if err := v.Validate(); err != nil {
+		return fmt.Errorf("invalid cons pubkey rotation fee: %w", err)
+	}
+	if !v.Amount.IsPositive() {
 		return fmt.Errorf("cons pubkey rotation fee cannot be negative or zero: %s", v)
 	}
 
