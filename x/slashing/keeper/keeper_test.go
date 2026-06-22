@@ -50,6 +50,8 @@ func (s *KeeperTestSuite) SetupTest() {
 	s.stakingKeeper = slashingtestutil.NewMockStakingKeeper(ctrl)
 	s.stakingKeeper.EXPECT().ValidatorAddressCodec().Return(address.NewBech32Codec("cosmosvaloper")).AnyTimes()
 	s.stakingKeeper.EXPECT().ConsensusAddressCodec().Return(address.NewBech32Codec("cosmosvalcons")).AnyTimes()
+	// By default, no key rotation: ValidatorIdentifier returns nil (no previous key).
+	s.stakingKeeper.EXPECT().ValidatorIdentifier(gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 
 	s.ctx = ctx
 	s.slashingKeeper = slashingkeeper.NewKeeper(

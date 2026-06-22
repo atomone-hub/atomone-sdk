@@ -16,6 +16,7 @@ import (
 	address "cosmossdk.io/core/address"
 	math "cosmossdk.io/math"
 	crypto "github.com/cometbft/cometbft/proto/tendermint/crypto"
+	cryptotypes "github.com/cosmos/cosmos-sdk/crypto/types"
 	types "github.com/cosmos/cosmos-sdk/types"
 	types0 "github.com/cosmos/cosmos-sdk/x/staking/types"
 	gomock "go.uber.org/mock/gomock"
@@ -273,6 +274,20 @@ func (m *MockBankKeeper) UndelegateCoinsFromModuleToAccount(ctx context.Context,
 func (mr *MockBankKeeperMockRecorder) UndelegateCoinsFromModuleToAccount(ctx, senderModule, recipientAddr, amt any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UndelegateCoinsFromModuleToAccount", reflect.TypeOf((*MockBankKeeper)(nil).UndelegateCoinsFromModuleToAccount), ctx, senderModule, recipientAddr, amt)
+}
+
+// SendCoinsFromAccountToModule mocks base method.
+func (m *MockBankKeeper) SendCoinsFromAccountToModule(ctx context.Context, senderAddr types.AccAddress, recipientModule string, amt types.Coins) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SendCoinsFromAccountToModule", ctx, senderAddr, recipientModule, amt)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SendCoinsFromAccountToModule indicates an expected call of SendCoinsFromAccountToModule.
+func (mr *MockBankKeeperMockRecorder) SendCoinsFromAccountToModule(ctx, senderAddr, recipientModule, amt any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SendCoinsFromAccountToModule", reflect.TypeOf((*MockBankKeeper)(nil).SendCoinsFromAccountToModule), ctx, senderAddr, recipientModule, amt)
 }
 
 // MockValidatorSet is a mock of ValidatorSet interface.
@@ -732,4 +747,18 @@ func (m *MockStakingHooks) BeforeValidatorSlashed(ctx context.Context, valAddr t
 func (mr *MockStakingHooksMockRecorder) BeforeValidatorSlashed(ctx, valAddr, fraction any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BeforeValidatorSlashed", reflect.TypeOf((*MockStakingHooks)(nil).BeforeValidatorSlashed), ctx, valAddr, fraction)
+}
+
+// AfterConsensusPubKeyUpdate mocks base method.
+func (m *MockStakingHooks) AfterConsensusPubKeyUpdate(ctx context.Context, oldPk, newPk cryptotypes.PubKey, fee types.Coin) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AfterConsensusPubKeyUpdate", ctx, oldPk, newPk, fee)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// AfterConsensusPubKeyUpdate indicates an expected call of AfterConsensusPubKeyUpdate.
+func (mr *MockStakingHooksMockRecorder) AfterConsensusPubKeyUpdate(ctx, oldPk, newPk, fee any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AfterConsensusPubKeyUpdate", reflect.TypeOf((*MockStakingHooks)(nil).AfterConsensusPubKeyUpdate), ctx, oldPk, newPk, fee)
 }

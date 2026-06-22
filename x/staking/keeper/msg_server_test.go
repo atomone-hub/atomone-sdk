@@ -1,6 +1,7 @@
 package keeper_test
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -11,8 +12,10 @@ import (
 	"github.com/cosmos/cosmos-sdk/codec/address"
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 	"github.com/cosmos/cosmos-sdk/crypto/keys/ed25519"
+	cryptotypes "github.com/cosmos/cosmos-sdk/crypto/types"
 	simtestutil "github.com/cosmos/cosmos-sdk/testutil/sims"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
 )
 
@@ -1216,4 +1219,150 @@ func (s *KeeperTestSuite) TestMsgUpdateParamsUpdatesExistingValidatorCommissions
 	require.True(math.LegacyMustNewDecFromStr("0.04").Equal(inRangeValidator.Commission.MaxRate))
 	require.True(math.LegacyMustNewDecFromStr("0.01").Equal(inRangeValidator.Commission.MaxChangeRate))
 	require.Equal(updatedAt, inRangeValidator.Commission.UpdateTime)
+}
+
+// mockDistributionKeeper is a minimal DistributionKeeper implementation for tests
+// where the real distribution keeper is not wired up. FundCommunityPool is a no-op.
+type mockDistributionKeeper struct {
+	err error
+}
+
+func (m *mockDistributionKeeper) FundCommunityPool(ctx context.Context, amount sdk.Coins, sender sdk.AccAddress) error {
+	return m.err
+}
+
+func (s *KeeperTestSuite) TestConsKeyRotn() {
+	stakingKeeper, ctx, accountKeeper, bankKeeper := s.stakingKeeper, s.ctx, s.accountKeeper, s.bankKeeper
+
+	stakingKeeper.SetDistributionKeeper(&mockDistributionKeeper{})
+
+	msgServer := s.msgServer
+	s.setValidators(6)
+	validators, err := stakingKeeper.GetAllValidators(ctx)
+	s.Require().NoError(err)
+	s.Require().Len(validators, 6)
+
+	existingPubkey, ok := validators[1].ConsensusPubkey.GetCachedValue().(cryptotypes.PubKey)
+	s.Require().True(ok)
+
+	validator0PubKey, ok := validators[0].ConsensusPubkey.GetCachedValue().(cryptotypes.PubKey)
+	s.Require().True(ok)
+
+	bondedPool := authtypes.NewEmptyModuleAccount(stakingtypes.BondedPoolName)
+	accountKeeper.EXPECT().GetModuleAccount(gomock.Any(), stakingtypes.BondedPoolName).Return(bondedPool).AnyTimes()
+	bankKeeper.EXPECT().GetBalance(gomock.Any(), bondedPool.GetAddress(), sdk.DefaultBondDenom).Return(sdk.NewInt64Coin(sdk.DefaultBondDenom, 1000000)).AnyTimes()
+
+	testCases := []struct {
+		name      string
+		malleate  func() sdk.Context
+		validator string
+		newPubKey cryptotypes.PubKey
+		isErr     bool
+		errMsg    string
+	}{
+		{
+			name: "1st iteration no error",
+			malleate: func() sdk.Context {
+				return ctx
+			},
+			isErr:     false,
+			newPubKey: PKs[499],
+			validator: validators[0].GetOperator(),
+		},
+		{
+			name:      "pubkey already associated with another validator",
+			malleate:  func() sdk.Context { return ctx },
+			isErr:     true,
+			errMsg:    "validator already exist for this pubkey",
+			newPubKey: existingPubkey,
+			validator: validators[0].GetOperator(),
+		},
+		{
+			name:      "non existing validator",
+			malleate:  func() sdk.Context { return ctx },
+			isErr:     true,
+			errMsg:    "validator does not exist",
+			newPubKey: PKs[498],
+			validator: sdk.ValAddress(PKs[490].Address()).String(),
+		},
+		{
+			name: "limit exceeding",
+			malleate: func() sdk.Context {
+				req, err := stakingtypes.NewMsgRotateConsPubKey(validators[2].GetOperator(), PKs[495])
+				s.Require().NoError(err)
+				_, err = msgServer.RotateConsPubKey(ctx, req)
+				s.Require().NoError(err)
+				return ctx
+			},
+			isErr:     true,
+			errMsg:    "exceeding maximum consensus pubkey rotations within unbonding period",
+			newPubKey: PKs[494],
+			validator: validators[2].GetOperator(),
+		},
+		{
+			name: "try using the old pubkey of another validator that rotated",
+			malleate: func() sdk.Context {
+				return ctx
+			},
+			isErr:     true,
+			errMsg:    "validator already exist for this pubkey",
+			newPubKey: validator0PubKey,
+			validator: validators[2].GetOperator(),
+		},
+	}
+
+	for _, tc := range testCases {
+		s.T().Run(tc.name, func(t *testing.T) {
+			newCtx := tc.malleate()
+
+			req, err := stakingtypes.NewMsgRotateConsPubKey(tc.validator, tc.newPubKey)
+			s.Require().NoError(err)
+
+			_, err = msgServer.RotateConsPubKey(newCtx, req)
+
+			if tc.isErr {
+				s.Require().Error(err)
+				if tc.errMsg != "" {
+					s.Require().Contains(err.Error(), tc.errMsg)
+				}
+			} else {
+				s.Require().NoError(err)
+				_, err = stakingKeeper.EndBlocker(newCtx)
+				s.Require().NoError(err)
+
+				addr, err := stakingKeeper.ValidatorAddressCodec().StringToBytes(tc.validator)
+				s.Require().NoError(err)
+
+				valInfo, err := stakingKeeper.GetValidator(newCtx, addr)
+				s.Require().NoError(err)
+				s.Require().Equal(valInfo.ConsensusPubkey, req.NewPubkey)
+			}
+		})
+	}
+}
+
+// TestConsKeyRotationInSameBlock tests the scenario where multiple validators try to
+// rotate to the same consensus key in the same block.
+func (s *KeeperTestSuite) TestConsKeyRotationInSameBlock() {
+	stakingKeeper, ctx := s.stakingKeeper, s.ctx
+
+	stakingKeeper.SetDistributionKeeper(&mockDistributionKeeper{})
+
+	msgServer := s.msgServer
+	s.setValidators(2)
+	validators, err := stakingKeeper.GetAllValidators(ctx)
+	s.Require().NoError(err)
+	s.Require().Len(validators, 2)
+
+	req, err := stakingtypes.NewMsgRotateConsPubKey(validators[0].GetOperator(), PKs[444])
+	s.Require().NoError(err)
+
+	_, err = msgServer.RotateConsPubKey(ctx, req)
+	s.Require().NoError(err)
+
+	req, err = stakingtypes.NewMsgRotateConsPubKey(validators[1].GetOperator(), PKs[444])
+	s.Require().NoError(err)
+
+	_, err = msgServer.RotateConsPubKey(ctx, req)
+	s.Require().ErrorContains(err, "public key was already used")
 }

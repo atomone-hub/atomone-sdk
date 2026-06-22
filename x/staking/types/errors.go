@@ -49,4 +49,9 @@ var (
 	ErrBadRedelegationSrc              = errors.Register(ModuleName, 44, "redelegation source validator not found")
 	ErrNoUnbondingType                 = errors.Register(ModuleName, 45, "unbonding type not found")
 	ErrCommissionOutOfBound            = errors.Register(ModuleName, 46, "commission rate is out of bounds")
+
+	// consensus key errors
+	ErrConsensusPubKeyAlreadyUsedForValidator = errors.Register(ModuleName, 47, "consensus pubkey is already used for a validator")
+	ErrExceedingMaxConsPubKeyRotations        = errors.Register(ModuleName, 48, "exceeding maximum consensus pubkey rotations within unbonding period")
+	ErrConsensusPubKeyLenInvalid              = errors.Register(ModuleName, 49, "consensus pubkey length is invalid")
 )

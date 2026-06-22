@@ -37,10 +37,15 @@ var (
 
 	// DefaultMaxCommissionRate is set to 100%
 	DefaultMaxCommissionRate = math.LegacyOneDec()
+
+	// DefaultKeyRotationFee is fees used to rotate the ConsPubkey or Operator key
+	DefaultKeyRotationFee = sdk.NewInt64Coin(sdk.DefaultBondDenom, 1000000)
 )
 
 // NewParams creates a new Params instance
-func NewParams(unbondingTime time.Duration, maxValidators, maxEntries, historicalEntries uint32, bondDenom string, minCommissionRate, maxCommissionRate math.LegacyDec) Params {
+func NewParams(unbondingTime time.Duration, maxValidators, maxEntries, historicalEntries uint32, bondDenom string, minCommissionRate, maxCommissionRate math.LegacyDec,
+	keyRotationFee sdk.Coin,
+) Params {
 	return Params{
 		UnbondingTime:     unbondingTime,
 		MaxValidators:     maxValidators,
@@ -49,6 +54,7 @@ func NewParams(unbondingTime time.Duration, maxValidators, maxEntries, historica
 		BondDenom:         bondDenom,
 		MinCommissionRate: minCommissionRate,
 		MaxCommissionRate: maxCommissionRate,
+		KeyRotationFee:    keyRotationFee,
 	}
 }
 
@@ -62,6 +68,7 @@ func DefaultParams() Params {
 		sdk.DefaultBondDenom,
 		DefaultMinCommissionRate,
 		DefaultMaxCommissionRate,
+		DefaultKeyRotationFee,
 	)
 }
 
@@ -111,10 +118,14 @@ func (p Params) Validate() error {
 		return err
 	}
 
+	if err := validateKeyRotationFee(p.KeyRotationFee); err != nil {
+		return err
+	}
+
 	return nil
 }
 
-func validateUnbondingTime(i interface{}) error {
+func validateUnbondingTime(i any) error {
 	v, ok := i.(time.Duration)
 	if !ok {
 		return fmt.Errorf("invalid parameter type: %T", i)
@@ -127,7 +138,7 @@ func validateUnbondingTime(i interface{}) error {
 	return nil
 }
 
-func validateMaxValidators(i interface{}) error {
+func validateMaxValidators(i any) error {
 	v, ok := i.(uint32)
 	if !ok {
 		return fmt.Errorf("invalid parameter type: %T", i)
@@ -140,7 +151,7 @@ func validateMaxValidators(i interface{}) error {
 	return nil
 }
 
-func validateMaxEntries(i interface{}) error {
+func validateMaxEntries(i any) error {
 	v, ok := i.(uint32)
 	if !ok {
 		return fmt.Errorf("invalid parameter type: %T", i)
@@ -153,7 +164,7 @@ func validateMaxEntries(i interface{}) error {
 	return nil
 }
 
-func validateHistoricalEntries(i interface{}) error {
+func validateHistoricalEntries(i any) error {
 	_, ok := i.(uint32)
 	if !ok {
 		return fmt.Errorf("invalid parameter type: %T", i)
@@ -162,7 +173,7 @@ func validateHistoricalEntries(i interface{}) error {
 	return nil
 }
 
-func validateBondDenom(i interface{}) error {
+func validateBondDenom(i any) error {
 	v, ok := i.(string)
 	if !ok {
 		return fmt.Errorf("invalid parameter type: %T", i)
@@ -179,7 +190,7 @@ func validateBondDenom(i interface{}) error {
 	return nil
 }
 
-func ValidatePowerReduction(i interface{}) error {
+func ValidatePowerReduction(i any) error {
 	v, ok := i.(math.Int)
 	if !ok {
 		return fmt.Errorf("invalid parameter type: %T", i)
@@ -192,7 +203,7 @@ func ValidatePowerReduction(i interface{}) error {
 	return nil
 }
 
-func validateCommissionRate(i interface{}) error {
+func validateCommissionRate(i any) error {
 	v, ok := i.(math.LegacyDec)
 	if !ok {
 		return fmt.Errorf("invalid parameter type: %T", i)
@@ -223,6 +234,22 @@ func validateCommissionRates(minimum, maximum math.LegacyDec) error {
 	if minimum.GT(maximum) {
 		return fmt.Errorf("minimum commission (%s) rate cannot be greater than the maximum (%s)",
 			minimum.String(), maximum.String())
+	}
+
+	return nil
+}
+
+func validateKeyRotationFee(i any) error {
+	v, ok := i.(sdk.Coin)
+	if !ok {
+		return fmt.Errorf("invalid parameter type: %T", i)
+	}
+
+	if v.IsNil() {
+		return fmt.Errorf("cons pubkey rotation fee cannot be nil: %s", v)
+	}
+	if v.IsLTE(sdk.NewInt64Coin(sdk.DefaultBondDenom, 0)) {
+		return fmt.Errorf("cons pubkey rotation fee cannot be negative or zero: %s", v)
 	}
 
 	return nil

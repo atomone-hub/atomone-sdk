@@ -8,6 +8,7 @@ import (
 	"cosmossdk.io/core/address"
 	"cosmossdk.io/math"
 
+	cryptotypes "github.com/cosmos/cosmos-sdk/crypto/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 )
 
@@ -34,11 +35,18 @@ type BankKeeper interface {
 
 	GetSupply(ctx context.Context, denom string) sdk.Coin
 
+	SendCoinsFromAccountToModule(ctx context.Context, senderAddr sdk.AccAddress, recipientModule string, amt sdk.Coins) error
 	SendCoinsFromModuleToModule(ctx context.Context, senderPool, recipientPool string, amt sdk.Coins) error
 	UndelegateCoinsFromModuleToAccount(ctx context.Context, senderModule string, recipientAddr sdk.AccAddress, amt sdk.Coins) error
 	DelegateCoinsFromAccountToModule(ctx context.Context, senderAddr sdk.AccAddress, recipientModule string, amt sdk.Coins) error
 
 	BurnCoins(ctx context.Context, name string, amt sdk.Coins) error
+}
+
+// DistributionKeeper defines the expected interface needed to fund the community pool.
+// This avoids a cyclic dependency with x/distribution.
+type DistributionKeeper interface {
+	FundCommunityPool(ctx context.Context, amount sdk.Coins, sender sdk.AccAddress) error
 }
 
 // ValidatorSet expected properties for the set of all validators (noalias)
@@ -109,6 +117,7 @@ type StakingHooks interface {
 	AfterDelegationModified(ctx context.Context, delAddr sdk.AccAddress, valAddr sdk.ValAddress) error
 	BeforeValidatorSlashed(ctx context.Context, valAddr sdk.ValAddress, fraction math.LegacyDec) error
 	AfterUnbondingInitiated(ctx context.Context, id uint64) error
+	AfterConsensusPubKeyUpdate(ctx context.Context, oldPk, newPk cryptotypes.PubKey, fee sdk.Coin) error // Must be called when a validator's consensus key is rotated
 }
 
 // StakingHooksWrapper is a wrapper for modules to inject StakingHooks using depinject.

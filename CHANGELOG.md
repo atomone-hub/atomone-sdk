@@ -40,6 +40,8 @@ Ref: https://keepachangelog.com/en/1.0.0/
 
 ### Features
 
+* (x/staking) [#99](https://github.com/atomone-hub/cosmos-sdk/issues/99) Add consensus key rotation (`MsgRotateConsPubKey`) to `x/staking` module.
+
 ### Improvements
 
 ### Bug Fixes
