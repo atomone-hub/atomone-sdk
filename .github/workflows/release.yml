@@ -27,6 +27,6 @@ jobs:
       - name: Create release
         uses: goreleaser/goreleaser-action@v3
         with:
-          args: release --clean --release-notes ./RELEASE_NOTES.md
+          args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
