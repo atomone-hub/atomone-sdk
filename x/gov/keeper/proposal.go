@@ -35,6 +35,16 @@ func (keeper Keeper) SubmitProposal(ctx context.Context, messages []sdk.Msg, met
 		return v1.Proposal{}, err
 	}
 
+	// Reject proposals containing a self-executing authz.MsgExec (grantee == granter ==
+	// authority). Checked before the per-message routing loop below.
+	selfExec, err := v1.ContainsSelfExecAsAuthority(keeper.cdc, messages, keeper.GetGovernanceAccount(ctx).GetAddress())
+	if err != nil {
+		return v1.Proposal{}, err
+	}
+	if selfExec {
+		return v1.Proposal{}, errorsmod.Wrap(types.ErrInvalidProposalMsg, "governance proposals may not contain a self-executing authz.MsgExec (grantee == granter == authority)")
+	}
+
 	// Will hold a comma-separated string of all Msg type URLs.
 	msgsStr := ""
 

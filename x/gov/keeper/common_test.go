@@ -22,6 +22,7 @@ import (
 	moduletestutil "github.com/cosmos/cosmos-sdk/types/module/testutil"
 	sdktx "github.com/cosmos/cosmos-sdk/types/tx"
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
+	"github.com/cosmos/cosmos-sdk/x/authz"
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
 	disttypes "github.com/cosmos/cosmos-sdk/x/distribution/types"
 	"github.com/cosmos/cosmos-sdk/x/gov/keeper"
@@ -149,6 +150,7 @@ func setupGovKeeperWithStoreKey(t *testing.T, expectations ...func(sdk.Context, 
 	v1.RegisterInterfaces(encCfg.InterfaceRegistry)
 	v1beta1.RegisterInterfaces(encCfg.InterfaceRegistry)
 	banktypes.RegisterInterfaces(encCfg.InterfaceRegistry)
+	authz.RegisterInterfaces(encCfg.InterfaceRegistry)
 
 	// Create MsgServiceRouter, but don't populate it before creating the gov
 	// keeper.
@@ -201,6 +203,7 @@ func setupGovKeeperWithStoreKey(t *testing.T, expectations ...func(sdk.Context, 
 	msr.SetInterfaceRegistry(encCfg.InterfaceRegistry)
 	v1.RegisterMsgServer(msr, keeper.NewMsgServerImpl(govKeeper))
 	banktypes.RegisterMsgServer(msr, nil) // Nil is fine here as long as we never execute the proposal's Msgs.
+	authz.RegisterMsgServer(msr, nil)     // Nil is fine here as long as we never execute the proposal's Msgs.
 
 	return govKeeper, key, acctKeeper, bankKeeper, stakingKeeper, distributionKeeper, encCfg, ctx
 }
