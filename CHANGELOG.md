@@ -42,6 +42,8 @@ Ref: https://keepachangelog.com/en/1.0.0/
 
 ### Improvements
 
+* (x/gov) [#106](https://github.com/atomone-hub/cosmos-sdk/pull/106) Reject proposals with self-executing authz.MsgExec messages (granter == grantee == authority).
+
 ### Bug Fixes
 
 ## [v0.500.0](https://github.com/atomone-hub/cosmos-sdk/releases/tag/v0.500.0) - 2026-06-22
