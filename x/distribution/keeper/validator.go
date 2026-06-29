@@ -53,12 +53,14 @@ func (k Keeper) IncrementValidatorPeriod(ctx context.Context, val stakingtypes.V
 		return 0, err
 	}
 
-	// calculate current ratio
+	// Compute the per-share reward ratio for this period. We use shares (not
+	// tokens) so the ratio is invariant to changes in the per-share exchange
+	// rate from auto-staking and slashing, which both modify validator.Tokens
+	// without touching DelegatorShares.
 	var current sdk.DecCoins
-	if val.GetTokens().IsZero() {
-
-		// can't calculate ratio for zero-token validators
-		// ergo we instead add to the community pool
+	if val.GetDelegatorShares().IsZero() {
+		// can't calculate ratio for validators with no shares;
+		// divert any pending rewards to the community pool.
 		feePool, err := k.FeePool.Get(ctx)
 		if err != nil {
 			return 0, err
@@ -84,7 +86,7 @@ func (k Keeper) IncrementValidatorPeriod(ctx context.Context, val stakingtypes.V
 		current = sdk.DecCoins{}
 	} else {
 		// note: necessary to truncate so we don't allow withdrawing more rewards than owed
-		current = rewards.Rewards.QuoDecTruncate(math.LegacyNewDecFromInt(val.GetTokens()))
+		current = rewards.Rewards.QuoDecTruncate(val.GetDelegatorShares())
 	}
 
 	// fetch historical rewards for last period
@@ -147,6 +149,17 @@ func (k Keeper) decrementReferenceCount(ctx context.Context, valAddr sdk.ValAddr
 	return k.SetValidatorHistoricalRewards(ctx, valAddr, period, historical)
 }
 
+// updateValidatorSlashFraction records a slash event for the given validator,
+// solely for client visibility via the ValidatorSlashes GRPC endpoint. Under
+// shares-based F1 the reward calculation does not consume slash events.
+//
+// We still bump the validator period so each slash event lands at a unique
+// (height, period) storage key — this avoids overwrites when multiple slashes
+// hit the same validator in the same block (rare, but possible for cross-
+// validator redelegation infractions). We do NOT increment the historical
+// reference count: that was needed in the old tokens-based scheme to keep the
+// historical record alive for slash-event lookups that scaled stake by
+// (1 - fraction); shares-based F1 has no such lookup.
 func (k Keeper) updateValidatorSlashFraction(ctx context.Context, valAddr sdk.ValAddress, fraction math.LegacyDec) error {
 	if fraction.GT(math.LegacyOneDec()) || fraction.IsNegative() {
 		panic(fmt.Sprintf("fraction must be >=0 and <=1, current fraction: %v", fraction))
@@ -158,17 +171,11 @@ func (k Keeper) updateValidatorSlashFraction(ctx context.Context, valAddr sdk.Va
 		return err
 	}
 
-	// increment current period
 	newPeriod, err := k.IncrementValidatorPeriod(ctx, val)
 	if err != nil {
 		return err
 	}
 
-	// increment reference count on period we need to track
-	k.incrementReferenceCount(ctx, valAddr, newPeriod)
-
 	slashEvent := types.NewValidatorSlashEvent(newPeriod, fraction)
-	height := uint64(sdkCtx.BlockHeight())
-
-	return k.SetValidatorSlashEvent(ctx, valAddr, height, newPeriod, slashEvent)
+	return k.SetValidatorSlashEvent(ctx, valAddr, uint64(sdkCtx.BlockHeight()), newPeriod, slashEvent)
 }

@@ -140,15 +140,43 @@ func (k Keeper) WithdrawDelegationRewards(ctx context.Context, delAddr sdk.AccAd
 	return rewards, nil
 }
 
-// WithdrawValidatorCommission withdraw validator commission
+// WithdrawValidatorCommission withdraws validator commission. The bond denom
+// portion of the accumulated commission is auto-staked into the operator's
+// self-delegation via AutoStakeValidatorCommission (compounding into stake
+// rather than landing as spendable balance); the remaining non-bond
+// denominations are paid out to the operator's withdraw address as before.
+//
+// The returned coins are the non-bond portion that was paid out to the
+// operator's withdraw address. The auto-staked bond denom amount is not
+// included in the return value because it never reaches the operator's
+// withdraw address — it goes straight to the bonded pool through the
+// staking Delegate path, leaving an explicit auto_stake_commission event
+// for client tracking.
 func (k Keeper) WithdrawValidatorCommission(ctx context.Context, valAddr sdk.ValAddress) (sdk.Coins, error) {
-	// fetch validator accumulated commission
+	// Auto-stake the bond denom portion first. This also subtracts the
+	// bond portion (integer + dust) from accumulatedCommission and
+	// outstanding rewards, leaving only the non-bond portion to be
+	// handled by the standard payout path below.
+	autoStaked, err := k.AutoStakeValidatorCommission(ctx, valAddr)
+	if err != nil {
+		return nil, err
+	}
+
+	// fetch validator accumulated commission (non-bond residue after auto-stake)
 	accumCommission, err := k.GetValidatorAccumulatedCommission(ctx, valAddr)
 	if err != nil {
 		return nil, err
 	}
 
 	if accumCommission.Commission.IsZero() {
+		// Nothing in the non-bond bucket. If we successfully auto-staked
+		// any bond denom, the call is still a success — the operator did
+		// claim commission, just into their self-delegation rather than
+		// their withdraw address. Otherwise there was genuinely nothing
+		// to withdraw.
+		if autoStaked.Amount.IsPositive() {
+			return sdk.Coins{}, nil
+		}
 		return nil, types.ErrNoValidatorCommission
 	}
 

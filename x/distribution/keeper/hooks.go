@@ -192,8 +192,19 @@ func (h Hooks) AfterConsensusPubKeyUpdate(_ context.Context, _, _ cryptotypes.Pu
 
 // ======================== Epoch Hooks ========================
 
-// AfterEpochEnd is called after an epoch ends.
-// We use this to adjust the Nakamoto bonus coefficient when the configured epoch ends.
+// AfterEpochEnd is called after an epoch ends. We use this hook for two
+// independent responsibilities, gated on different epoch identifiers in
+// the module's params:
+//
+//   - When the Nakamoto bonus's PeriodEpochIdentifier matches, we adjust
+//     the Nakamoto bonus coefficient.
+//   - When the params' CommissionAutoStakeEpochIdentifier matches, we
+//     iterate the bonded validator set and route any bond denom
+//     accumulated commission through the staking Delegate path,
+//     compounding it into each operator's self-delegation. Non-bond
+//     commission is untouched (operators still control its timing via
+//     MsgWithdrawValidatorCommission). An empty identifier disables the
+//     epoch trigger.
 func (h Hooks) AfterEpochEnd(ctx context.Context, epochIdentifier string, _ int64) error {
 	c := sdk.UnwrapSDKContext(ctx)
 	nb, err := h.k.GetNakamotoBonus(c)
@@ -203,7 +214,18 @@ func (h Hooks) AfterEpochEnd(ctx context.Context, epochIdentifier string, _ int6
 
 	// Only adjust if this is the epoch we're configured to track
 	if nb.PeriodEpochIdentifier == epochIdentifier {
-		return h.k.AdjustNakamotoBonusCoefficient(c)
+		if err := h.k.AdjustNakamotoBonusCoefficient(c); err != nil {
+			return err
+		}
+	}
+
+	params, err := h.k.Params.Get(c)
+	if err != nil {
+		return err
+	}
+	if params.CommissionAutoStakeEpochIdentifier != "" &&
+		params.CommissionAutoStakeEpochIdentifier == epochIdentifier {
+		return h.k.AutoStakeBondedValidatorsCommission(c)
 	}
 
 	return nil

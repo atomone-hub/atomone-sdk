@@ -58,6 +58,15 @@ message Params {
   bool withdraw_addr_enabled = 4;
 
   NakamotoBonus nakamoto_bonus = 5 [(gogoproto.nullable) = false, (amino.dont_omitempty) = true];
+
+  // commission_auto_stake_epoch_identifier is the epoch identifier (e.g.
+  // "week", "day") at which the bond denom portion of every bonded
+  // validator's accumulated commission is automatically routed through
+  // the staking Delegate path, compounding into the operator's
+  // self-delegation. An empty string disables the epoch trigger;
+  // operators can still trigger the same auto-stake by submitting
+  // MsgWithdrawValidatorCommission.
+  string commission_auto_stake_epoch_identifier = 6;
 }
 
 // ValidatorHistoricalRewards represents historical rewards for a validator.
@@ -166,11 +175,17 @@ message CommunityPoolSpendProposal {
 }
 
 // DelegatorStartingInfo represents the starting info for a delegator reward
-// period. It tracks the previous validator period, the delegation's amount of
-// staking token, and the creation height (to check later on if any slashes have
-// occurred). NOTE: Even though validators are slashed to whole staking tokens,
-// the delegators within the validator may be left with less than a full token,
-// thus sdk.Dec is used.
+// period. It tracks the previous validator period, the delegation's share
+// count snapshot, and the creation height (to check later on if any slashes
+// have occurred).
+//
+// NOTE: The `stake` field is named for historical reasons — under the
+// original tokens-based F1 reward distribution it held the delegator's
+// tokens-from-shares value. Under the revised shares-based F1 it
+// stores the delegator's share count at init time, which is invariant to
+// slashing and auto-staking (both modify validator.Tokens but not
+// validator.DelegatorShares). The field is unchanged and remains a
+// math.LegacyDec because shares are stored as Dec in the staking module.
 message DelegatorStartingInfo {
   uint64 previous_period = 1;
   string stake           = 2 [

@@ -14,6 +14,7 @@ import (
 	reflect "reflect"
 
 	address "cosmossdk.io/core/address"
+	math "cosmossdk.io/math"
 	types "github.com/cosmos/cosmos-sdk/types"
 	types0 "github.com/cosmos/cosmos-sdk/x/staking/types"
 	gomock "go.uber.org/mock/gomock"
@@ -243,6 +244,35 @@ func (m *MockStakingKeeper) EXPECT() *MockStakingKeeperMockRecorder {
 	return m.recorder
 }
 
+// AddValidatorTokens mocks base method.
+func (m *MockStakingKeeper) AddValidatorTokens(ctx context.Context, valAddr types.ValAddress, tokensToAdd math.Int) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AddValidatorTokens", ctx, valAddr, tokensToAdd)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// AddValidatorTokens indicates an expected call of AddValidatorTokens.
+func (mr *MockStakingKeeperMockRecorder) AddValidatorTokens(ctx, valAddr, tokensToAdd any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddValidatorTokens", reflect.TypeOf((*MockStakingKeeper)(nil).AddValidatorTokens), ctx, valAddr, tokensToAdd)
+}
+
+// BondDenom mocks base method.
+func (m *MockStakingKeeper) BondDenom(ctx context.Context) (string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "BondDenom", ctx)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// BondDenom indicates an expected call of BondDenom.
+func (mr *MockStakingKeeperMockRecorder) BondDenom(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BondDenom", reflect.TypeOf((*MockStakingKeeper)(nil).BondDenom), ctx)
+}
+
 // ConsensusAddressCodec mocks base method.
 func (m *MockStakingKeeper) ConsensusAddressCodec() address.Codec {
 	m.ctrl.T.Helper()
@@ -255,6 +285,21 @@ func (m *MockStakingKeeper) ConsensusAddressCodec() address.Codec {
 func (mr *MockStakingKeeperMockRecorder) ConsensusAddressCodec() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ConsensusAddressCodec", reflect.TypeOf((*MockStakingKeeper)(nil).ConsensusAddressCodec))
+}
+
+// Delegate mocks base method.
+func (m *MockStakingKeeper) Delegate(ctx context.Context, delAddr types.AccAddress, bondAmt math.Int, tokenSrc types0.BondStatus, validator types0.Validator, subtractAccount bool) (math.LegacyDec, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Delegate", ctx, delAddr, bondAmt, tokenSrc, validator, subtractAccount)
+	ret0, _ := ret[0].(math.LegacyDec)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Delegate indicates an expected call of Delegate.
+func (mr *MockStakingKeeperMockRecorder) Delegate(ctx, delAddr, bondAmt, tokenSrc, validator, subtractAccount any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Delegate", reflect.TypeOf((*MockStakingKeeper)(nil).Delegate), ctx, delAddr, bondAmt, tokenSrc, validator, subtractAccount)
 }
 
 // Delegation mocks base method.
@@ -330,6 +375,21 @@ func (m *MockStakingKeeper) GetBondedValidatorsByPower(ctx context.Context) ([]t
 func (mr *MockStakingKeeperMockRecorder) GetBondedValidatorsByPower(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetBondedValidatorsByPower", reflect.TypeOf((*MockStakingKeeper)(nil).GetBondedValidatorsByPower), ctx)
+}
+
+// GetValidator mocks base method.
+func (m *MockStakingKeeper) GetValidator(ctx context.Context, valAddr types.ValAddress) (types0.Validator, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetValidator", ctx, valAddr)
+	ret0, _ := ret[0].(types0.Validator)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetValidator indicates an expected call of GetValidator.
+func (mr *MockStakingKeeperMockRecorder) GetValidator(ctx, valAddr any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetValidator", reflect.TypeOf((*MockStakingKeeper)(nil).GetValidator), ctx, valAddr)
 }
 
 // IterateDelegations mocks base method.

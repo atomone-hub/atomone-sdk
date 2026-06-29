@@ -21,6 +21,7 @@ import (
 	"github.com/cosmos/cosmos-sdk/x/distribution/keeper"
 	distrtestutil "github.com/cosmos/cosmos-sdk/x/distribution/testutil"
 	"github.com/cosmos/cosmos-sdk/x/distribution/types"
+	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
 )
 
 func TestSetWithdrawAddr(t *testing.T) {
@@ -102,28 +103,47 @@ func TestWithdrawValidatorCommission(t *testing.T) {
 		authtypes.NewModuleAddress("gov").String(),
 	)
 
+	require.NoError(t, distrKeeper.FeePool.Set(ctx, types.InitialFeePool()))
+
 	// set outstanding rewards
 	require.NoError(t, distrKeeper.SetValidatorOutstandingRewards(ctx, valAddr, types.ValidatorOutstandingRewards{Rewards: valCommission}))
 
 	// set commission
 	require.NoError(t, distrKeeper.SetValidatorAccumulatedCommission(ctx, valAddr, types.ValidatorAccumulatedCommission{Commission: valCommission}))
 
-	// withdraw commission
-	coins := sdk.NewCoins(sdk.NewCoin("mytoken", math.NewInt(1)), sdk.NewCoin("stake", math.NewInt(1)))
-	// if SendCoinsFromModuleToAccount is called, we know that the withdraw was successful
-	bankKeeper.EXPECT().SendCoinsFromModuleToAccount(gomock.Any(), "distribution", addrs[0], coins).Return(nil)
+	// AutoStakeValidatorCommission routes the bond denom portion (1.5 stake)
+	// of accumulated commission through the staking Delegate path: integer
+	// (1 stake) is sent from distribution to the operator's account, then
+	// re-delegated; sub-integer dust (0.5 stake) is swept to the community
+	// pool. The non-bond portion (1.25 mytoken) follows the standard
+	// withdraw path: integer (1 mytoken) paid to the operator's withdraw
+	// address, dust (0.25 mytoken) left in accumulatedCommission.
+	val := stakingtypes.Validator{}
+	stakingKeeper.EXPECT().BondDenom(gomock.Any()).Return("stake", nil).AnyTimes()
+	stakingKeeper.EXPECT().GetValidator(gomock.Any(), valAddr).Return(val, nil)
+	bankKeeper.EXPECT().SendCoinsFromModuleToAccount(gomock.Any(), "distribution", sdk.AccAddress(valAddr), sdk.NewCoins(sdk.NewCoin("stake", math.NewInt(1)))).Return(nil)
+	stakingKeeper.EXPECT().Delegate(gomock.Any(), sdk.AccAddress(valAddr), math.NewInt(1), stakingtypes.Unbonded, val, true).Return(math.LegacyOneDec(), nil)
+	// non-bond commission payout
+	bankKeeper.EXPECT().SendCoinsFromModuleToAccount(gomock.Any(), "distribution", addrs[0], sdk.NewCoins(sdk.NewCoin("mytoken", math.NewInt(1)))).Return(nil)
 
 	_, err := distrKeeper.WithdrawValidatorCommission(ctx, valAddr)
 	require.NoError(t, err)
 
-	// check remainder
+	// check remainder: bond denom portion is fully gone (integer auto-staked,
+	// dust to community pool); non-bond residue stays.
 	remainderValCommission, err := distrKeeper.GetValidatorAccumulatedCommission(ctx, valAddr)
 	require.NoError(t, err)
 	remainder := remainderValCommission.Commission
 	require.Equal(t, sdk.DecCoins{
 		sdk.NewDecCoinFromDec("mytoken", math.LegacyNewDec(1).Quo(math.LegacyNewDec(4))),
-		sdk.NewDecCoinFromDec("stake", math.LegacyNewDec(1).Quo(math.LegacyNewDec(2))),
 	}, remainder)
+
+	// community pool received the 0.5 stake dust from auto-stake.
+	feePool, err := distrKeeper.FeePool.Get(ctx)
+	require.NoError(t, err)
+	require.Equal(t, sdk.DecCoins{
+		sdk.NewDecCoinFromDec("stake", math.LegacyNewDecWithPrec(5, 1)),
+	}, feePool.CommunityPool)
 }
 
 func TestGetTotalRewards(t *testing.T) {

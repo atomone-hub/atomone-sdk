@@ -476,14 +476,35 @@ func TestMsgWithdrawValidatorCommission(t *testing.T) {
 	t.Parallel()
 	f := initFixture(t)
 
+	require.NoError(t, f.distrKeeper.FeePool.Set(f.sdkCtx, distrtypes.InitialFeePool()))
+
 	valCommission := sdk.DecCoins{
 		sdk.NewDecCoinFromDec("mytoken", math.LegacyNewDec(5).Quo(math.LegacyNewDec(4))),
 		sdk.NewDecCoinFromDec("stake", math.LegacyNewDec(3).Quo(math.LegacyNewDec(2))),
 	}
 
+	// Auto-stake-on-withdraw routes the bond denom portion of commission
+	// through the standard staking Delegate path, which requires the
+	// validator to actually exist in the staking module. Set up a valid
+	// validator with a self-delegation so the auto-stake can mint shares
+	// against it.
+	stakingMsgServer := stakingkeeper.NewMsgServerImpl(f.stakingKeeper)
+	selfDel := f.stakingKeeper.TokensFromConsensusPower(f.sdkCtx, int64(100))
+	require.NoError(t, f.bankKeeper.MintCoins(f.sdkCtx, distrtypes.ModuleName, sdk.NewCoins(sdk.NewCoin(sdk.DefaultBondDenom, selfDel))))
+	require.NoError(t, f.bankKeeper.SendCoinsFromModuleToAccount(f.sdkCtx, distrtypes.ModuleName, sdk.AccAddress(f.valAddr), sdk.NewCoins(sdk.NewCoin(sdk.DefaultBondDenom, selfDel))))
+	createValMsg, err := stakingtypes.NewMsgCreateValidator(
+		f.valAddr.String(), valConsPk0, sdk.NewCoin(sdk.DefaultBondDenom, selfDel),
+		stakingtypes.Description{Moniker: "v"},
+		stakingtypes.NewCommissionRates(math.LegacyZeroDec(), math.LegacyOneDec(), math.LegacyOneDec()),
+		math.OneInt(),
+	)
+	require.NoError(t, err)
+	_, err = stakingMsgServer.CreateValidator(f.sdkCtx, createValMsg)
+	require.NoError(t, err)
+
 	// set module account coins
 	initTokens := f.stakingKeeper.TokensFromConsensusPower(f.sdkCtx, int64(1000))
-	err := f.bankKeeper.MintCoins(f.sdkCtx, distrtypes.ModuleName, sdk.NewCoins(sdk.NewCoin(sdk.DefaultBondDenom, initTokens)))
+	err = f.bankKeeper.MintCoins(f.sdkCtx, distrtypes.ModuleName, sdk.NewCoins(sdk.NewCoin(sdk.DefaultBondDenom, initTokens)))
 	require.NoError(t, err)
 	// send funds to val addr
 	err = f.bankKeeper.SendCoinsFromModuleToAccount(f.sdkCtx, distrtypes.ModuleName, sdk.AccAddress(f.valAddr), sdk.NewCoins(sdk.NewCoin(sdk.DefaultBondDenom, initTokens)))
@@ -556,19 +577,28 @@ func TestMsgWithdrawValidatorCommission(t *testing.T) {
 				err = f.cdc.Unmarshal(res.Value, &result)
 				assert.NilError(t, err)
 
-				// check balance increase
+				// Balance: bond denom commission (1 stake integer) was
+				// auto-staked into the operator's self-delegation rather
+				// than paid out, so the operator's stake balance is
+				// unchanged from before the withdrawal. The non-bond
+				// portion (1 mytoken) lands as before.
 				balance = f.bankKeeper.GetAllBalances(f.sdkCtx, sdk.AccAddress(f.valAddr))
 				assert.DeepEqual(t, sdk.NewCoins(
 					sdk.NewCoin("mytoken", math.NewInt(1)),
-					sdk.NewCoin("stake", expTokens.AddRaw(1)),
+					sdk.NewCoin("stake", expTokens),
 				), balance)
 
-				// check remainder
+				// Remainder: bond denom is fully consumed by auto-stake
+				// (integer to bonded pool, dust to community pool). Only
+				// non-bond residue stays in accumulatedCommission.
 				remainder, _ := f.distrKeeper.GetValidatorAccumulatedCommission(f.sdkCtx, f.valAddr)
 				assert.DeepEqual(t, sdk.DecCoins{
 					sdk.NewDecCoinFromDec("mytoken", math.LegacyNewDec(1).Quo(math.LegacyNewDec(4))),
-					sdk.NewDecCoinFromDec("stake", math.LegacyNewDec(1).Quo(math.LegacyNewDec(2))),
 				}, remainder.Commission)
+
+				// Community pool received the 0.5 stake bond denom dust.
+				feePool, _ := f.distrKeeper.FeePool.Get(f.sdkCtx)
+				assert.Assert(t, feePool.CommunityPool.AmountOf(sdk.DefaultBondDenom).Equal(math.LegacyNewDecWithPrec(5, 1)))
 			}
 		})
 
@@ -772,6 +802,7 @@ func TestMsgUpdateParams(t *testing.T) {
 						MinimumCoefficient:    distrtypes.DefaultNakamotoBonusMinimumCoefficient,
 						MaximumCoefficient:    distrtypes.DefaultNakamotoBonusMaximumCoefficient,
 					},
+					CommissionAutoStakeEpochIdentifier: distrtypes.DefaultCommissionAutoStakeEpochIdentifier,
 				},
 			},
 			expErr: false,
@@ -961,10 +992,11 @@ func TestMsgDepositValidatorRewardsPool(t *testing.T) {
 	require.NoError(t, err)
 
 	testCases := []struct {
-		name      string
-		msg       *distrtypes.MsgDepositValidatorRewardsPool
-		expErr    bool
-		expErrMsg string
+		name           string
+		msg            *distrtypes.MsgDepositValidatorRewardsPool
+		expErr         bool
+		expErrMsg      string
+		expOutstanding sdk.DecCoins
 	}{
 		{
 			name: "happy path (staking token)",
@@ -973,6 +1005,9 @@ func TestMsgDepositValidatorRewardsPool(t *testing.T) {
 				ValidatorAddress: valAddr1.String(),
 				Amount:           sdk.NewCoins(sdk.NewCoin(bondDenom, math.NewInt(100))),
 			},
+			// Bond denom: delegator's 50% (50 stake) is auto-staked to bonded pool;
+			// only commission (50 stake) remains in outstanding rewards.
+			expOutstanding: sdk.DecCoins{{Denom: bondDenom, Amount: math.LegacyNewDec(50)}},
 		},
 		{
 			name: "happy path (non-staking token)",
@@ -981,6 +1016,8 @@ func TestMsgDepositValidatorRewardsPool(t *testing.T) {
 				ValidatorAddress: valAddr1.String(),
 				Amount:           amt,
 			},
+			// Non-bond denom: full amount (commission + delegator share) flows through F1.
+			expOutstanding: sdk.DecCoins{{Denom: "foo", Amount: math.LegacyNewDec(500)}},
 		},
 		{
 			name: "invalid validator",
@@ -1018,11 +1055,10 @@ func TestMsgDepositValidatorRewardsPool(t *testing.T) {
 
 				// check validator outstanding rewards
 				outstandingRewards, _ := f.distrKeeper.GetValidatorOutstandingRewards(f.sdkCtx, val)
-				for _, c := range tc.msg.Amount {
+				for _, c := range tc.expOutstanding {
 					x := outstandingRewards.Rewards.AmountOf(c.Denom)
-					assert.DeepEqual(t, x, math.LegacyNewDecFromInt(c.Amount))
+					assert.DeepEqual(t, x, c.Amount)
 				}
-
 			}
 		})
 	}
