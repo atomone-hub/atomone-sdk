@@ -1,12 +1,20 @@
 package v1
 
 import (
+	errorsmod "cosmossdk.io/errors"
+
+	"github.com/cosmos/cosmos-sdk/codec"
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	sdktx "github.com/cosmos/cosmos-sdk/types/tx"
+	"github.com/cosmos/cosmos-sdk/x/authz"
 	"github.com/cosmos/cosmos-sdk/x/gov/types"
 	"github.com/cosmos/cosmos-sdk/x/gov/types/v1beta1"
 )
+
+// maxAuthzNestingDepth bounds how deep authz.MsgExec wrappers are inspected
+// in a proposal message. Nesting depth beyond this limit is rejected altogether.
+const maxAuthzNestingDepth = 8
 
 var (
 	_, _, _, _, _, _, _, _, _, _, _, _, _ sdk.Msg                            = &MsgSubmitProposal{}, &MsgDeposit{}, &MsgVote{}, &MsgVoteWeighted{}, &MsgExecLegacyContent{}, &MsgUpdateParams{}, &MsgProposeConstitutionAmendment{}, &MsgProposeLaw{}, &MsgCreateGovernor{}, &MsgEditGovernor{}, &MsgDelegateGovernor{}, &MsgUndelegateGovernor{}, &MsgUpdateGovernorStatus{}
@@ -200,4 +208,72 @@ func (msg MsgUpdateGovernorStatus) ValidateBasic() error {
 		return types.ErrInvalidGovernorStatus.Wrap(msg.GetStatus().String())
 	}
 	return nil
+}
+
+// ContainsSelfExecAsAuthority reports whether any of msgs is, or nests through
+// authz.MsgExec wrappers whose grantee is the authority, a leaf message signed by the
+// authority itself — i.e. an authz.MsgExec with grantee == granter == authority. Such
+// a message executes its inner content without an authz grant and is able to bypass
+// proposals inspections (e.g.proposal-kind classification), and has no legitimate use
+// in a governance proposal.
+func ContainsSelfExecAsAuthority(cdc codec.Codec, msgs []sdk.Msg, authority sdk.AccAddress) (bool, error) {
+	for _, msg := range msgs {
+		exec, ok := msg.(*authz.MsgExec)
+		if !ok {
+			continue
+		}
+		reaches, err := execReachesAuthority(cdc, exec, authority, 1)
+		if err != nil {
+			return false, err
+		}
+		if reaches {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// execReachesAuthority reports whether exec is a self-executing chain reaching a leaf
+// signed by authority. The chain is self-executing only while every authz.MsgExec layer
+// has authority as its grantee (authz dispatches inner messages without a grant only when
+// granter == grantee). maxAuthzNestingDepth bounds the nesting inspected.
+func execReachesAuthority(cdc codec.Codec, exec *authz.MsgExec, authority sdk.AccAddress, depth int) (bool, error) {
+	if depth > maxAuthzNestingDepth {
+		return false, errorsmod.Wrap(types.ErrInvalidProposalMsg, "authz nesting depth exceeded")
+	}
+	grantee, err := sdk.AccAddressFromBech32(exec.Grantee)
+	if err != nil {
+		return false, err
+	}
+	if !grantee.Equals(authority) {
+		// A grant would be required at this layer; the chain cannot self-execute.
+		return false, nil
+	}
+	for _, anyInner := range exec.Msgs {
+		var inner sdk.Msg
+		if err := cdc.UnpackAny(anyInner, &inner); err != nil {
+			// An inner message the codec cannot unpack can never execute as the
+			// authority (authz must unpack it to dispatch it), so it cannot be a
+			// self-exec leaf — skipping it is safe.
+			continue
+		}
+		if innerExec, ok := inner.(*authz.MsgExec); ok {
+			reaches, err := execReachesAuthority(cdc, innerExec, authority, depth+1)
+			if err != nil {
+				return false, err
+			}
+			if reaches {
+				return true, nil
+			}
+			continue
+		}
+		signers, _, err := cdc.GetMsgV1Signers(inner)
+		if err != nil {
+			return false, err
+		}
+		if len(signers) == 1 && authority.Equals(sdk.AccAddress(signers[0])) {
+			return true, nil
+		}
+	}
+	return false, nil
 }
