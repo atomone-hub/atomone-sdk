@@ -69,6 +69,15 @@ for further details.
 
 ## Effect on Staking
 
+> **AtomOne SDK note**: this section describes the legacy rationale
+> for historical purposes. The AtomOne SDK now does in fact auto-stake
+> bond denom delegator rewards every block (see [Auto-Staking of Bond Denom
+> Rewards](#auto-staking-of-bond-denom-rewards)). The "computationally
+> expensive" objection below is addressed by the shares-based F1 model:
+> auto-staking changes `validator.Tokens` without touching
+> `validator.DelegatorShares`, and the F1 ratio is computed per-share, so
+> no per-delegator per-block calculation is needed.
+
 Charging commission on Atom provisions while also allowing for Atom-provisions
 to be auto-bonded (distributed directly to the validators bonded stake) is
 problematic within BPoS. Fundamentally, these two mechanisms are mutually
@@ -82,6 +91,124 @@ In conclusion, we can only have Atom commission and unbonded atoms
 provisions or bonded atom provisions with no Atom commission, and we elect to
 implement the former. Stakeholders wishing to rebond their provisions may elect
 to set up a script to periodically withdraw and rebond rewards.
+
+## Auto-Staking of Bond Denom Rewards
+
+The AtomOne SDK extends the F1 mechanism with automatic compounding of the
+bond denomination for delegator rewards. Every block, in
+`AllocateTokensToValidator`:
+
+* The bond denom portion of each validator's _delegator_ reward share is sent
+  directly from the distribution module to the bonded pool. The integer amount
+  is added to `validator.Tokens` via `AddValidatorTokens`, **without issuing
+  new shares**. The per-share exchange rate (`Tokens / DelegatorShares`) rises,
+  so every existing delegator's stake — measured in tokens — compounds
+  automatically. The decimal remainder (truncation dust) is routed to the
+  community pool.
+* Non-bond denominations (e.g. transaction fees in tokens other than the
+  bond denom) keep flowing through the F1 mechanism and remain
+  withdrawable via `MsgWithdrawDelegatorReward`.
+* Validator commission (all denoms) stays claimable through the F1
+  path.
+
+Auto-staking is invisible to the F1 calculation because F1 ratios are stored
+per-share, not per-token (see the next section). A bump in `validator.Tokens`
+therefore does not require any per-delegator state update — auto-staking is
+O(validators) per block, with zero per-delegator operations.
+
+## Shares-Based F1 vs Tokens-Based F1
+
+The legacy reward computation uses a tokens-based F1 ratio:
+`rewards / validator.GetTokens()`. The AtomOne SDK uses a shares-based ratio:
+`rewards / validator.GetDelegatorShares()`. The two schemes are equivalent for
+chains where the per-share exchange rate is constant (no slashes, no
+auto-staking), but the shares-based formulation is invariant to _any_
+mechanism that changes `validator.Tokens` while leaving
+`validator.DelegatorShares` fixed:
+
+* **Slashing** burns `validator.Tokens` but does not modify
+  `validator.DelegatorShares`. Under tokens-based F1 this required an
+  explicit slash-event mechanism to scale stake at calculation time. Under
+  shares-based F1 the slashed validator simply earns less in subsequent
+  allocations (lower voting power -> smaller per-share ratio addition), and
+  the proportional payout to delegators stays correct without any explicit
+  correction.
+* **Auto-staking** raises `validator.Tokens` similarly without touching
+  shares. Under tokens-based F1 this would silently leak a portion of every
+  non-bond reward into an unclaimable F1 residual. Under shares-based F1 it
+  is invisible to the ratio.
+
+`DelegatorStartingInfo.Stake` keeps its proto field name for backwards
+compatibility with stored state but now holds the delegator's share count,
+not a tokens-from-shares value. The reference counting and slash event
+storage described below are unchanged in shape; the slash events are still
+recorded for the `ValidatorSlashes` gRPC endpoint, but reward computation
+no longer reads them.
+
+## Migration to Shares-Based F1
+
+A chain that has been running on legacy tokens-based F1 cannot just swap in
+the new shares-based F1: the values stored in
+`ValidatorHistoricalRewards.CumulativeRewardRatio` and
+`DelegatorStartingInfo.Stake` mean different things under the two schemes,
+and on a chain that has had slashes the legacy values, read under the new
+interpretation, would over-pay delegators on slashed validators.
+
+The v4->v5 in-place store migration (`x/distribution/migrations/v5`)
+handles the transition in four phases:
+
+1. **Snapshot.** Every active `(validator, delegator)` pair with F1
+   starting info, plus every validator's accumulated commission, is
+   collected up front and grouped by validator. The commission snapshot
+   is what the wipe step preserves.
+2. **Drain pending rewards under legacy semantics.** For each validator
+   the migration runs the legacy tokens-based `IncrementValidatorPeriod`
+   to close the current period at pre-upgrade exchange rates, then for
+   each delegation under that validator computes the pending rewards
+   using the slash-event-iterating algorithm of legacy F1
+   (`migrations/v5/legacy.go`). Bond denom delegator rewards are
+   auto-staked into the bonded pool (the integer portion goes via
+   `AddValidatorTokens` — same path runtime auto-staking uses every
+   block); non-bond-denom rewards are paid to the delegator's withdraw
+   address; decimal dust is swept to the community pool. Validator
+   commission is preserved.
+3. **Wipe F1 stores while preserving commission.** All
+   `ValidatorHistoricalRewards` and `ValidatorCurrentRewards` records
+   are deleted; the post-delegator-payout dust in
+   `ValidatorOutstandingRewards` (the difference between outstanding
+   and the preserved commission) is swept to the community pool;
+   outstanding is then reset to exactly the preserved commission, so
+   the "module balance == sum of outstanding claims" invariant
+   continues to hold. `ValidatorAccumulatedCommission` is left
+   untouched on disk. `historical[0]` and `currentRewards` are
+   re-seeded with a fresh empty record (mirroring
+   `keeper.initializeValidator`).
+4. **Re-initialise delegations.** Every snapshotted delegation gets a
+   fresh `DelegatorStartingInfo` with `PreviousPeriod = 0` and `Stake`
+   holding `delegation.GetShares()`.
+
+`ValidatorSlashEvent` records are intentionally left in storage so the
+`ValidatorSlashes` gRPC endpoint keeps returning historical slash data
+across the upgrade boundary. They are no longer consumed by the reward
+calculation in either pre- or post-upgrade form.
+
+Client-visible behaviour at the upgrade boundary:
+
+* Every active delegator receives a one-time forced reward withdrawal
+  at upgrade height — the exact amount that
+  `WithdrawDelegationRewards` would have produced on the previous
+  binary, with the bond denom portion auto-staked instead of paid out
+  (`validator.Tokens` rises and the per-share exchange rate reflects
+  the compounded bond denom rewards). Wallets and explorers should
+  expect a balance bump for active delegators in the upgrade block on
+  non-bond denominations only.
+* Commission balances are unchanged across the upgrade. Operators that
+  had accumulated commission pre-upgrade still have exactly the same
+  amount available to withdraw post-upgrade via
+  `MsgWithdrawValidatorCommission`.
+* From the upgrade height onward, `DelegationRewards` and
+  `DelegationTotalRewards` queries accrue from the clean post-migration
+  F1 state under shares-based semantics.
 
 ## Contents
 
@@ -148,10 +275,21 @@ This epoch-based approach provides more flexible time-based adjustment periods a
 
 In F1 fee distribution, the rewards a delegator receives are calculated when their delegation is withdrawn. This calculation must read the terms of the summation of rewards divided by the share of tokens from the period which they ended when they delegated, and the final period that was created for the withdrawal.
 
+> **AtomOne SDK note**: under the shares-based F1 model the summation
+> denominator is `validator.DelegatorShares` rather than tokens. The
+> reference-count machinery itself is unchanged.
+
 Additionally, as slashes change the amount of tokens a delegation will have (but we calculate this lazily,
 only when a delegator un-delegates), we must calculate rewards in separate periods before / after any slashes
 which occurred in between when a delegator delegated and when they withdrew their rewards. Thus slashes, like
 delegations, reference the period which was ended by the slash event.
+
+> **AtomOne SDK note**: shares-based F1 makes slash-period scaling
+> unnecessary at calculation time. Slashes still bump the validator
+> period and `ValidatorSlashEvent` records are still written (so the
+> `ValidatorSlashes` gRPC endpoint keeps working), but the reward
+> calculation no longer iterates them. The reference-count increment on
+> the slash boundary period is therefore also dropped.
 
 All stored historical rewards records for periods which are no longer referenced by any delegations
 or any slashes can thus be safely removed, as they will never be read (future delegations and future
@@ -349,6 +487,14 @@ Let `R(X)` be the total accumulated rewards up to period `X` divided by the toke
 Then the rewards for all the delegators for staking between periods `A` and `B` are `(R(B) - R(A)) * total stake`.
 However, these calculated rewards don't account for slashing.
 
+> **AtomOne SDK note**: under shares-based F1, `R(X)` is "rewards up to
+> period X divided by `validator.DelegatorShares` at that time" and
+> `delegator_stake` is the delegator's snapshotted share count. Because
+> `DelegatorShares` is invariant to slashing and auto-staking, the basic
+> formula `R(B) - R(A)) * delegator_shares` is exact on its own — the
+> slash-event iteration shown below is no longer needed and is not
+> performed.
+
 Taking the slashes into account requires iteration.
 Let `F(X)` be the fraction a validator is to be slashed for a slashing event that happened at period `X`.
 If the validator was slashed at periods `P1, ..., PN`, where `A < P1`, `PN < B`, the distribution module calculates the individual delegator's rewards, `T(A, B)`, as follows:
@@ -366,6 +512,14 @@ rewards = rewards + (R(B) - R(PN)) * stake
 
 The historical rewards are calculated retroactively by playing back all the slashes and then attenuating the delegator's stake at each step.
 The final calculated stake is equivalent to the actual staked coins in the delegation with a margin of error due to rounding errors.
+
+> **AtomOne SDK note**: the slash-iteration algorithm above describes
+> legacy tokens-based F1 behaviour. The AtomOne SDK reward calculation
+> reduces to `(R(B) - R(A)) * delegator_shares` and never reads the
+> slash event store; the algorithm is preserved here for context and
+> because the v4->v5 migration uses it once at upgrade height to settle
+> pre-upgrade pending rewards under the legacy semantics (see
+> [Migration to Shares-Based F1](#migration-to-shares-based-f1)).
 
 Response:
 
@@ -417,22 +571,23 @@ Each time a delegation is changed, the rewards are withdrawn and the delegation 
 Initializing a delegation increments the validator period and keeps track of the starting period of the delegation.
 
 ```go
-// initialize starting info for a new delegation
+// initialize starting info for a new delegation (AtomOne SDK, shares-based F1).
 func (k Keeper) initializeDelegation(ctx context.Context, val sdk.ValAddress, del sdk.AccAddress) {
     // period has already been incremented - we want to store the period ended by this delegation action
     previousPeriod := k.GetValidatorCurrentRewards(ctx, val).Period - 1
 
-	// increment reference count for the period we're going to track
-	k.incrementReferenceCount(ctx, val, previousPeriod)
+    // increment reference count for the period we're going to track
+    k.incrementReferenceCount(ctx, val, previousPeriod)
 
-	validator := k.stakingKeeper.Validator(ctx, val)
-	delegation := k.stakingKeeper.Delegation(ctx, del, val)
+    delegation := k.stakingKeeper.Delegation(ctx, del, val)
 
-	// calculate delegation stake in tokens
-	// we don't store directly, so multiply delegation shares * (tokens per share)
-	// note: necessary to truncate so we don't allow withdrawing more rewards than owed
-	stake := validator.TokensFromSharesTruncated(delegation.GetShares())
-	k.SetDelegatorStartingInfo(ctx, val, del, types.NewDelegatorStartingInfo(previousPeriod, stake, uint64(ctx.BlockHeight())))
+    // Snapshot the delegator's share count. F1 ratios are stored as
+    // rewards-per-share so the share count is the right unit to multiply
+    // against later. The DelegatorStartingInfo proto field is named `Stake`
+    // for backwards compatibility with legacy chain state but, in the
+    // AtomOne SDK, stores the delegator's share count.
+    shares := delegation.GetShares()
+    k.SetDelegatorStartingInfo(ctx, val, del, types.NewDelegatorStartingInfo(previousPeriod, shares, uint64(ctx.BlockHeight())))
 }
 ```
 
@@ -520,11 +675,17 @@ Currently not used by the distribution module. Returns without taking any action
 ### Validator is slashed
 
 * triggered-by: `staking.Slash`
-* The current validator period reference count is incremented.
-  The reference count is incremented because the slash event has created a reference to it.
-* The validator period is incremented.
-* The slash event is stored for later use.
-  The slash event will be referenced when calculating delegator rewards.
+* The validator period is incremented (so the slash event lands at a unique
+  `(height, period)` storage key, even when several slashes hit the same
+  validator in the same block).
+* The slash event is stored.
+
+> **AtomOne SDK note**: under shares-based F1 the slash event is recorded
+> only for the `ValidatorSlashes` gRPC endpoint (historical / audit
+> data). The reward calculation no longer reads slash events, so the
+> historical-period reference count is _not_ bumped by the slash hook
+> (it was bumped under legacy tokens-based F1 to keep the historical
+> record alive for slash-period lookups, which no longer happen).
 
 ## Events
 

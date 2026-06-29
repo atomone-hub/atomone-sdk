@@ -6,6 +6,7 @@ import (
 	v2 "github.com/cosmos/cosmos-sdk/x/distribution/migrations/v2"
 	v3 "github.com/cosmos/cosmos-sdk/x/distribution/migrations/v3"
 	v4 "github.com/cosmos/cosmos-sdk/x/distribution/migrations/v4"
+	v5 "github.com/cosmos/cosmos-sdk/x/distribution/migrations/v5"
 )
 
 // Migrator is a struct for handling in-place store migrations.
@@ -35,4 +36,13 @@ func (m Migrator) Migrate2to3(ctx sdk.Context) error {
 // Migrate3to4 migrates x/distribution state from consensus version 3 to 4.
 func (m Migrator) Migrate3to4(ctx sdk.Context) error {
 	return v4.MigrateStore(ctx, m.keeper.storeService, m.keeper.cdc, m.keeper.NakamotoBonusCoefficient)
+}
+
+// Migrate4to5 migrates x/distribution state from consensus version 4 to 5.
+func (m Migrator) Migrate4to5(ctx sdk.Context) error {
+	return v5.MigrateStore(
+		ctx, m.keeper,
+		m.keeper.storeService, m.keeper.cdc,
+		m.keeper.FeePool, m.keeper.bankKeeper, m.keeper.stakingKeeper,
+	)
 }

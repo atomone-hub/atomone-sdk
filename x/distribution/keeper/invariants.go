@@ -123,7 +123,16 @@ func CanWithdrawInvariant(k Keeper) sdk.Invariant {
 	}
 }
 
-// ReferenceCountInvariant checks that the number of historical rewards records is correct
+// ReferenceCountInvariant checks that the number of historical rewards records is correct.
+//
+// Under shares-based F1 the only references to historical-rewards records
+// are (a) one per validator for its initial period 0 (set by
+// initializeValidator) and (b) one per delegation for its starting period
+// (incremented by initializeDelegation, decremented by withdraw / re-init).
+// Slash events no longer hold a reference: the slash hook still records
+// the event for the ValidatorSlashes gRPC endpoint but does NOT bump the
+// historical record's ref count, because the post-upgrade reward
+// calculation never reads slash events.
 func ReferenceCountInvariant(k Keeper) sdk.Invariant {
 	return func(ctx sdk.Context) (string, bool) {
 		valCount := uint64(0)
@@ -140,23 +149,16 @@ func ReferenceCountInvariant(k Keeper) sdk.Invariant {
 			panic(err)
 		}
 
-		slashCount := uint64(0)
-		k.IterateValidatorSlashEvents(ctx,
-			func(_ sdk.ValAddress, _ uint64, _ types.ValidatorSlashEvent) (stop bool) {
-				slashCount++
-				return false
-			})
-
-		// one record per validator (last tracked period), one record per
-		// delegation (previous period), one record per slash (previous period)
-		expected := valCount + uint64(len(dels)) + slashCount
+		// one record per validator (period 0) plus one record per delegation
+		// (its starting period).
+		expected := valCount + uint64(len(dels))
 		count := k.GetValidatorHistoricalReferenceCount(ctx)
 		broken := count != expected
 
 		return sdk.FormatInvariant(types.ModuleName, "reference count",
-			fmt.Sprintf("expected historical reference count: %d = %v validators + %v delegations + %v slashes\n"+
+			fmt.Sprintf("expected historical reference count: %d = %v validators + %v delegations\n"+
 				"total validator historical reference count: %d\n",
-				expected, valCount, len(dels), slashCount, count)), broken
+				expected, valCount, len(dels), count)), broken
 	}
 }
 

@@ -14,6 +14,7 @@ import (
 	reflect "reflect"
 
 	address "cosmossdk.io/core/address"
+	math "cosmossdk.io/math"
 	types "github.com/cosmos/cosmos-sdk/types"
 	types0 "github.com/cosmos/cosmos-sdk/x/staking/types"
 	gomock "go.uber.org/mock/gomock"
@@ -241,6 +242,35 @@ func NewMockStakingKeeper(ctrl *gomock.Controller) *MockStakingKeeper {
 // EXPECT returns an object that allows the caller to indicate expected use.
 func (m *MockStakingKeeper) EXPECT() *MockStakingKeeperMockRecorder {
 	return m.recorder
+}
+
+// AddValidatorTokens mocks base method.
+func (m *MockStakingKeeper) AddValidatorTokens(ctx context.Context, valAddr types.ValAddress, tokensToAdd math.Int) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AddValidatorTokens", ctx, valAddr, tokensToAdd)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// AddValidatorTokens indicates an expected call of AddValidatorTokens.
+func (mr *MockStakingKeeperMockRecorder) AddValidatorTokens(ctx, valAddr, tokensToAdd any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddValidatorTokens", reflect.TypeOf((*MockStakingKeeper)(nil).AddValidatorTokens), ctx, valAddr, tokensToAdd)
+}
+
+// BondDenom mocks base method.
+func (m *MockStakingKeeper) BondDenom(ctx context.Context) (string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "BondDenom", ctx)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// BondDenom indicates an expected call of BondDenom.
+func (mr *MockStakingKeeperMockRecorder) BondDenom(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BondDenom", reflect.TypeOf((*MockStakingKeeper)(nil).BondDenom), ctx)
 }
 
 // ConsensusAddressCodec mocks base method.

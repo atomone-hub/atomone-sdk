@@ -197,6 +197,34 @@ func (k Keeper) RemoveValidatorTokens(ctx context.Context,
 	return validator, nil
 }
 
+// AddValidatorTokens increases a bonded validator's token balance without
+// issuing new delegator shares and updates the validators power index key.
+// This raises the per-share exchange rate for all existing delegators proportionally.
+// The caller is responsible for transferring the equivalent coins to the bonded
+// pool module account before calling this function, to satisfy ModuleAccountInvariant.
+func (k Keeper) AddValidatorTokens(ctx context.Context, valAddr sdk.ValAddress, tokensToAdd math.Int) error {
+	if !tokensToAdd.IsPositive() {
+		return nil
+	}
+
+	validator, err := k.GetValidator(ctx, valAddr)
+	if err != nil {
+		return err
+	}
+
+	if err := k.DeleteValidatorByPowerIndex(ctx, validator); err != nil {
+		return err
+	}
+
+	validator.Tokens = validator.Tokens.Add(tokensToAdd)
+
+	if err := k.SetValidator(ctx, validator); err != nil {
+		return err
+	}
+
+	return k.SetValidatorByPowerIndex(ctx, validator)
+}
+
 // UpdateValidatorCommission attempts to update a validator's commission rate.
 // An error is returned if the new commission rate is invalid.
 func (k Keeper) UpdateValidatorCommission(ctx context.Context,
