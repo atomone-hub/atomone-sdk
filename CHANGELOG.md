@@ -44,6 +44,8 @@ Ref: https://keepachangelog.com/en/1.0.0/
 
 ### Bug Fixes
 
+* (x/gov) [#116](https://github.com/atomone-hub/cosmos-sdk/pull/116) Prevent an integer divide by zero in the `EndBlocker` quorum check when `(VotingPeriod - QuorumTimeout) / QuorumCheckCount` truncates to zero, and reject such parameters in `Params.ValidateBasic`.
+
 ## [v0.500.2](https://github.com/atomone-hub/cosmos-sdk/releases/tag/v0.500.2) - 2026-07-27
 
 ### Improvements
