@@ -7,8 +7,6 @@ import (
 
 // InitGenesis initializes the dynamicfee module's state from a given genesis state.
 func (k *Keeper) InitGenesis(ctx sdk.Context, gs types.GenesisState) {
-	// ValidateBasic enforces every genesis invariant, including that
-	// params.Window matches the length of state.Window.
 	if err := gs.ValidateBasic(); err != nil {
 		panic(err)
 	}
