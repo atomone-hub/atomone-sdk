@@ -722,6 +722,35 @@ func TestState_ValidateBasic(t *testing.T) {
 			},
 			expectErr: true,
 		},
+		{
+			name: "invalid non-nil empty window",
+			state: types.State{
+				Window:       []uint64{},
+				BaseGasPrice: math.LegacyMustNewDecFromStr("1"),
+				LearningRate: math.LegacyMustNewDecFromStr("0.5"),
+			},
+			expectErr: true,
+		},
+		{
+			name: "invalid index out of range",
+			state: types.State{
+				Window:       make([]uint64, 8),
+				BaseGasPrice: math.LegacyMustNewDecFromStr("1"),
+				LearningRate: math.LegacyMustNewDecFromStr("0.5"),
+				Index:        8,
+			},
+			expectErr: true,
+		},
+		{
+			name: "valid max index",
+			state: types.State{
+				Window:       make([]uint64, 8),
+				BaseGasPrice: math.LegacyMustNewDecFromStr("1"),
+				LearningRate: math.LegacyMustNewDecFromStr("0.5"),
+				Index:        7,
+			},
+			expectErr: false,
+		},
 	}
 
 	for _, tc := range testCases {
