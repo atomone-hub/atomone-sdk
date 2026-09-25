@@ -61,6 +61,19 @@ func (k Keeper) signingInfoAddr(ctx context.Context, consAddr sdk.ConsAddress) s
 	return consAddr
 }
 
+// isCurrentValidatorConsAddr reports whether consAddr is the current consensus
+// address of a validator, as opposed to an address the validator rotated away
+// from, which resolves to the validator through the old-to-new mapping.
+func (k Keeper) isCurrentValidatorConsAddr(ctx context.Context, consAddr sdk.ConsAddress) bool {
+	validator, err := k.sk.ValidatorByConsAddr(ctx, consAddr)
+	if err != nil || validator == nil {
+		return false
+	}
+
+	current, err := validator.GetConsAddr()
+	return err == nil && len(current) > 0 && sdk.ConsAddress(current).Equals(consAddr)
+}
+
 // performConsensusPubKeyUpdate updates the cons address to its pub key relation.
 // It migrates signing info from the old pubkey to the new pubkey.
 //

@@ -139,3 +139,72 @@ func TestConsensusKeyRotation_PreservesMissedBlocks(t *testing.T) {
 	assert.NilError(t, err)
 	assert.Equal(t, 2, len(stillMissed))
 }
+
+// TestConsensusKeyRotation_GenesisExport_SingleMissedBlocksCopy verifies that
+// genesis export emits the shared missed-block bitmap exactly once: under the
+// validator's current consensus address, not again under the retained
+// old-address record. Both records resolve to the one physical bitmap keyed
+// under the initial consensus address, so exporting it per record would
+// double-count downtime in tooling that sums missed blocks across entries.
+func TestConsensusKeyRotation_GenesisExport_SingleMissedBlocksCopy(t *testing.T) {
+	t.Parallel()
+	f := initFixture(t)
+	ctx := f.ctx
+
+	oldPk := ed25519.GenPrivKey().PubKey()
+	oldConsAddr := sdk.ConsAddress(oldPk.Address())
+	valAddr := sdk.ValAddress(f.addrDels[2])
+
+	assert.NilError(t, f.slashingKeeper.AddPubkey(ctx, oldPk))
+	signingInfo := slashingtypes.NewValidatorSigningInfo(
+		oldConsAddr,
+		ctx.BlockHeight(),
+		int64(0),
+		time.Unix(0, 0),
+		false,
+		int64(0),
+	)
+	assert.NilError(t, f.slashingKeeper.SetValidatorSigningInfo(ctx, oldConsAddr, signingInfo))
+
+	tstaking := stakingtestutil.NewHelper(t, ctx, f.stakingKeeper)
+	tstaking.CreateValidatorWithValPower(valAddr, oldPk, 100, true)
+	_, err := f.stakingKeeper.EndBlocker(ctx)
+	assert.NilError(t, err)
+
+	// One missed block, keyed under the old consensus address.
+	assert.NilError(t, f.slashingKeeper.SetMissedBlockBitmapValue(ctx, oldConsAddr, 10, true))
+
+	newPk := ed25519.GenPrivKey().PubKey()
+	newConsAddr := sdk.ConsAddress(newPk.Address())
+	msgServer := stakingkeeper.NewMsgServerImpl(f.stakingKeeper)
+	rotateMsg, err := stakingtypes.NewMsgRotateConsPubKey(valAddr.String(), newPk)
+	assert.NilError(t, err)
+	_, err = msgServer.RotateConsPubKey(ctx, rotateMsg)
+	assert.NilError(t, err)
+	_, err = f.stakingKeeper.EndBlocker(ctx)
+	assert.NilError(t, err)
+
+	genesis := f.slashingKeeper.ExportGenesis(ctx)
+
+	// Both signing-info records of the rotated validator are exported (the
+	// fixture also pre-seeds unrelated records, so match by address).
+	infoAddrs := map[string]bool{}
+	for _, si := range genesis.SigningInfos {
+		infoAddrs[si.Address] = true
+	}
+	assert.Assert(t, infoAddrs[oldConsAddr.String()])
+	assert.Assert(t, infoAddrs[newConsAddr.String()])
+
+	missedByAddr := map[string][]slashingtypes.MissedBlock{}
+	totalMissed := 0
+	for _, mb := range genesis.MissedBlocks {
+		missedByAddr[mb.Address] = mb.MissedBlocks
+		totalMissed += len(mb.MissedBlocks)
+	}
+
+	// The physical bitmap is exported exactly once, under the validator's
+	// current consensus address; the retained old-address entry is empty.
+	assert.Equal(t, 1, totalMissed)
+	assert.Equal(t, 1, len(missedByAddr[newConsAddr.String()]))
+	assert.Equal(t, 0, len(missedByAddr[oldConsAddr.String()]))
+}

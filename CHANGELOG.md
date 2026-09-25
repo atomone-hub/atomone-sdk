@@ -44,7 +44,7 @@ Ref: https://keepachangelog.com/en/1.0.0/
 
 ### Bug Fixes
 
-* (x/staking) [#111](https://github.com/atomone-hub/atomone-sdk/pull/111) Keep old-key signing info after rotation
+* (x/slashing) [#111](https://github.com/atomone-hub/atomone-sdk/pull/111) Keep old-key signing info after rotation
 * (x/dynamicfee) [#110](https://github.com/atomone-hub/cosmos-sdk/pull/110) Account for failed and out-of-gas tx gas in the dynamic fee window
 
 ## [v0.500.2](https://github.com/atomone-hub/cosmos-sdk/releases/tag/v0.500.2) - 2026-07-27
