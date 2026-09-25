@@ -161,6 +161,13 @@ func EndBlocker(ctx sdk.Context, keeper *keeper.Keeper) error {
 			// compute time interval between quorum checks
 			quorumCheckPeriod := proposal.VotingEndTime.Sub(*quorumCheckEntry.QuorumTimeoutTime)
 			t := quorumCheckPeriod / time.Duration(quorumCheckEntry.QuorumCheckCount)
+			if t <= 0 {
+				// quorumCheckPeriod is shorter than QuorumCheckCount nanoseconds and
+				// the integer division truncated to zero. Use the smallest interval so
+				// that the division below cannot panic; the next check time is capped
+				// at the voting end time anyway.
+				t = time.Nanosecond
+			}
 			// find time for next quorum check
 			nextQuorumCheckTime := key.K1().Add(t)
 			if !nextQuorumCheckTime.After(ctx.BlockTime()) {
