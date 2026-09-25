@@ -107,8 +107,7 @@ func TestMsgUpdateParams(t *testing.T) {
 		state, err := k.GetState(ctx)
 		require.NoError(err)
 
-		err = state.Update(testutil.MaxBlockGas, testutil.MaxBlockGas)
-		require.NoError(err)
+		state.Window[state.Index] = testutil.MaxBlockGas
 
 		err = k.SetState(ctx, state)
 		require.NoError(err)
