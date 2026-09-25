@@ -3,7 +3,6 @@ package types
 import (
 	fmt "fmt"
 
-	errorsmod "cosmossdk.io/errors"
 	"cosmossdk.io/log"
 	"cosmossdk.io/math"
 )
@@ -23,18 +22,6 @@ func NewState(
 		Index:        0,
 		LearningRate: learningRate,
 	}
-}
-
-// Update updates the block gas for the current height with the given
-// transaction gas i.e. gas limit.
-func (s *State) Update(gas, maxBlockGas uint64) error {
-	update := s.Window[s.Index] + gas
-	if update > maxBlockGas {
-		return errorsmod.Wrapf(ErrMaxGasExceeded, "gas %d > max %d", update, maxBlockGas)
-	}
-
-	s.Window[s.Index] = update
-	return nil
 }
 
 // IncrementHeight increments the current height of the state.

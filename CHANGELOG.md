@@ -44,6 +44,7 @@ Ref: https://keepachangelog.com/en/1.0.0/
 
 ### Bug Fixes
 
+* (x/dynamicfee) [#110](https://github.com/atomone-hub/cosmos-sdk/pull/110) Account for failed and out-of-gas tx gas in the dynamic fee window
 * (x/dynamicfee) [#113](https://github.com/atomone-hub/cosmos-sdk/pull/113) Enforce `params.Window == len(state.Window)` in genesis validation
 
 ## [v0.500.2](https://github.com/atomone-hub/cosmos-sdk/releases/tag/v0.500.2) - 2026-07-27

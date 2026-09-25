@@ -15,103 +15,46 @@ import (
 
 var OneHundred = math.LegacyMustNewDecFromStr("100")
 
-func TestState_Update(t *testing.T) {
-	t.Run("can add to window", func(t *testing.T) {
-		state := types.DefaultState()
-
-		err := state.Update(100, testutil.MaxBlockGas)
-		require.NoError(t, err)
-		require.Equal(t, uint64(100), state.Window[0])
-	})
-
-	t.Run("can add several txs to window", func(t *testing.T) {
-		state := types.DefaultState()
-
-		err := state.Update(100, testutil.MaxBlockGas)
-		require.NoError(t, err)
-		require.Equal(t, uint64(100), state.Window[0])
-
-		err = state.Update(200, testutil.MaxBlockGas)
-		require.NoError(t, err)
-		require.Equal(t, uint64(300), state.Window[0])
-	})
-
-	t.Run("errors when it exceeds max block gas", func(t *testing.T) {
-		state := types.DefaultState()
-
-		err := state.Update(testutil.MaxBlockGas+1, testutil.MaxBlockGas)
-		require.Error(t, err)
-	})
-
-	t.Run("can update with several blocks in default eip-1559", func(t *testing.T) {
-		state := types.DefaultState()
-
-		err := state.Update(100, testutil.MaxBlockGas)
-		require.NoError(t, err)
-		require.Equal(t, uint64(100), state.Window[0])
-
-		state.IncrementHeight()
-
-		err = state.Update(200, testutil.MaxBlockGas)
-		require.NoError(t, err)
-		require.Equal(t, uint64(200), state.Window[0])
-
-		err = state.Update(300, testutil.MaxBlockGas)
-		require.NoError(t, err)
-		require.Equal(t, uint64(500), state.Window[0])
-	})
-
-	t.Run("can update with several blocks in default aimd eip-1559", func(t *testing.T) {
+func TestState_IncrementHeight(t *testing.T) {
+	t.Run("advances the index across the window", func(t *testing.T) {
 		state := types.DefaultAIMDState()
+		state.Window = make([]uint64, 4)
 
-		err := state.Update(100, testutil.MaxBlockGas)
-		require.NoError(t, err)
+		state.Window[state.Index] = 100
 		require.Equal(t, uint64(100), state.Window[0])
 
 		state.IncrementHeight()
-
-		err = state.Update(200, testutil.MaxBlockGas)
-		require.NoError(t, err)
+		require.Equal(t, uint64(1), state.Index)
+		state.Window[state.Index] = 200
 		require.Equal(t, uint64(200), state.Window[1])
 
 		state.IncrementHeight()
-
-		err = state.Update(300, testutil.MaxBlockGas)
-		require.NoError(t, err)
+		require.Equal(t, uint64(2), state.Index)
+		state.Window[state.Index] = 300
 		require.Equal(t, uint64(300), state.Window[2])
 
 		state.IncrementHeight()
-
-		err = state.Update(400, testutil.MaxBlockGas)
-		require.NoError(t, err)
+		require.Equal(t, uint64(3), state.Index)
+		state.Window[state.Index] = 400
 		require.Equal(t, uint64(400), state.Window[3])
 	})
 
-	t.Run("correctly wraps around with aimd eip-1559", func(t *testing.T) {
+	t.Run("wraps around and resets the reused slot", func(t *testing.T) {
 		state := types.DefaultAIMDState()
 		state.Window = make([]uint64, 3)
 
-		err := state.Update(100, testutil.MaxBlockGas)
-		require.NoError(t, err)
-		require.Equal(t, uint64(100), state.Window[0])
-
+		state.Window[state.Index] = 100
 		state.IncrementHeight()
-
-		err = state.Update(200, testutil.MaxBlockGas)
-		require.NoError(t, err)
-		require.Equal(t, uint64(200), state.Window[1])
-
+		state.Window[state.Index] = 200
 		state.IncrementHeight()
+		state.Window[state.Index] = 300
 
-		err = state.Update(300, testutil.MaxBlockGas)
-		require.NoError(t, err)
-		require.Equal(t, uint64(300), state.Window[2])
-
+		// Advancing past the end wraps back to index 0 and zeroes the stale value.
 		state.IncrementHeight()
+		require.Equal(t, uint64(0), state.Index)
 		require.Equal(t, uint64(0), state.Window[0])
 
-		err = state.Update(400, testutil.MaxBlockGas)
-		require.NoError(t, err)
+		state.Window[state.Index] = 400
 		require.Equal(t, uint64(400), state.Window[0])
 		require.Equal(t, uint64(200), state.Window[1])
 		require.Equal(t, uint64(300), state.Window[2])
