@@ -100,10 +100,7 @@ func (h Hooks) AfterUnbondingInitiated(_ context.Context, _ uint64) error {
 
 // AfterConsensusPubKeyUpdate triggers the functions to rotate the signing-infos
 // also sets address pubkey relation.
+// The old key's cons-address -> pubkey relation is deliberately kept.
 func (h Hooks) AfterConsensusPubKeyUpdate(ctx context.Context, oldPubKey, newPubKey cryptotypes.PubKey, _ sdk.Coin) error {
-	if err := h.k.performConsensusPubKeyUpdate(ctx, oldPubKey, newPubKey); err != nil {
-		return err
-	}
-
-	return h.k.deleteAddrPubkeyRelation(ctx, oldPubKey.Address())
+	return h.k.performConsensusPubKeyUpdate(ctx, oldPubKey, newPubKey)
 }

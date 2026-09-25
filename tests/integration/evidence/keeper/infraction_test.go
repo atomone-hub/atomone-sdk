@@ -123,6 +123,7 @@ func initFixture(t testing.TB) *fixture {
 	stakingKeeper := stakingkeeper.NewKeeper(cdc, runtime.NewKVStoreService(keys[stakingtypes.StoreKey]), accountKeeper, bankKeeper, authority.String(), addresscodec.NewBech32Codec(sdk.Bech32PrefixValAddr), addresscodec.NewBech32Codec(sdk.Bech32PrefixConsAddr))
 
 	slashingKeeper := slashingkeeper.NewKeeper(cdc, codec.NewLegacyAmino(), runtime.NewKVStoreService(keys[slashingtypes.StoreKey]), stakingKeeper, authority.String())
+	stakingKeeper.SetHooks(stakingtypes.NewMultiStakingHooks(slashingKeeper.Hooks()))
 
 	evidenceKeeper := keeper.NewKeeper(cdc, runtime.NewKVStoreService(keys[evidencetypes.StoreKey]), stakingKeeper, slashingKeeper, addresscodec.NewBech32Codec("cosmos"), runtime.ProvideCometInfoService())
 	router := evidencetypes.NewRouter()
@@ -255,6 +256,81 @@ func TestHandleDoubleSign(t *testing.T) {
 	values, err := iter.Values()
 	assert.NilError(t, err)
 	assert.Assert(t, len(values) == 1)
+}
+
+type noopDistributionKeeper struct{}
+
+func (noopDistributionKeeper) FundCommunityPool(_ context.Context, _ sdk.Coins, _ sdk.AccAddress) error {
+	return nil
+}
+
+func TestHandleDoubleSign_AfterConsKeyRotation(t *testing.T) {
+	t.Parallel()
+	f := initFixture(t)
+	f.stakingKeeper.SetDistributionKeeper(noopDistributionKeeper{})
+
+	ctx := f.sdkCtx.WithIsCheckTx(false).WithBlockHeight(1)
+	populateValidators(t, f)
+
+	power := int64(100)
+	operatorAddr, oldPubKey := valAddresses[0], pubkeys[0]
+	tstaking := stakingtestutil.NewHelper(t, ctx, f.stakingKeeper)
+
+	tstaking.CreateValidatorWithValPower(operatorAddr, oldPubKey, power, true)
+
+	// Execute end-blocker to bond the validator.
+	_, err := f.stakingKeeper.EndBlocker(ctx)
+	assert.NilError(t, err)
+
+	oldConsAddr := sdk.ConsAddress(oldPubKey.Address())
+	assert.NilError(t, f.slashingKeeper.AddPubkey(ctx, oldPubKey))
+	info := slashingtypes.NewValidatorSigningInfo(oldConsAddr, ctx.BlockHeight(), int64(0), time.Unix(0, 0), false, int64(0))
+	assert.NilError(t, f.slashingKeeper.SetValidatorSigningInfo(ctx, oldConsAddr, info))
+
+	valBefore, err := f.stakingKeeper.Validator(ctx, operatorAddr)
+	assert.NilError(t, err)
+	oldTokens := valBefore.GetTokens()
+
+	// Rotate the consensus key. EndBlock applies updateToNewPubkey, which fires
+	// slashing's AfterConsensusPubKeyUpdate hook.
+	newPubKey := pubkeys[1]
+	newConsAddr := sdk.ConsAddress(newPubKey.Address())
+	msgServer := stakingkeeper.NewMsgServerImpl(f.stakingKeeper)
+	rotateMsg, err := stakingtypes.NewMsgRotateConsPubKey(operatorAddr.String(), newPubKey)
+	assert.NilError(t, err)
+	_, err = msgServer.RotateConsPubKey(ctx, rotateMsg)
+	assert.NilError(t, err)
+	_, err = f.stakingKeeper.EndBlocker(ctx)
+	assert.NilError(t, err)
+
+	// Double-sign with the old key while CometBFT still has it in the active
+	// set (the validator-set update delay window).
+	nci := NewCometInfo(abci.RequestFinalizeBlock{
+		Misbehavior: []abci.Misbehavior{{
+			Validator: abci.Validator{Address: oldPubKey.Address(), Power: power},
+			Type:      abci.MisbehaviorType_DUPLICATE_VOTE,
+			Time:      time.Now().UTC(),
+			Height:    1,
+		}},
+	})
+
+	assert.NilError(t, f.evidenceKeeper.BeginBlocker(ctx.WithCometInfo(nci)))
+
+	// The validator must be jailed, slashed and tombstoned, reachable through
+	// both the old and the new consensus address.
+	val, err := f.stakingKeeper.Validator(ctx, operatorAddr)
+	assert.NilError(t, err)
+	assert.Assert(t, val.IsJailed())
+	assert.Assert(t, f.slashingKeeper.IsTombstoned(ctx, newConsAddr))
+	assert.Assert(t, f.slashingKeeper.IsTombstoned(ctx, oldConsAddr))
+	assert.Assert(t, val.GetTokens().LT(oldTokens))
+
+	// The tombstone is effective: even past the unbonding period the validator
+	// cannot unjail (Unjail reads signing info at the current consensus key).
+	stakingParams, err := f.stakingKeeper.GetParams(ctx)
+	assert.NilError(t, err)
+	ctx = ctx.WithBlockTime(time.Unix(1, 0).Add(stakingParams.UnbondingTime))
+	assert.Error(t, f.slashingKeeper.Unjail(ctx, operatorAddr), slashingtypes.ErrValidatorJailed.Error())
 }
 
 func TestHandleDoubleSign_TooOld(t *testing.T) {

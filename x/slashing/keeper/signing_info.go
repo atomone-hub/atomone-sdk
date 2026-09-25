@@ -29,8 +29,59 @@ func (k Keeper) getPreviousConsKey(ctx context.Context, addr sdk.ConsAddress) (s
 	return addr, nil
 }
 
+// currentConsAddr returns the validator's current consensus address for a
+// (possibly rotated) consensus address. Equivocation evidence can be keyed to
+// an old consensus address because CometBFT keeps a rotated key in the active
+// validator set for ValidatorUpdateDelay blocks. When no validator resolves, the
+// input address is returned unchanged.
+func (k Keeper) currentConsAddr(ctx context.Context, consAddr sdk.ConsAddress) sdk.ConsAddress {
+	validator, err := k.sk.ValidatorByConsAddr(ctx, consAddr)
+	if err != nil || validator == nil {
+		return consAddr
+	}
+
+	current, err := validator.GetConsAddr()
+	if err != nil || len(current) == 0 {
+		return consAddr
+	}
+
+	return sdk.ConsAddress(current)
+}
+
+// signingInfoAddr returns the consensus address under which the validator's
+// live signing info is stored: the validator's current consensus address when
+// it resolves and holds a record, otherwise the given address, which may hold
+// the record retained for a rotated-away key.
+func (k Keeper) signingInfoAddr(ctx context.Context, consAddr sdk.ConsAddress) sdk.ConsAddress {
+	current := k.currentConsAddr(ctx, consAddr)
+	if k.hasValidatorSigningInfo(ctx, current) {
+		return current
+	}
+
+	return consAddr
+}
+
+// isCurrentValidatorConsAddr reports whether consAddr is the current consensus
+// address of a validator, as opposed to an address the validator rotated away
+// from, which resolves to the validator through the old-to-new mapping.
+func (k Keeper) isCurrentValidatorConsAddr(ctx context.Context, consAddr sdk.ConsAddress) bool {
+	validator, err := k.sk.ValidatorByConsAddr(ctx, consAddr)
+	if err != nil || validator == nil {
+		return false
+	}
+
+	current, err := validator.GetConsAddr()
+	return err == nil && len(current) > 0 && sdk.ConsAddress(current).Equals(consAddr)
+}
+
 // performConsensusPubKeyUpdate updates the cons address to its pub key relation.
 // It migrates signing info from the old pubkey to the new pubkey.
+//
+// The record under the old consensus address is deliberately retained: the
+// old key stays in CometBFT's active validator set for ValidatorUpdateDelay
+// blocks after the rotation, so equivocation evidence keyed to the old address
+// can still arrive, and the evidence handler panics when signing info is
+// missing there.
 func (k Keeper) performConsensusPubKeyUpdate(ctx context.Context, oldPubKey, newPubKey cryptotypes.PubKey) error {
 	// Connect new consensus address with PubKey.
 	if err := k.AddPubkey(ctx, newPubKey); err != nil {
@@ -47,21 +98,7 @@ func (k Keeper) performConsensusPubKeyUpdate(ctx context.Context, oldPubKey, new
 	}
 	signingInfo.Address = newConsAddr.String()
 
-	if err := k.SetValidatorSigningInfo(ctx, newConsAddr, signingInfo); err != nil {
-		return err
-	}
-
-	if err := k.deleteValidatorSigningInfo(ctx, oldConsAddr); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// deleteValidatorSigningInfo removes the validator signing info for a consensus address.
-func (k Keeper) deleteValidatorSigningInfo(ctx context.Context, consAddr sdk.ConsAddress) error {
-	store := k.storeService.OpenKVStore(ctx)
-	return store.Delete(types.ValidatorSigningInfoKey(consAddr))
+	return k.SetValidatorSigningInfo(ctx, newConsAddr, signingInfo)
 }
 
 // GetValidatorSigningInfo retruns the ValidatorSigningInfo for a specific validator
@@ -83,11 +120,20 @@ func (k Keeper) GetValidatorSigningInfo(ctx context.Context, address sdk.ConsAdd
 	return info, err
 }
 
+// hasValidatorSigningInfo is the raw store check, without consensus address
+// resolution.
+func (k Keeper) hasValidatorSigningInfo(ctx context.Context, consAddr sdk.ConsAddress) bool {
+	store := k.storeService.OpenKVStore(ctx)
+	bz, err := store.Get(types.ValidatorSigningInfoKey(consAddr))
+	return err == nil && bz != nil
+}
+
 // HasValidatorSigningInfo returns if a given validator has signing information
-// persisted.
+// persisted. The consensus address is resolved to the validator's current key
+// first, so that old-key equivocation evidence finds the migrated record
+// instead of reporting the validator as absent.
 func (k Keeper) HasValidatorSigningInfo(ctx context.Context, consAddr sdk.ConsAddress) bool {
-	_, err := k.GetValidatorSigningInfo(ctx, consAddr)
-	return err == nil
+	return k.hasValidatorSigningInfo(ctx, k.signingInfoAddr(ctx, consAddr))
 }
 
 // SetValidatorSigningInfo sets the validator signing info to a consensus address key
@@ -128,7 +174,11 @@ func (k Keeper) IterateValidatorSigningInfos(ctx context.Context,
 
 // JailUntil attempts to set a validator's JailedUntil attribute in its signing
 // info. It will panic if the signing info does not exist for the validator.
+// The consensus address is resolved to the validator's current key first:
+// double-sign jailing via an old consensus address must extend the jail time
+// that Unjail later reads on the current key.
 func (k Keeper) JailUntil(ctx context.Context, consAddr sdk.ConsAddress, jailTime time.Time) error {
+	consAddr = k.signingInfoAddr(ctx, consAddr)
 	signInfo, err := k.GetValidatorSigningInfo(ctx, consAddr)
 	if err != nil {
 		return errors.Wrap(err, "cannot jail validator that does not have any signing information")
@@ -139,8 +189,11 @@ func (k Keeper) JailUntil(ctx context.Context, consAddr sdk.ConsAddress, jailTim
 }
 
 // Tombstone attempts to tombstone a validator. It will panic if signing info for
-// the given validator does not exist.
+// the given validator does not exist. The consensus address is resolved to the
+// validator's current key first: tombstoning via an old consensus address must
+// block Unjail, which reads the tombstone on the current key.
 func (k Keeper) Tombstone(ctx context.Context, consAddr sdk.ConsAddress) error {
+	consAddr = k.signingInfoAddr(ctx, consAddr)
 	signInfo, err := k.GetValidatorSigningInfo(ctx, consAddr)
 	if err != nil {
 		return types.ErrNoSigningInfoFound.Wrap("cannot tombstone validator that does not have any signing information")
@@ -155,8 +208,11 @@ func (k Keeper) Tombstone(ctx context.Context, consAddr sdk.ConsAddress) error {
 }
 
 // IsTombstoned returns if a given validator by consensus address is tombstoned.
+// The consensus address is resolved to the validator's current key first, so
+// that old-key equivocation evidence is ignored once the validator has been
+// tombstoned through any of its keys.
 func (k Keeper) IsTombstoned(ctx context.Context, consAddr sdk.ConsAddress) bool {
-	signInfo, err := k.GetValidatorSigningInfo(ctx, consAddr)
+	signInfo, err := k.GetValidatorSigningInfo(ctx, k.signingInfoAddr(ctx, consAddr))
 	if err != nil {
 		return false
 	}
