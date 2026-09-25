@@ -143,8 +143,12 @@ func (s *State) GetAverageGas(maxBlockGas uint64) math.LegacyDec {
 
 // ValidateBasic performs basic validation on the state.
 func (s *State) ValidateBasic() error {
-	if s.Window == nil {
+	if len(s.Window) == 0 {
 		return fmt.Errorf("block gas window cannot be nil or empty")
+	}
+
+	if s.Index >= uint64(len(s.Window)) {
+		return fmt.Errorf("index (%d) out of range for window of length %d", s.Index, len(s.Window))
 	}
 
 	if s.BaseGasPrice.IsNil() || s.BaseGasPrice.LTE(math.LegacyZeroDec()) {

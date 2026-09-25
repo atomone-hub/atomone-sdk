@@ -45,6 +45,7 @@ Ref: https://keepachangelog.com/en/1.0.0/
 ### Bug Fixes
 
 * (x/dynamicfee) [#110](https://github.com/atomone-hub/cosmos-sdk/pull/110) Account for failed and out-of-gas tx gas in the dynamic fee window
+* (x/dynamicfee) [#113](https://github.com/atomone-hub/cosmos-sdk/pull/113) Enforce `params.Window == len(state.Window)` in genesis validation
 * (x/gov) [#116](https://github.com/atomone-hub/cosmos-sdk/pull/116) Prevent an integer divide by zero in the `EndBlocker` quorum check when `(VotingPeriod - QuorumTimeout) / QuorumCheckCount` truncates to zero, and reject such parameters in `Params.ValidateBasic`.
 
 ## [v0.500.2](https://github.com/atomone-hub/cosmos-sdk/releases/tag/v0.500.2) - 2026-07-27
