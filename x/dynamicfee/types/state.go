@@ -3,7 +3,6 @@ package types
 import (
 	fmt "fmt"
 
-	errorsmod "cosmossdk.io/errors"
 	"cosmossdk.io/log"
 	"cosmossdk.io/math"
 )
@@ -23,18 +22,6 @@ func NewState(
 		Index:        0,
 		LearningRate: learningRate,
 	}
-}
-
-// Update updates the block gas for the current height with the given
-// transaction gas i.e. gas limit.
-func (s *State) Update(gas, maxBlockGas uint64) error {
-	update := s.Window[s.Index] + gas
-	if update > maxBlockGas {
-		return errorsmod.Wrapf(ErrMaxGasExceeded, "gas %d > max %d", update, maxBlockGas)
-	}
-
-	s.Window[s.Index] = update
-	return nil
 }
 
 // IncrementHeight increments the current height of the state.
@@ -156,8 +143,12 @@ func (s *State) GetAverageGas(maxBlockGas uint64) math.LegacyDec {
 
 // ValidateBasic performs basic validation on the state.
 func (s *State) ValidateBasic() error {
-	if s.Window == nil {
+	if len(s.Window) == 0 {
 		return fmt.Errorf("block gas window cannot be nil or empty")
+	}
+
+	if s.Index >= uint64(len(s.Window)) {
+		return fmt.Errorf("index (%d) out of range for window of length %d", s.Index, len(s.Window))
 	}
 
 	if s.BaseGasPrice.IsNil() || s.BaseGasPrice.LTE(math.LegacyZeroDec()) {
