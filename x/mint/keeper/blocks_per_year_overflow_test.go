@@ -3,9 +3,9 @@ package keeper_test
 import (
 	"testing"
 
-	sdkmath "cosmossdk.io/math"
-
 	"github.com/stretchr/testify/require"
+
+	sdkmath "cosmossdk.io/math"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/x/mint/types"
@@ -55,9 +55,9 @@ func (s *IntegrationTestSuite) TestUpdateParamsBlocksPerYearOverflow() {
 				Params: types.Params{
 					MintDenom:           sdk.DefaultBondDenom,
 					InflationRateChange: sdkmath.LegacyNewDecWithPrec(13, 2),
-					InflationMax:         sdkmath.LegacyNewDecWithPrec(20, 2),
-					InflationMin:         sdkmath.LegacyNewDecWithPrec(7, 2),
-					GoalBonded:           sdkmath.LegacyNewDecWithPrec(67, 2),
+					InflationMax:        sdkmath.LegacyNewDecWithPrec(20, 2),
+					InflationMin:        sdkmath.LegacyNewDecWithPrec(7, 2),
+					GoalBonded:          sdkmath.LegacyNewDecWithPrec(67, 2),
 					BlocksPerYear:       tc.blocksPerYear,
 				},
 			}
