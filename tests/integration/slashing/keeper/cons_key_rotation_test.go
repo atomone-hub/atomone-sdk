@@ -24,9 +24,9 @@ import (
 //     (which triggers staking's updateToNewPubkey -> slashing's
 //     AfterConsensusPubKeyUpdate hook).
 //  4. Verify that:
-//     - signing info was migrated to the new consensus address, while the
-//     old-address record is retained (frozen) for old-key evidence
-//     accountability.
+//     - signing info was migrated to the new consensus address (the
+//     old-address record is deleted; old-key evidence resolves to the
+//     migrated record via the validator's current consensus address).
 //     - the pubkey relation for the old consensus address is retained.
 //     - the missed-block bitmap stays keyed under the old consensus address
 //     (1 entry) and remains reachable from the new consensus address via the
@@ -104,10 +104,10 @@ func TestConsensusKeyRotation_PreservesMissedBlocks(t *testing.T) {
 
 	// Signing info was migrated: the live record now lives at the new address
 	// with the new address embedded in it, and the old-address record is
-	// retained (frozen) so old-key equivocation evidence still finds it.
-	retainedInfo, err := f.slashingKeeper.GetValidatorSigningInfo(ctx, oldConsAddr)
-	assert.NilError(t, err)
-	assert.Equal(t, oldConsAddr.String(), retainedInfo.Address)
+	// deleted; old-key equivocation evidence resolves to the new record
+	// through the validator's current consensus address (signingInfoAddr).
+	_, err = f.slashingKeeper.GetValidatorSigningInfo(ctx, oldConsAddr)
+	assert.ErrorContains(t, err, slashingtypes.ErrNoSigningInfoFound.Error())
 	migratedInfo, err := f.slashingKeeper.GetValidatorSigningInfo(ctx, newConsAddr)
 	assert.NilError(t, err)
 	assert.Equal(t, newConsAddr.String(), migratedInfo.Address)
@@ -141,11 +141,12 @@ func TestConsensusKeyRotation_PreservesMissedBlocks(t *testing.T) {
 }
 
 // TestConsensusKeyRotation_GenesisExport_SingleMissedBlocksCopy verifies that
-// genesis export emits the shared missed-block bitmap exactly once: under the
-// validator's current consensus address, not again under the retained
-// old-address record. Both records resolve to the one physical bitmap keyed
-// under the initial consensus address, so exporting it per record would
-// double-count downtime in tooling that sums missed blocks across entries.
+// genesis export emits the missed-block bitmap exactly once, under the
+// validator's current consensus address. The bitmap stays physically keyed
+// under the initial consensus address after a rotation, and the signing-info
+// record lives at the current consensus address, so exporting each record's
+// resolved bitmap must not double-count downtime in tooling that sums missed
+// blocks across entries.
 func TestConsensusKeyRotation_GenesisExport_SingleMissedBlocksCopy(t *testing.T) {
 	t.Parallel()
 	f := initFixture(t)
@@ -186,13 +187,14 @@ func TestConsensusKeyRotation_GenesisExport_SingleMissedBlocksCopy(t *testing.T)
 
 	genesis := f.slashingKeeper.ExportGenesis(ctx)
 
-	// Both signing-info records of the rotated validator are exported (the
-	// fixture also pre-seeds unrelated records, so match by address).
+	// Only the validator's current signing-info record is exported: the
+	// old-address record was deleted at rotation (the fixture also pre-seeds
+	// unrelated records, so match by address).
 	infoAddrs := map[string]bool{}
 	for _, si := range genesis.SigningInfos {
 		infoAddrs[si.Address] = true
 	}
-	assert.Assert(t, infoAddrs[oldConsAddr.String()])
+	assert.Assert(t, !infoAddrs[oldConsAddr.String()])
 	assert.Assert(t, infoAddrs[newConsAddr.String()])
 
 	missedByAddr := map[string][]slashingtypes.MissedBlock{}
@@ -203,7 +205,7 @@ func TestConsensusKeyRotation_GenesisExport_SingleMissedBlocksCopy(t *testing.T)
 	}
 
 	// The physical bitmap is exported exactly once, under the validator's
-	// current consensus address; the retained old-address entry is empty.
+	// current consensus address.
 	assert.Equal(t, 1, totalMissed)
 	assert.Equal(t, 1, len(missedByAddr[newConsAddr.String()]))
 	assert.Equal(t, 0, len(missedByAddr[oldConsAddr.String()]))

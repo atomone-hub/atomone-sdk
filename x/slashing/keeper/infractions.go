@@ -23,11 +23,11 @@ func (k Keeper) HandleValidatorSignature(ctx context.Context, addr cryptotypes.A
 	// fetch the validator public key
 	consAddr := sdk.ConsAddress(addr)
 
-	// Liveness tracking resolves the address strictly, without the old-address
-	// fallback that signingInfoAddr provides for the jail/tombstone paths: the
-	// validator is needed here anyway (jailed check, downtime slash), and a
-	// fallback could select and mutate the retained frozen record of a
-	// rotated-away key, so an unresolvable address must fail loudly.
+	// Liveness tracking resolves the address strictly, without the fallback
+	// that signingInfoAddr provides for the jail/tombstone paths: the validator
+	// is needed here anyway (jailed check, downtime slash) and liveness state
+	// must be read and written at the validator's current consensus address, so
+	// an unresolvable address must fail loudly.
 	val, err := k.sk.ValidatorByConsAddr(ctx, consAddr)
 	if err != nil {
 		return err

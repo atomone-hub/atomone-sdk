@@ -49,9 +49,8 @@ func (k Keeper) currentConsAddr(ctx context.Context, consAddr sdk.ConsAddress) s
 }
 
 // signingInfoAddr returns the consensus address under which the validator's
-// live signing info is stored: the validator's current consensus address when
-// it resolves and holds a record, otherwise the given address, which may hold
-// the record retained for a rotated-away key.
+// signing info is stored: the validator's current consensus address when it
+// resolves and holds a record, otherwise the given address.
 func (k Keeper) signingInfoAddr(ctx context.Context, consAddr sdk.ConsAddress) sdk.ConsAddress {
 	current := k.currentConsAddr(ctx, consAddr)
 	if k.hasValidatorSigningInfo(ctx, current) {
@@ -61,27 +60,14 @@ func (k Keeper) signingInfoAddr(ctx context.Context, consAddr sdk.ConsAddress) s
 	return consAddr
 }
 
-// isCurrentValidatorConsAddr reports whether consAddr is the current consensus
-// address of a validator, as opposed to an address the validator rotated away
-// from, which resolves to the validator through the old-to-new mapping.
-func (k Keeper) isCurrentValidatorConsAddr(ctx context.Context, consAddr sdk.ConsAddress) bool {
-	validator, err := k.sk.ValidatorByConsAddr(ctx, consAddr)
-	if err != nil || validator == nil {
-		return false
-	}
-
-	current, err := validator.GetConsAddr()
-	return err == nil && len(current) > 0 && sdk.ConsAddress(current).Equals(consAddr)
-}
-
 // performConsensusPubKeyUpdate updates the cons address to its pub key relation.
 // It migrates signing info from the old pubkey to the new pubkey.
 //
-// The record under the old consensus address is deliberately retained: the
-// old key stays in CometBFT's active validator set for ValidatorUpdateDelay
-// blocks after the rotation, so equivocation evidence keyed to the old address
-// can still arrive, and the evidence handler panics when signing info is
-// missing there.
+// The record under the old consensus address is deleted: the jail/tombstone
+// paths resolve a rotated consensus address to the validator's current key
+// (see signingInfoAddr), so old-key equivocation evidence finds the migrated
+// record without the old one. The old cons-address -> pubkey relation is kept
+// (see AfterConsensusPubKeyUpdate).
 func (k Keeper) performConsensusPubKeyUpdate(ctx context.Context, oldPubKey, newPubKey cryptotypes.PubKey) error {
 	// Connect new consensus address with PubKey.
 	if err := k.AddPubkey(ctx, newPubKey); err != nil {
@@ -98,7 +84,17 @@ func (k Keeper) performConsensusPubKeyUpdate(ctx context.Context, oldPubKey, new
 	}
 	signingInfo.Address = newConsAddr.String()
 
-	return k.SetValidatorSigningInfo(ctx, newConsAddr, signingInfo)
+	if err := k.SetValidatorSigningInfo(ctx, newConsAddr, signingInfo); err != nil {
+		return err
+	}
+
+	return k.deleteValidatorSigningInfo(ctx, oldConsAddr)
+}
+
+// deleteValidatorSigningInfo removes the validator signing info for a consensus address.
+func (k Keeper) deleteValidatorSigningInfo(ctx context.Context, consAddr sdk.ConsAddress) error {
+	store := k.storeService.OpenKVStore(ctx)
+	return store.Delete(types.ValidatorSigningInfoKey(consAddr))
 }
 
 // GetValidatorSigningInfo retruns the ValidatorSigningInfo for a specific validator

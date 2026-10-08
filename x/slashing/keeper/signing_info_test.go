@@ -188,12 +188,11 @@ func (s *KeeperTestSuite) TestHandleValidatorSignature_AfterConsKeyRotation() {
 	// AfterConsensusPubKeyUpdate hook does during staking EndBlock.
 	require.NoError(keeper.Hooks().AfterConsensusPubKeyUpdate(ctx, oldPk, newPk, sdk.NewInt64Coin("uatom", 0)))
 
-	// The live signing-info record was migrated to the new address, and the
-	// old-address record is retained (frozen) so old-key equivocation evidence
-	// still finds signing info there.
-	retained, err := keeper.GetValidatorSigningInfo(ctx, oldConsAddr)
-	require.NoError(err)
-	require.Equal(oldConsAddr.String(), retained.Address)
+	// Old signing-info record is gone; new one carries the new bech32 address.
+	// Old-key equivocation evidence still finds signing info through the
+	// current-key resolution in HasValidatorSigningInfo/JailUntil/Tombstone.
+	_, err := keeper.GetValidatorSigningInfo(ctx, oldConsAddr)
+	require.ErrorIs(err, slashingtypes.ErrNoSigningInfoFound)
 	migrated, err := keeper.GetValidatorSigningInfo(ctx, newConsAddr)
 	require.NoError(err)
 	require.Equal(newConsAddr.String(), migrated.Address)

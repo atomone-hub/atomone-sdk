@@ -44,7 +44,7 @@ Ref: https://keepachangelog.com/en/1.0.0/
 
 ### Bug Fixes
 
-* (x/slashing) [#111](https://github.com/atomone-hub/atomone-sdk/pull/111) Keep old-key signing info after rotation (CONSENSUS BREAKING BUGFIX)
+- (x/slashing) [#111](https://github.com/atomone-hub/atomone-sdk/pull/111) Process old-key equivocation evidence after consensus key rotation (CONSENSUS BREAKING BUGFIX)
 * (x/dynamicfee) [#110](https://github.com/atomone-hub/cosmos-sdk/pull/110) Account for failed and out-of-gas tx gas in the dynamic fee window
 * (x/dynamicfee) [#113](https://github.com/atomone-hub/cosmos-sdk/pull/113) Enforce `params.Window == len(state.Window)` in genesis validation
 
