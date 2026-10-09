@@ -60,7 +60,11 @@ func (s *KeeperTestSuite) TestGRPCQueryConsensusParams() {
 	modifiedConsensusParams.Evidence.MaxAgeDuration++
 	modifiedConsensusParams.Evidence.MaxAgeNumBlocks++
 	modifiedConsensusParams.Evidence.MaxBytes++
-	modifiedConsensusParams.Validator.PubKeyTypes = []string{cmttypes.ABCIPubKeyTypeSecp256k1}
+	// PubKeyTypes may only be extended: existing validators still use
+	// ed25519, so keep it while adding secp256k1.
+	modifiedConsensusParams.Validator.PubKeyTypes = []string{
+		cmttypes.ABCIPubKeyTypeEd25519, cmttypes.ABCIPubKeyTypeSecp256k1,
+	}
 
 	testCases := []struct {
 		msg      string
