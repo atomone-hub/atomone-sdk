@@ -42,6 +42,8 @@ Ref: https://keepachangelog.com/en/1.0.0/
 
 ### Improvements
 
+* (baseapp) [#119](https://github.com/atomone-hub/atomone-sdk/pull/119) Drop unbounded telemetry keyed by query path
+
 ### Bug Fixes
 
 * (x/dynamicfee) [#110](https://github.com/atomone-hub/cosmos-sdk/pull/110) Account for failed and out-of-gas tx gas in the dynamic fee window
