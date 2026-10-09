@@ -2,6 +2,8 @@ package keeper
 
 import (
 	"context"
+	"fmt"
+	"slices"
 
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	cmttypes "github.com/cometbft/cometbft/types"
@@ -94,6 +96,19 @@ func (k Keeper) UpdateParams(ctx context.Context, msg *types.MsgUpdateParams) (*
 	nextParams.Version = params.Version
 	if err := nextParams.ValidateBasic(); err != nil {
 		return nil, err
+	}
+
+	// SECURITY: Validator.PubKeyTypes may only be extended, never shrunk.
+	// CometBFT's ValidateBasic only checks that the list is non-empty and
+	// contains known types, so an update that drops a currently allowed type
+	// (e.g. ["ed25519"] -> ["secp256k1"]) passes every existing check but is
+	// later rejected by CometBFT's validateValidatorUpdates for the active
+	// validators, which panics in applyBlock and halts the whole chain
+	// irrecoverably. Keep every type the current validators may be using.
+	for _, t := range params.Validator.PubKeyTypes {
+		if !slices.Contains(nextParams.Validator.PubKeyTypes, t) {
+			return nil, fmt.Errorf("cannot remove pubkey type %q from Validator.PubKeyTypes: existing validators may still use it", t)
+		}
 	}
 
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
