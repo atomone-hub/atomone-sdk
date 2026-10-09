@@ -303,6 +303,85 @@ func TestTickPassedVotingPeriod(t *testing.T) {
 	checkActiveProposalsQueue(t, ctx, suite.GovKeeper)
 }
 
+// TestEndBlockerQuorumCheckIntervalTruncatesToZero covers a quorum check queue
+// entry whose check interval (VotingPeriod - QuorumTimeout) / QuorumCheckCount
+// truncates to zero. Params.ValidateBasic rejects such params, but the EndBlocker
+// must not panic on state that carries them.
+func TestEndBlockerQuorumCheckIntervalTruncatesToZero(t *testing.T) {
+	suite := createTestSuite(t)
+	app := suite.App
+	ctx := app.BaseApp.NewContext(false)
+	addrs := simtestutil.AddTestAddrs(suite.BankKeeper, suite.StakingKeeper, ctx, 10, valTokens)
+
+	app.FinalizeBlock(&abci.RequestFinalizeBlock{
+		Height: app.LastBlockHeight() + 1,
+		Hash:   app.LastCommitID().Hash,
+	})
+
+	// 999ns between the quorum timeout and the voting end, split into 1000
+	// checks. The params are stored directly because ValidateBasic rejects them.
+	params, err := suite.GovKeeper.Params.Get(ctx)
+	require.NoError(t, err)
+	quorumTimeout := *params.VotingPeriod - 999*time.Nanosecond
+	params.QuorumTimeout = &quorumTimeout
+	params.QuorumCheckCount = v1.MaxQuorumCheckCount
+	require.NoError(t, suite.GovKeeper.Params.Set(ctx, params))
+
+	govMsgSvr := keeper.NewMsgServerImpl(suite.GovKeeper)
+	proposalCoins := sdk.Coins{sdk.NewCoin(sdk.DefaultBondDenom, suite.StakingKeeper.TokensFromConsensusPower(ctx, 10))}
+	newProposalMsg, err := v1.NewMsgSubmitProposal([]sdk.Msg{mkTestLegacyContent(t)}, proposalCoins, addrs[0].String(), "", "Proposal", "description of proposal")
+	require.NoError(t, err)
+	res, err := govMsgSvr.SubmitProposal(ctx, newProposalMsg)
+	require.NoError(t, err)
+
+	proposal, err := suite.GovKeeper.Proposals.Get(ctx, res.ProposalId)
+	require.NoError(t, err)
+	require.Equal(t, v1.StatusVotingPeriod, proposal.Status)
+
+	// the block lands exactly on the quorum timeout, before the voting end
+	newHeader := ctx.BlockHeader()
+	newHeader.Time = proposal.VotingStartTime.Add(quorumTimeout)
+	ctx = ctx.WithBlockHeader(newHeader)
+
+	require.NotPanics(t, func() {
+		require.NoError(t, gov.EndBlocker(ctx, suite.GovKeeper))
+	})
+
+	// the proposal is still in its voting period and the next check is
+	// scheduled after the current block, no later than the voting end
+	proposal, err = suite.GovKeeper.Proposals.Get(ctx, res.ProposalId)
+	require.NoError(t, err)
+	require.Equal(t, v1.StatusVotingPeriod, proposal.Status)
+	entries := 0
+	err = suite.GovKeeper.QuorumCheckQueue.Walk(ctx, nil, func(key collections.Pair[time.Time, uint64], entry v1.QuorumCheckQueueEntry) (bool, error) {
+		entries++
+		require.Equal(t, proposal.Id, key.K2())
+		require.True(t, key.K1().After(ctx.BlockTime()))
+		require.False(t, key.K1().After(*proposal.VotingEndTime))
+		require.Equal(t, uint64(1), entry.QuorumChecksDone)
+		return false, nil
+	})
+	require.NoError(t, err)
+	require.Equal(t, 1, entries)
+
+	// at the voting end the proposal is tallied and leaves the quorum check queue
+	newHeader.Time = *proposal.VotingEndTime
+	ctx = ctx.WithBlockHeader(newHeader)
+	require.NotPanics(t, func() {
+		require.NoError(t, gov.EndBlocker(ctx, suite.GovKeeper))
+	})
+	proposal, err = suite.GovKeeper.Proposals.Get(ctx, res.ProposalId)
+	require.NoError(t, err)
+	require.Equal(t, v1.StatusRejected, proposal.Status)
+	entries = 0
+	err = suite.GovKeeper.QuorumCheckQueue.Walk(ctx, nil, func(collections.Pair[time.Time, uint64], v1.QuorumCheckQueueEntry) (bool, error) {
+		entries++
+		return false, nil
+	})
+	require.NoError(t, err)
+	require.Zero(t, entries)
+}
+
 func TestProposalPassedEndblocker(t *testing.T) {
 	suite := createTestSuite(t)
 	app := suite.App

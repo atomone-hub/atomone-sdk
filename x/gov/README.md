@@ -660,8 +660,10 @@ react accordingly without the worry of an imminent end to the voting period.
   It is used to determine the intervals at which these checks will take place. The
   intervals are calculated as `(VotingPeriod - QuorumTimeout) / QuorumCheckCount`.
   This avoids the need to check for quorum at the end of each block, which would have
-  a significant impact on performance. Furthermore, if this value is set to 0, the
-  quorum check and voting period extension system is considered *disabled*.
+  a significant impact on performance. The interval must be at least one nanosecond,
+  i.e. `VotingPeriod - QuorumTimeout` must be at least `QuorumCheckCount` nanoseconds.
+  Furthermore, if this value is set to 0, the quorum check and voting period extension
+  system is considered *disabled*.
 
 **Store:**
 
