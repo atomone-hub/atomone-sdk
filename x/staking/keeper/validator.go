@@ -663,8 +663,14 @@ func (k Keeper) UnbondAllMatureValidators(ctx context.Context) error {
 							return err
 						}
 					} else {
-						// remove unbonding ids
+						// remove unbonding ids; the indexes behind them were
+						// deleted above, so keeping the ids on the validator
+						// would leave it pointing at operations that no
+						// longer exist
 						val.UnbondingIds = []uint64{}
+						if err = k.SetValidator(ctx, val); err != nil {
+							return err
+						}
 					}
 
 					// remove validator from queue

@@ -50,6 +50,7 @@ Ref: https://keepachangelog.com/en/1.0.0/
 * (x/dynamicfee) [#113](https://github.com/atomone-hub/cosmos-sdk/pull/113) Enforce `params.Window == len(state.Window)` in genesis validation
 * (x/mint) [#117](https://github.com/atomone-hub/atomone-sdk/pull/117) Prevent x/mint block per year overflow
 * (x/consensus) [#118](https://github.com/atomone-hub/atomone-sdk/pull/118) Forbid removing active validator pubkey types
+* (x/staking) [#115](https://github.com/atomone-hub/atomone-sdk/pull/115) Rebuild unbonding-operation indexes and counter at InitGenesis
 
 ## [v0.500.2](https://github.com/atomone-hub/cosmos-sdk/releases/tag/v0.500.2) - 2026-07-27
 
