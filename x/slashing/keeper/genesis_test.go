@@ -16,6 +16,10 @@ func (s *KeeperTestSuite) TestExportAndInitGenesis() {
 
 	keeper.SetParams(ctx, testutil.TestParams())
 
+	// No validator backs these consensus addresses; address resolution falls
+	// back to the address itself.
+	s.stakingKeeper.EXPECT().ValidatorByConsAddr(gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
+
 	consAddr1 := sdk.ConsAddress(sdk.AccAddress([]byte("addr1_______________")))
 	consAddr2 := sdk.ConsAddress(sdk.AccAddress([]byte("addr2_______________")))
 

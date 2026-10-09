@@ -180,9 +180,11 @@ func (app *BaseApp) Query(_ context.Context, req *abci.RequestQuery) (resp *abci
 		req.Height = app.LastBlockHeight()
 	}
 
+	// NOTE: only fixed metric keys are used here. Keying telemetry on
+	// req.Path (attacker-controlled, unbounded cardinality) allowed an
+	// unmetered abci_query flood to exhaust node memory, since each unique
+	// path created a new, never-evicted Prometheus counter/summary series.
 	telemetry.IncrCounter(1, "query", "count")
-	telemetry.IncrCounter(1, "query", req.Path)
-	defer telemetry.MeasureSince(telemetry.Now(), req.Path)
 
 	if req.Path == QueryPathBroadcastTx {
 		return sdkerrors.QueryResult(errorsmod.Wrap(sdkerrors.ErrInvalidRequest, "can't route a broadcast tx message"), app.trace), nil
