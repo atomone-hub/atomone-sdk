@@ -54,7 +54,7 @@ func (m Minter) NextInflationRate(params Params, bondedRatio math.LegacyDec) mat
 	inflationRateChangePerYear := math.LegacyOneDec().
 		Sub(bondedRatio.Quo(params.GoalBonded)).
 		Mul(params.InflationRateChange)
-	inflationRateChange := inflationRateChangePerYear.Quo(math.LegacyNewDec(int64(params.BlocksPerYear)))
+	inflationRateChange := inflationRateChangePerYear.Quo(blocksPerYearDec(params))
 
 	// adjust the new annual inflation for this next block
 	inflation := m.Inflation.Add(inflationRateChange) // note inflationRateChange may be negative
@@ -77,6 +77,22 @@ func (m Minter) NextAnnualProvisions(_ Params, totalSupply math.Int) math.Legacy
 // BlockProvision returns the provisions for a block based on the annual
 // provisions rate.
 func (m Minter) BlockProvision(params Params) sdk.Coin {
-	provisionAmt := m.AnnualProvisions.QuoInt(math.NewInt(int64(params.BlocksPerYear)))
+	provisionAmt := m.AnnualProvisions.QuoInt(blocksPerYearInt(params))
 	return sdk.NewCoin(params.MintDenom, provisionAmt.TruncateInt())
+}
+
+// blocksPerYearInt returns params.BlocksPerYear as an Int. It deliberately
+// avoids an int64 cast: BlocksPerYear is a uint64, and a value with the high
+// bit set (>= 2^63) silently flips negative when cast, inverting the sign of
+// the per-block provisions and panicking sdk.NewCoin (negative coin amount)
+// inside BeginBlocker. NewIntFromUint64 is exact for every uint64 and identical
+// to NewInt(int64(v)) for all values accepted by Params.Validate.
+func blocksPerYearInt(params Params) math.Int {
+	return math.NewIntFromUint64(params.BlocksPerYear)
+}
+
+// blocksPerYearDec returns params.BlocksPerYear as a LegacyDec, avoiding the
+// same uint64->int64 sign flip as blocksPerYearInt.
+func blocksPerYearDec(params Params) math.LegacyDec {
+	return math.LegacyNewDecFromInt(blocksPerYearInt(params))
 }
