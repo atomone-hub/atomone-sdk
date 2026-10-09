@@ -20,6 +20,10 @@ func (s *KeeperTestSuite) TestValidatorSigningInfo() {
 	ctx, keeper := s.ctx, s.slashingKeeper
 	require := s.Require()
 
+	// No validator backs this consensus address; address resolution falls back
+	// to the address itself.
+	s.stakingKeeper.EXPECT().ValidatorByConsAddr(gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
+
 	signingInfo := slashingtypes.NewValidatorSigningInfo(
 		consAddr,
 		ctx.BlockHeight(),
@@ -185,6 +189,8 @@ func (s *KeeperTestSuite) TestHandleValidatorSignature_AfterConsKeyRotation() {
 	require.NoError(keeper.Hooks().AfterConsensusPubKeyUpdate(ctx, oldPk, newPk, sdk.NewInt64Coin("uatom", 0)))
 
 	// Old signing-info record is gone; new one carries the new bech32 address.
+	// Old-key equivocation evidence still finds signing info through the
+	// current-key resolution in HasValidatorSigningInfo/JailUntil/Tombstone.
 	_, err := keeper.GetValidatorSigningInfo(ctx, oldConsAddr)
 	require.ErrorIs(err, slashingtypes.ErrNoSigningInfoFound)
 	migrated, err := keeper.GetValidatorSigningInfo(ctx, newConsAddr)
