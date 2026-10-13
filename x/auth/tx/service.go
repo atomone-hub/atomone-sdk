@@ -175,7 +175,14 @@ func (s txServer) GetBlockWithTxs(ctx context.Context, req *txtypes.GetBlockWith
 
 	blockTxs := block.Data.Txs
 	blockTxsLn := uint64(len(blockTxs))
-	txs := make([]*txtypes.Tx, 0, limit)
+
+	// Only pre-allocate as much capacity as can actually be filled: the number
+	// of txs in the block bounds the number of appended elements for both
+	// forward and reverse iteration. Using the raw pagination limit as the
+	// capacity lets a single unauthenticated query request an arbitrarily
+	// large allocation (limit * 8 bytes) and fatally OOM the node.
+	allocCap := min(limit, blockTxsLn)
+	txs := make([]*txtypes.Tx, 0, allocCap)
 	if offset >= blockTxsLn && blockTxsLn != 0 {
 		return nil, sdkerrors.ErrInvalidRequest.Wrapf("out of range: cannot paginate %d txs with offset %d and limit %d", blockTxsLn, offset, limit)
 	}
