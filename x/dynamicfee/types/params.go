@@ -44,6 +44,14 @@ func NewParams(
 // explosion. It must be bounded.
 const MaxWindow uint64 = 1_000_000 // 1M blocks (~27 days at 2.3s/block)
 
+// maxDefaultMaxBlockGas is the maximum allowed DefaultMaxBlockGas, i.e.
+// MaxInt64. It matches the type of consensus_params.block.max_gas (an
+// int64 which GetMaxBlockGas converts to uint64 when it is set): a
+// default above it has no enforceable equivalent gas limit, and it used
+// to overflow the int64 conversions of the AIMD block gas math
+// (GetTargetBlockGas), panicking the EndBlocker.
+const maxDefaultMaxBlockGas uint64 = 1<<63 - 1
+
 // ValidateBasic performs basic validation on the parameters.
 func (p *Params) ValidateBasic() error {
 	if p.Window == 0 {
@@ -76,6 +84,10 @@ func (p *Params) ValidateBasic() error {
 
 	if p.DefaultMaxBlockGas == 0 {
 		return fmt.Errorf("default max block gas must be greater than 0")
+	}
+
+	if p.DefaultMaxBlockGas > maxDefaultMaxBlockGas {
+		return fmt.Errorf("default max block gas must be less than or equal to %d", maxDefaultMaxBlockGas)
 	}
 
 	if p.MinLearningRate.IsNil() || p.MinLearningRate.IsNegative() {

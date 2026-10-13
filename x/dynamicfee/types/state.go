@@ -162,7 +162,24 @@ func (s *State) ValidateBasic() error {
 	return nil
 }
 
+// GetTargetBlockGas returns the target block gas, i.e. the max block gas
+// scaled by the target block utilization.
+//
+// The truncated product must be converted with Uint64() and not Int64():
+// for validated params (TargetBlockUtilization is in (0, 1]) it is within
+// [0, maxBlockGas] and always fits in a uint64, but it exceeds MaxInt64
+// as soon as maxBlockGas does (e.g. DefaultMaxBlockGas >= 2^63 combined
+// with TargetBlockUtilization == 1), where Int64() panics with
+// "Int64() out of bound". That panic escaped the recover in
+// UpdateBaseGasPrice and crashed the dynamicfee EndBlocker unrecovered,
+// because GetNetGas evaluates it for the EndBlocker's log call.
 func GetTargetBlockGas(maxBlockGas uint64, params Params) uint64 {
 	targetBlockUtilization := params.TargetBlockUtilization
-	return uint64(math.LegacyNewDecFromInt(math.NewIntFromUint64(maxBlockGas)).Mul(targetBlockUtilization).TruncateInt().Int64())
+	target := math.LegacyNewDecFromInt(math.NewIntFromUint64(maxBlockGas)).Mul(targetBlockUtilization).TruncateInt()
+	if !target.IsUint64() {
+		// Unreachable for validated params (utilization is in (0, 1]);
+		// clamp so that no param value can panic the EndBlocker.
+		return 0
+	}
+	return target.Uint64()
 }
