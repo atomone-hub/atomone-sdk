@@ -370,6 +370,12 @@ func (p Params) ValidateBasic() error {
 	if p.QuorumCheckCount > MaxQuorumCheckCount {
 		return fmt.Errorf("quorum check count %d is too large, allowed max is %d", p.QuorumCheckCount, MaxQuorumCheckCount)
 	}
+	// When quorum checks are enabled, the EndBlocker schedules them at
+	// intervals of (VotingPeriod - QuorumTimeout) / QuorumCheckCount; this
+	// integer division must not truncate to zero.
+	if p.QuorumCheckCount > 0 && (*p.VotingPeriod-*p.QuorumTimeout)/time.Duration(p.QuorumCheckCount) <= 0 {
+		return fmt.Errorf("quorum check interval must be positive: voting period %s minus quorum timeout %s must be at least %dns for %d quorum checks", p.VotingPeriod, p.QuorumTimeout, p.QuorumCheckCount, p.QuorumCheckCount)
+	}
 
 	if p.MinDepositThrottler == nil {
 		return fmt.Errorf("min deposit throttler must not be nil")

@@ -20,6 +20,9 @@ import (
 func (k Keeper) InitGenesis(ctx context.Context, data *types.GenesisState) (res []abci.ValidatorUpdate) {
 	bondedTokens := math.ZeroInt()
 	notBondedTokens := math.ZeroInt()
+	// The highest unbonding-operation id the imported entries carry; the
+	// counter that hands out ids is advanced past it below.
+	maxUnbondingID := uint64(0)
 
 	// We need to pretend to be "n blocks before genesis", where "n" is the
 	// validator update delay, so that e.g. slashing periods are correctly
@@ -67,6 +70,20 @@ func (k Keeper) InitGenesis(ctx context.Context, data *types.GenesisState) (res 
 		if validator.IsUnbonding() {
 			if err := k.InsertUnbondingValidatorQueue(ctx, validator); err != nil {
 				panic(err)
+			}
+
+			// Rebuild the per-id index and type of the validator's own
+			// in-flight unbonding: PutUnbondingOnHold and UnbondingCanComplete
+			// resolve the operation through them, and neither survives an
+			// export.
+			for _, id := range validator.UnbondingIds {
+				if err := k.SetValidatorByUnbondingID(ctx, validator, id); err != nil {
+					panic(err)
+				}
+				if err := k.SetUnbondingType(ctx, id, types.UnbondingType_ValidatorUnbonding); err != nil {
+					panic(err)
+				}
+				maxUnbondingID = max(maxUnbondingID, id)
 			}
 		}
 
@@ -122,6 +139,18 @@ func (k Keeper) InitGenesis(ctx context.Context, data *types.GenesisState) (res 
 				panic(err)
 			}
 			notBondedTokens = notBondedTokens.Add(entry.Balance)
+
+			// Same rebuild for the entry's id; an entry exported with an
+			// on-hold refcount can only ever be released through it.
+			if entry.UnbondingId != 0 {
+				if err := k.SetUnbondingDelegationByUnbondingID(ctx, ubd, entry.UnbondingId); err != nil {
+					panic(err)
+				}
+				if err := k.SetUnbondingType(ctx, entry.UnbondingId, types.UnbondingType_UnbondingDelegation); err != nil {
+					panic(err)
+				}
+				maxUnbondingID = max(maxUnbondingID, entry.UnbondingId)
+			}
 		}
 	}
 
@@ -134,7 +163,24 @@ func (k Keeper) InitGenesis(ctx context.Context, data *types.GenesisState) (res 
 			if err := k.InsertRedelegationQueue(ctx, red, entry.CompletionTime); err != nil {
 				panic(err)
 			}
+
+			if entry.UnbondingId != 0 {
+				if err := k.SetRedelegationByUnbondingID(ctx, red, entry.UnbondingId); err != nil {
+					panic(err)
+				}
+				if err := k.SetUnbondingType(ctx, entry.UnbondingId, types.UnbondingType_Redelegation); err != nil {
+					panic(err)
+				}
+				maxUnbondingID = max(maxUnbondingID, entry.UnbondingId)
+			}
 		}
+	}
+
+	// Operation ids come from a counter that is not part of the exported
+	// state. Advance it past every id the imported entries carry, so a new
+	// operation can never reuse an id that is still indexed.
+	if err := k.ensureUnbondingIDAtLeast(ctx, maxUnbondingID); err != nil {
+		panic(err)
 	}
 
 	bondedCoins := sdk.NewCoins(sdk.NewCoin(data.Params.BondDenom, bondedTokens))

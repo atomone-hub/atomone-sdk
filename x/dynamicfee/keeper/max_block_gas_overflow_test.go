@@ -4,10 +4,9 @@ import (
 	"testing"
 
 	tmproto "github.com/cometbft/cometbft/proto/tendermint/types"
+	"github.com/stretchr/testify/require"
 
 	"cosmossdk.io/math"
-
-	"github.com/stretchr/testify/require"
 
 	"github.com/cosmos/cosmos-sdk/x/dynamicfee/testutil"
 	"github.com/cosmos/cosmos-sdk/x/dynamicfee/types"

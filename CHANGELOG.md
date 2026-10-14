@@ -49,14 +49,14 @@ Ref: https://keepachangelog.com/en/1.0.0/
 * (x/slashing) [#111](https://github.com/atomone-hub/atomone-sdk/pull/111) Process old-key equivocation evidence after consensus key rotation (CONSENSUS BREAKING BUGFIX)
 * (x/dynamicfee) [#110](https://github.com/atomone-hub/cosmos-sdk/pull/110) Account for failed and out-of-gas tx gas in the dynamic fee window
 * (x/dynamicfee) [#113](https://github.com/atomone-hub/cosmos-sdk/pull/113) Enforce `params.Window == len(state.Window)` in genesis validation
+* (x/gov) [#116](https://github.com/atomone-hub/cosmos-sdk/pull/116) Prevent an integer divide by zero in the `EndBlocker` quorum check when `(VotingPeriod - QuorumTimeout) / QuorumCheckCount` truncates to zero, and reject such parameters in `Params.ValidateBasic`.
 * (x/mint) [#117](https://github.com/atomone-hub/atomone-sdk/pull/117) Prevent x/mint block per year overflow
 * (x/consensus) [#118](https://github.com/atomone-hub/atomone-sdk/pull/118) Forbid removing active validator pubkey types
+* (x/staking) [#115](https://github.com/atomone-hub/atomone-sdk/pull/115) Rebuild unbonding-operation indexes and counter at InitGenesis
 * (x/dynamicfee) [#120](https://github.com/atomone-hub/atomone-sdk/pull/120) Prevent block gas int64 overflow
 * (x/dynamicfee) [#121](https://github.com/atomone-hub/atomone-sdk/pull/121) Bound window size to prevent DoS
 * (x/gov) [#122](https://github.com/atomone-hub/atomone-sdk/pull/122) Always validate quorum check params
 * (x/auth/tx) [#123](https://github.com/atomone-hub/atomone-sdk/pull/123) Clamp tx slice capacity to block size
-
-
 
 ## [v0.500.2](https://github.com/atomone-hub/cosmos-sdk/releases/tag/v0.500.2) - 2026-07-27
 
