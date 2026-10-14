@@ -29,6 +29,17 @@ func (ms MsgServer) UpdateParams(goCtx context.Context, msg *types.MsgUpdatePara
 		return nil, fmt.Errorf("invalid authority to execute message")
 	}
 
+	// Bound the Window before it is persisted and used to allocate a new
+	// State: NewState allocates window * 8 bytes during proposal execution
+	// and the EndBlocker scans the whole window each block with no gas
+	// meter, so an oversized window lets a governance proposal halt every
+	// validator (OOM / block-time explosion). Params.ValidateBasic bounds
+	// Window, but the tx-level check can be bypassed by direct handler
+	// calls, so enforce the bound here too.
+	if msg.Params.Window > types.MaxWindow {
+		return nil, fmt.Errorf("window cannot exceed %d, got %d", types.MaxWindow, msg.Params.Window)
+	}
+
 	gotParams, err := ms.k.GetParams(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("error getting params: %w", err)

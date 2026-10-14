@@ -275,6 +275,16 @@ func TestValidateGenesis(t *testing.T) {
 			},
 		},
 		{
+			name: "quorum checks disabled skip the interval check",
+			genesisState: func() *v1.GenesisState {
+				params := v1.DefaultParams()
+				params.QuorumCheckCount = 0
+				quorumTimeout := *params.VotingPeriod - time.Nanosecond
+				params.QuorumTimeout = &quorumTimeout
+				return v1.NewGenesisState(v1.DefaultStartingProposalID, v1.DefaultParticipationEma, v1.DefaultParticipationEma, v1.DefaultParticipationEma, params)
+			},
+		},
+		{
 			name: "invalid max deposit period",
 			genesisState: func() *v1.GenesisState {
 				params := v1.DefaultParams()
