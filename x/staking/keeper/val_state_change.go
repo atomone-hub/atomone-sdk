@@ -156,6 +156,25 @@ func (k Keeper) ApplyAndReturnValidatorSetUpdates(ctx context.Context) (updates 
 		return nil, fmt.Errorf("failed to get last validator set: %w", err)
 	}
 
+	// Load the consensus pubkey rotations scheduled for this block up front.
+	// They are processed at the end of this function (see the rotation loop
+	// below), which emits a pair of updates per rotating validator: one
+	// retiring the old consensus key and one adding the new key with the
+	// validator's current power. A validator listed here must not emit a
+	// power-change update in the bonded-set loop below: that update would be
+	// keyed by the old consensus key that is retired this very block,
+	// duplicating the key in the update list. CometBFT rejects validator
+	// updates containing a duplicate pubkey ("duplicate entry"), which would
+	// deterministically halt every node processing the block.
+	historyObjects, err := k.GetBlockConsPubKeyRotationHistory(ctx)
+	if err != nil {
+		return nil, err
+	}
+	rotatingThisBlock := make(map[string]struct{}, len(historyObjects))
+	for _, history := range historyObjects {
+		rotatingThisBlock[history.OperatorAddress] = struct{}{}
+	}
+
 	// Iterate over validators, highest power to lowest.
 	iterator, err := k.ValidatorsPowerStoreIterator(ctx)
 	if err != nil {
@@ -213,7 +232,14 @@ func (k Keeper) ApplyAndReturnValidatorSetUpdates(ctx context.Context) (updates 
 
 		// update the validator set if power has changed
 		if !found || !bytes.Equal(oldPowerBytes, newPowerBytes) {
-			updates = append(updates, validator.ABCIValidatorUpdate(powerReduction))
+			// Validators rotating their consensus key this block are handled
+			// exclusively by the rotation loop below, which conveys the new
+			// power under the NEW key. Emitting the power change here under
+			// the old key as well would put the same pubkey in the update
+			// list twice, which CometBFT rejects, halting the chain.
+			if _, isRotating := rotatingThisBlock[valAddrStr]; !isRotating {
+				updates = append(updates, validator.ABCIValidatorUpdate(powerReduction))
+			}
 
 			if err = k.SetLastValidatorPower(ctx, valAddr, newPower); err != nil {
 				return nil, err
@@ -255,11 +281,6 @@ func (k Keeper) ApplyAndReturnValidatorSetUpdates(ctx context.Context) (updates 
 	// ApplyAndReturnValidatorSetUpdates checks if there is ConsPubKeyRotationHistory
 	// with ConsPubKeyRotationHistory.Height == ctx.BlockHeight() and if so, generates 2 ValidatorUpdate,
 	// one for removing the old validator key and one for adding the new validator key.
-	historyObjects, err := k.GetBlockConsPubKeyRotationHistory(ctx)
-	if err != nil {
-		return nil, err
-	}
-
 	for _, history := range historyObjects {
 		valAddr, err := k.validatorAddressCodec.StringToBytes(history.OperatorAddress)
 		if err != nil {
