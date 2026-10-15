@@ -42,6 +42,10 @@ Ref: https://keepachangelog.com/en/1.0.0/
 
 ### Improvements
 
+### Bug Fixes
+
+## [v0.500.3](https://github.com/atomone-hub/cosmos-sdk/releases/tag/v0.500.3) - 2026-10-15
+
 * (baseapp) [#119](https://github.com/atomone-hub/atomone-sdk/pull/119) Drop unbounded telemetry keyed by query path
 
 ### Bug Fixes
@@ -58,7 +62,6 @@ Ref: https://keepachangelog.com/en/1.0.0/
 * (x/gov) [#122](https://github.com/atomone-hub/atomone-sdk/pull/122) Always validate quorum check params
 * (x/auth/tx) [#123](https://github.com/atomone-hub/atomone-sdk/pull/123) Clamp tx slice capacity to block size
 * (x/staking) [#124](https://github.com/atomone-hub/atomone-sdk/pull/124) Dedupe validator updates on key rotation
-
 
 ## [v0.500.2](https://github.com/atomone-hub/cosmos-sdk/releases/tag/v0.500.2) - 2026-07-27
 
