@@ -40,6 +40,8 @@ Ref: https://keepachangelog.com/en/1.0.0/
 
 ### Features
 
+* (crypto/ledger) [#127](https://github.com/atomone-hub/atomone-sdk/pull/127) Support Ledger devices without CGO or the `ledger` build tag, through a pure-Go HID backend
+
 ### Improvements
 
 ### Bug Fixes
