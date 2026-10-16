@@ -44,7 +44,9 @@ Ref: https://keepachangelog.com/en/1.0.0/
 
 ### Bug Fixes
 
-## [v0.500.3](https://github.com/atomone-hub/cosmos-sdk/releases/tag/v0.500.3) - 2026-10-15
+## [v0.500.6](https://github.com/atomone-hub/cosmos-sdk/releases/tag/v0.500.6) - 2026-10-15
+
+> Note, v0.500.3-v0.500.5 have been retracted because they were tagged on wrong commits.
 
 * (baseapp) [#119](https://github.com/atomone-hub/atomone-sdk/pull/119) Drop unbounded telemetry keyed by query path
 
