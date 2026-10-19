@@ -75,7 +75,7 @@ jobs:
       - name: test & coverage report creation
         if: env.GIT_DIFF
         run: |
-          cat pkgs.txt.part.${{ matrix.part }} | xargs go test -mod=readonly -race -timeout 30m -coverprofile=${{ matrix.part }}profile.out -covermode=atomic -tags='ledger test_ledger_mock'
+          cat pkgs.txt.part.${{ matrix.part }} | xargs go test -mod=readonly -race -timeout 30m -coverprofile=${{ matrix.part }}profile.out -covermode=atomic -tags='test_ledger_mock'
       - uses: actions/upload-artifact@v4
         if: env.GIT_DIFF
         with:
@@ -269,7 +269,7 @@ jobs:
         if: env.GIT_DIFF
         run: |
           cd client/v2
-          go test -mod=readonly -timeout 30m -coverprofile=coverage.out -covermode=atomic -tags='norace ledger test_ledger_mock rocksdb_build' ./...
+          go test -mod=readonly -timeout 30m -coverprofile=coverage.out -covermode=atomic -tags='norace test_ledger_mock rocksdb_build' ./...
 
   test-simapp:
     runs-on: ubuntu-latest
@@ -292,7 +292,7 @@ jobs:
         if: env.GIT_DIFF
         run: |
           cd simapp
-          go test -mod=readonly -timeout 30m -coverprofile=coverage.out -covermode=atomic -tags='norace ledger test_ledger_mock rocksdb_build' ./...
+          go test -mod=readonly -timeout 30m -coverprofile=coverage.out -covermode=atomic -tags='norace test_ledger_mock rocksdb_build' ./...
 
   #############################
   ### Cosmos SDK x/{module} ###

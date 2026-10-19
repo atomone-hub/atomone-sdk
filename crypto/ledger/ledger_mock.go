@@ -1,5 +1,4 @@
-//go:build ledger && test_ledger_mock
-// +build ledger,test_ledger_mock
+//go:build test_ledger_mock
 
 package ledger
 
@@ -18,9 +17,8 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 )
 
-// If ledger support (build tag) has been enabled, which implies a CGO dependency,
-// set the discoverLedger function which is responsible for loading the Ledger
-// device at runtime or returning an error.
+// With the test_ledger_mock build tag, discoverLedger returns a mock of the
+// Ledger device instead of the Cosmos app on a real one.
 func init() {
 	options.discoverLedger = func() (SECP256K1, error) {
 		return LedgerSECP256K1Mock{}, nil

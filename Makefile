@@ -5,7 +5,6 @@ PACKAGES_SIMTEST=$(shell go list ./... | grep '/simulation')
 export VERSION := $(shell echo $(shell git describe --tags --always --match "v*") | sed 's/^v//')
 export CMTVERSION := $(shell go list -m github.com/cometbft/cometbft | sed 's:.* ::')
 export COMMIT := $(shell git log -1 --format='%H')
-LEDGER_ENABLED ?= true
 BINDIR ?= $(GOPATH)/bin
 BUILDDIR ?= $(CURDIR)/build
 SIMAPP = ./simapp
@@ -16,28 +15,6 @@ PROJECT_NAME = $(shell git remote get-url origin | xargs basename -s .git)
 
 # process build tags
 build_tags = netgo
-ifeq ($(LEDGER_ENABLED),true)
-	ifeq ($(OS),Windows_NT)
-	GCCEXE = $(shell where gcc.exe 2> NUL)
-	ifeq ($(GCCEXE),)
-		$(error gcc.exe not installed for ledger support, please install or set LEDGER_ENABLED=false)
-	else
-		build_tags += ledger
-	endif
-	else
-	UNAME_S = $(shell uname -s)
-	ifeq ($(UNAME_S),OpenBSD)
-		$(warning OpenBSD detected, disabling ledger support (https://github.com/cosmos/cosmos-sdk/issues/1988))
-	else
-		GCC = $(shell command -v gcc 2> /dev/null)
-		ifeq ($(GCC),)
-			$(error gcc not installed for ledger support, please install or set LEDGER_ENABLED=false)
-		else
-			build_tags += ledger
-		endif
-	endif
-	endif
-endif
 
 ifeq (secp,$(findstring secp,$(COSMOS_BUILD_OPTIONS)))
   build_tags += libsecp256k1_sdk
@@ -108,10 +85,10 @@ BUILD_TARGETS := build install
 build: BUILD_ARGS=-o $(BUILDDIR)/
 
 build-linux-amd64:
-	GOOS=linux GOARCH=amd64 LEDGER_ENABLED=false $(MAKE) build
+	GOOS=linux GOARCH=amd64 $(MAKE) build
 
 build-linux-arm64:
-	GOOS=linux GOARCH=arm64 LEDGER_ENABLED=false $(MAKE) build
+	GOOS=linux GOARCH=arm64 $(MAKE) build
 
 $(BUILD_TARGETS): go.sum $(BUILDDIR)/
 	cd ${CURRENT_DIR}/simapp && go $@ -mod=readonly $(BUILD_FLAGS) $(BUILD_ARGS) ./...
@@ -191,16 +168,15 @@ test-integration-cov:
 test-all: test-unit test-e2e test-integration test-ledger-mock test-race
 
 TEST_PACKAGES=./...
-TEST_TARGETS := test-unit test-unit-amino test-unit-proto test-ledger-mock test-race test-ledger test-race
+TEST_TARGETS := test-unit test-unit-amino test-unit-proto test-ledger-mock test-race
 
 # Test runs-specific rules. To add a new test target, just add
 # a new rule, customise ARGS or TEST_PACKAGES ad libitum, and
 # append the new rule to the TEST_TARGETS list.
-test-unit: test_tags += cgo ledger test_ledger_mock norace
-test-unit-amino: test_tags += ledger test_ledger_mock test_amino norace
-test-ledger: test_tags += cgo ledger norace
-test-ledger-mock: test_tags += ledger test_ledger_mock norace
-test-race: test_tags += cgo ledger test_ledger_mock
+test-unit: test_tags += cgo test_ledger_mock norace
+test-unit-amino: test_tags += test_ledger_mock test_amino norace
+test-ledger-mock: test_tags += test_ledger_mock norace
+test-race: test_tags += cgo test_ledger_mock
 test-race: ARGS=-race
 test-race: TEST_PACKAGES=$(PACKAGES_NOSIMULATION)
 $(TEST_TARGETS): run-tests
@@ -208,8 +184,8 @@ $(TEST_TARGETS): run-tests
 # check-* compiles and collects tests without running them
 # note: go test -c doesn't support multiple packages yet (https://github.com/golang/go/issues/15513)
 CHECK_TEST_TARGETS := check-test-unit check-test-unit-amino
-check-test-unit: test_tags += cgo ledger test_ledger_mock norace
-check-test-unit-amino: test_tags += ledger test_ledger_mock test_amino norace
+check-test-unit: test_tags += cgo test_ledger_mock norace
+check-test-unit-amino: test_tags += test_ledger_mock test_amino norace
 $(CHECK_TEST_TARGETS): EXTRA_ARGS=-run=none
 $(CHECK_TEST_TARGETS): run-tests
 

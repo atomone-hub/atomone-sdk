@@ -8,7 +8,7 @@ COPY go.mod go.sum /work/
 RUN go mod download
 
 COPY ./ /work
-RUN LEDGER_ENABLED=false make COSMOS_BUILD_OPTIONS="debug,nostrip" clean build
+RUN make COSMOS_BUILD_OPTIONS="debug,nostrip" clean build
 
 
 FROM alpine AS run
