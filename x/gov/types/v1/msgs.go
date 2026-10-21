@@ -16,6 +16,26 @@ import (
 // in a proposal message. Nesting depth beyond this limit is rejected altogether.
 const maxAuthzNestingDepth = 8
 
+// Bounds on constitution-amendment inputs. Amendments are executed by the gov
+// EndBlocker (no gas meter) with O(constitution-size) string/store work per
+// message, so both the amendment diff and the constitution itself must be
+// explicitly size-bounded to prevent unbounded unmetered CPU churn and
+// cumulative constitution growth via passed proposals.
+const (
+	// MaxConstitutionAmendmentLength is the maximum byte size of a single
+	// constitution-amendment diff accepted in a proposal message.
+	MaxConstitutionAmendmentLength = 16 * 1024
+
+	// MaxConstitutionLength is the maximum byte size of the stored
+	// constitution; applying an amendment that would grow the constitution
+	// past this bound fails.
+	MaxConstitutionLength = 2 * 1024 * 1024
+
+	// MaxProposalMessages bounds the number of messages a single proposal may
+	// carry, capping the total EndBlocker work a passed proposal can request.
+	MaxProposalMessages = 200
+)
+
 var (
 	_, _, _, _, _, _, _, _, _, _, _, _, _ sdk.Msg                            = &MsgSubmitProposal{}, &MsgDeposit{}, &MsgVote{}, &MsgVoteWeighted{}, &MsgExecLegacyContent{}, &MsgUpdateParams{}, &MsgProposeConstitutionAmendment{}, &MsgProposeLaw{}, &MsgCreateGovernor{}, &MsgEditGovernor{}, &MsgDelegateGovernor{}, &MsgUndelegateGovernor{}, &MsgUpdateGovernorStatus{}
 	_, _                                  codectypes.UnpackInterfacesMessage = &MsgSubmitProposal{}, &MsgExecLegacyContent{}
@@ -117,6 +137,10 @@ func NewMsgProposeConstitutionAmendment(authority sdk.AccAddress, amendment stri
 func (msg MsgProposeConstitutionAmendment) ValidateBasic() error {
 	if msg.Amendment == "" {
 		return types.ErrInvalidProposalContent.Wrap("amendment cannot be empty")
+	}
+
+	if len(msg.Amendment) > MaxConstitutionAmendmentLength {
+		return types.ErrInvalidProposalContent.Wrapf("amendment length exceeds maximum of %d bytes", MaxConstitutionAmendmentLength)
 	}
 
 	_, err := types.ParseUnifiedDiff(msg.Amendment)

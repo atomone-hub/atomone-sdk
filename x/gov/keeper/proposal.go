@@ -35,6 +35,14 @@ func (keeper Keeper) SubmitProposal(ctx context.Context, messages []sdk.Msg, met
 		return v1.Proposal{}, err
 	}
 
+	// Bound the number of messages per proposal. Every message in a passed
+	// proposal is executed in the gov EndBlocker outside any gas meter, so an
+	// unbounded message count would let a single proposal request unbounded
+	// unmetered block work.
+	if len(messages) > v1.MaxProposalMessages {
+		return v1.Proposal{}, errorsmod.Wrapf(types.ErrInvalidProposalMsg, "proposal contains %d messages; maximum is %d", len(messages), v1.MaxProposalMessages)
+	}
+
 	// Reject proposals containing a self-executing authz.MsgExec (grantee == granter ==
 	// authority). Checked before the per-message routing loop below.
 	selfExec, err := v1.ContainsSelfExecAsAuthority(keeper.cdc, messages, keeper.GetGovernanceAccount(ctx).GetAddress())

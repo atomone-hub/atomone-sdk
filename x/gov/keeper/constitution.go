@@ -7,6 +7,7 @@ import (
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/x/gov/types"
+	v1 "github.com/cosmos/cosmos-sdk/x/gov/types/v1"
 )
 
 // ApplyConstitutionAmendment applies the amendment as a patch against the current constitution
@@ -24,6 +25,14 @@ func (keeper Keeper) ApplyConstitutionAmendment(ctx sdk.Context, amendment strin
 	updatedConstitution, err = types.ApplyUnifiedDiff(currentConstitution, amendment)
 	if err != nil {
 		return "", types.ErrInvalidConstitutionAmendment.Wrapf("failed to apply amendment: %v", err)
+	}
+
+	// The constitution is re-read, re-applied and re-stored in full on every
+	// amendment message, and this code runs in the gov EndBlocker where no
+	// gas meter bounds the work. Cap the stored size so per-message cost and
+	// cumulative growth across proposals stay bounded.
+	if len(updatedConstitution) > v1.MaxConstitutionLength {
+		return "", types.ErrInvalidConstitutionAmendment.Wrapf("resulting constitution exceeds maximum size of %d bytes", v1.MaxConstitutionLength)
 	}
 
 	return updatedConstitution, nil
