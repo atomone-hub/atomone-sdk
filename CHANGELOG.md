@@ -44,6 +44,8 @@ Ref: https://keepachangelog.com/en/1.0.0/
 
 ### Bug Fixes
 
+* (x/gov) [#130](https://github.com/atomone-hub/atomone-sdk/pull/130) Cap deposit throttler floors to prevent an EndBlocker Int overflow (halt via a passed params-update proposal)
+
 ## [v0.500.6](https://github.com/atomone-hub/cosmos-sdk/releases/tag/v0.500.6) - 2026-10-15
 
 > Note, v0.500.3-v0.500.5 have been retracted because they were tagged on wrong commits.
