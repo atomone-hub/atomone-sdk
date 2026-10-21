@@ -54,7 +54,7 @@ func TestValidateInputOutputsLinearScaling(t *testing.T) {
 }
 
 // TestValidateInputOutputsSemantics checks that the linear accumulation keeps
-// accept/reject behaviour unchanged.
+// accept/reject behavior unchanged.
 func TestValidateInputOutputsSemantics(t *testing.T) {
 	addr := sdk.AccAddress(make([]byte, 20))
 
