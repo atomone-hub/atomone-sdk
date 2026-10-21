@@ -2,6 +2,7 @@ package v1
 
 import (
 	"fmt"
+	"math/big"
 	"time"
 
 	"cosmossdk.io/math"
@@ -29,6 +30,16 @@ const (
 	// Provide a sensible upper limit to quorum check count to avoid excessive
 	// resource consumption.
 	MaxQuorumCheckCount = 1000
+)
+
+var (
+	// MaxDepositThrottlerFloorAmount is the maximum coin amount accepted for
+	// the deposit throttlers' floor values. The gov EndBlocker multiplies the
+	// stored deposit by a percChange derived from the throttler targets
+	// (|percChange| can reach ~1.9e19 with a uint64-max target), so the product
+	// must stay far below the LegacyDec limit (~1.16e77) or GetNewMinDeposit
+	// panics with an Int overflow on every validator.
+	MaxDepositThrottlerFloorAmount = math.NewIntFromBigInt(new(big.Int).Exp(big.NewInt(10), big.NewInt(30), nil))
 )
 
 // MinVotingPeriod is set in stone by the constitution at 21 days, but it can
@@ -381,8 +392,8 @@ func (p Params) ValidateBasic() error {
 		return fmt.Errorf("min deposit throttler must not be nil")
 	}
 
-	if minDepositFloor := sdk.Coins(p.MinDepositThrottler.FloorValue); minDepositFloor.Empty() || !minDepositFloor.IsValid() {
-		return fmt.Errorf("invalid minimum deposit floor: %s", minDepositFloor)
+	if err := validateDepositThrottlerFloor("minimum deposit floor", sdk.Coins(p.MinDepositThrottler.FloorValue)); err != nil {
+		return err
 	}
 
 	if p.MinDepositThrottler.UpdatePeriod == nil {
@@ -435,8 +446,8 @@ func (p Params) ValidateBasic() error {
 		return fmt.Errorf("min initial deposit throttler must not be nil")
 	}
 
-	if minInitialDepositFloor := sdk.Coins(p.MinInitialDepositThrottler.FloorValue); minInitialDepositFloor.Empty() || !minInitialDepositFloor.IsValid() {
-		return fmt.Errorf("invalid minimum initial deposit floor: %s", minInitialDepositFloor)
+	if err := validateDepositThrottlerFloor("minimum initial deposit floor", sdk.Coins(p.MinInitialDepositThrottler.FloorValue)); err != nil {
+		return err
 	}
 
 	if p.MinInitialDepositThrottler.UpdatePeriod == nil {
@@ -522,6 +533,23 @@ func (p Params) ValidateBasic() error {
 		return fmt.Errorf("minimum governor self delegation must be positive: %s", minGovernorSelfDelegation)
 	}
 
+	return nil
+}
+
+// validateDepositThrottlerFloor checks that a deposit throttler floor is a
+// valid non-empty coin set and that each coin amount stays below
+// MaxDepositThrottlerFloorAmount. An uncapped floor combined with the
+// percChange computed from the throttler targets overflows LegacyDec.Mul in
+// GetNewMinDeposit and panics the EndBlocker on every block.
+func validateDepositThrottlerFloor(label string, floor sdk.Coins) error {
+	if floor.Empty() || !floor.IsValid() {
+		return fmt.Errorf("invalid %s: %s", label, floor)
+	}
+	for _, coin := range floor {
+		if coin.Amount.GT(MaxDepositThrottlerFloorAmount) {
+			return fmt.Errorf("%s amount too large: %s is above the maximum %s", label, coin, MaxDepositThrottlerFloorAmount)
+		}
+	}
 	return nil
 }
 
