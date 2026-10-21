@@ -45,6 +45,7 @@ Ref: https://keepachangelog.com/en/1.0.0/
 ### Bug Fixes
 
 * (x/gov) [#130](https://github.com/atomone-hub/atomone-sdk/pull/130) Cap deposit throttler floors to prevent an EndBlocker Int overflow (halt via a passed params-update proposal)
+* (x/bank) [#132](https://github.com/atomone-hub/atomone-sdk/pull/132) Linearize MsgMultiSend output validation (DoS)
 * (x/auth/vesting) [#131](https://github.com/atomone-hub/atomone-sdk/pull/131) Linearize and bound vesting schedule processing (DoS)
 
 ## [v0.500.6](https://github.com/atomone-hub/cosmos-sdk/releases/tag/v0.500.6) - 2026-10-15
