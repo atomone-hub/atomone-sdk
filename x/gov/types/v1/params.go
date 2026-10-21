@@ -32,15 +32,13 @@ const (
 	MaxQuorumCheckCount = 1000
 )
 
-var (
-	// MaxDepositThrottlerFloorAmount is the maximum coin amount accepted for
-	// the deposit throttlers' floor values. The gov EndBlocker multiplies the
-	// stored deposit by a percChange derived from the throttler targets
-	// (|percChange| can reach ~1.9e19 with a uint64-max target), so the product
-	// must stay far below the LegacyDec limit (~1.16e77) or GetNewMinDeposit
-	// panics with an Int overflow on every validator.
-	MaxDepositThrottlerFloorAmount = math.NewIntFromBigInt(new(big.Int).Exp(big.NewInt(10), big.NewInt(30), nil))
-)
+// MaxDepositThrottlerFloorAmount is the maximum coin amount accepted for
+// the deposit throttlers' floor values. The gov EndBlocker multiplies the
+// stored deposit by a percChange derived from the throttler targets
+// (|percChange| can reach ~1.9e19 with a uint64-max target), so the product
+// must stay far below the LegacyDec limit (~1.16e77) or GetNewMinDeposit
+// panics with an Int overflow on every validator.
+var MaxDepositThrottlerFloorAmount = math.NewIntFromBigInt(new(big.Int).Exp(big.NewInt(10), big.NewInt(30), nil))
 
 // MinVotingPeriod is set in stone by the constitution at 21 days, but it can
 // be overridden with ldflags for devnet/testnet environments (hence the use of
