@@ -10,6 +10,12 @@ var (
 	_ sdk.Msg = &MsgCreatePeriodicVestingAccount{}
 )
 
+// MaxVestingPeriods is the maximum number of vesting periods allowed in a
+// MsgCreatePeriodicVestingAccount. A periodic vesting schedule is stored
+// on-chain and re-evaluated on every LockedCoins/SpendableCoins call — i.e.
+// on every fee deduction and send — so its size must be bounded at creation.
+const MaxVestingPeriods = 1000
+
 // NewMsgCreateVestingAccount returns a reference to a new MsgCreateVestingAccount.
 func NewMsgCreateVestingAccount(fromAddr, toAddr sdk.AccAddress, amount sdk.Coins, endTime int64, delayed bool) *MsgCreateVestingAccount {
 	return &MsgCreateVestingAccount{

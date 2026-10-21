@@ -170,7 +170,16 @@ func (s msgServer) CreatePeriodicVestingAccount(goCtx context.Context, msg *type
 		return nil, errorsmod.Wrapf(sdkerrors.ErrInvalidRequest, "invalid start time of %d, length must be greater than 0", msg.StartTime)
 	}
 
-	var totalCoins sdk.Coins
+	// Bound the stored schedule size: the schedule is persisted and
+	// re-evaluated on every LockedCoins/SpendableCoins call, so an unbounded
+	// period count is a persistent block-time-exhaustion vector. There is no
+	// ValidateBasic for this msg, so this server-side check is the consensus
+	// bound.
+	if len(msg.VestingPeriods) > types.MaxVestingPeriods {
+		return nil, errorsmod.Wrapf(sdkerrors.ErrInvalidRequest,
+			"number of vesting periods %d exceeds maximum allowed %d", len(msg.VestingPeriods), types.MaxVestingPeriods)
+	}
+
 	for i, period := range msg.VestingPeriods {
 		if period.Length < 1 {
 			return nil, errorsmod.Wrapf(sdkerrors.ErrInvalidRequest, "invalid period length of %d in period %d, length must be greater than 0", period.Length, i)
@@ -179,9 +188,11 @@ func (s msgServer) CreatePeriodicVestingAccount(goCtx context.Context, msg *type
 		if err := validateAmount(period.Amount); err != nil {
 			return nil, err
 		}
-
-		totalCoins = totalCoins.Add(period.Amount...)
 	}
+
+	// sum in one linear pass; accumulating with Coins.Add per period is
+	// O(N² log N) in the period count
+	totalCoins := types.Periods(msg.VestingPeriods).TotalAmount()
 
 	if s.BlockedAddr(to) {
 		return nil, errorsmod.Wrapf(sdkerrors.ErrUnauthorized, "%s is not allowed to receive funds", msg.ToAddress)
