@@ -2,11 +2,13 @@ package staking_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 
 	"cosmossdk.io/math"
 
+	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 	"github.com/cosmos/cosmos-sdk/crypto/keys/ed25519"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/x/staking"
@@ -20,6 +22,21 @@ func TestValidateGenesis(t *testing.T) {
 	genValidators1[0] = testutil.NewValidator(t, sdk.ValAddress(pk.Address()), pk)
 	genValidators1[0].Tokens = math.OneInt()
 	genValidators1[0].DelegatorShares = math.LegacyOneDec()
+
+	oldPk, newPk := ed25519.GenPrivKey().PubKey(), ed25519.GenPrivKey().PubKey()
+	oldConsAddr, newConsAddr := oldPk.Address().Bytes(), newPk.Address().Bytes()
+	valAddr := sdk.ValAddress(pk.Address())
+	rotationTime := time.Unix(1_700_000_000, 0).UTC()
+	oldAny, err := codectypes.NewAnyWithValue(oldPk)
+	assert.NoError(t, err)
+	newAny, err := codectypes.NewAnyWithValue(newPk)
+	assert.NoError(t, err)
+	validHistory := types.ConsPubKeyRotationHistory{
+		OperatorAddress: valAddr.String(),
+		OldConsPubkey:   oldAny,
+		NewConsPubkey:   newAny,
+		Height:          1,
+	}
 
 	tests := []struct {
 		name    string
@@ -40,6 +57,40 @@ func TestValidateGenesis(t *testing.T) {
 			data.Validators = genValidators1
 			data.Validators[0].Jailed = true
 			data.Validators[0].Status = types.Bonded
+		}, true},
+		// validate consensus key rotation state
+		{"valid rotation state", func(data *types.GenesisState) {
+			data.RotationIndexRecords = []types.RotationIndexRecord{{Address: valAddr, Time: rotationTime}}
+			data.RotationHistory = []types.ConsPubKeyRotationHistory{validHistory}
+			data.RotationQueue = []types.RotationQueueRecord{{ValAddrs: types.ValAddrsOfRotatedConsKeys{Addresses: []string{valAddr.String()}}, Time: rotationTime}}
+			data.RotatedConsAddresses = []types.RotatedConsAddress{{OldAddress: oldConsAddr, NewAddress: newConsAddr}}
+			data.ConsAddrIdentifiers = []types.ConsAddrIdentifier{{ConsAddress: newConsAddr, InitialConsAddress: oldConsAddr}}
+		}, false},
+		{"rotation index record without address", func(data *types.GenesisState) {
+			data.RotationIndexRecords = []types.RotationIndexRecord{{Time: rotationTime}}
+		}, true},
+		{"rotation history without new pubkey", func(data *types.GenesisState) {
+			history := validHistory
+			history.NewConsPubkey = nil
+			data.RotationHistory = []types.ConsPubKeyRotationHistory{history}
+		}, true},
+		{"rotation queue record without validators", func(data *types.GenesisState) {
+			data.RotationQueue = []types.RotationQueueRecord{{Time: rotationTime}}
+		}, true},
+		{"rotated consensus address without target", func(data *types.GenesisState) {
+			data.RotatedConsAddresses = []types.RotatedConsAddress{{OldAddress: oldConsAddr}}
+		}, true},
+		{"duplicate rotated consensus address", func(data *types.GenesisState) {
+			data.RotatedConsAddresses = []types.RotatedConsAddress{
+				{OldAddress: oldConsAddr, NewAddress: newConsAddr},
+				{OldAddress: oldConsAddr, NewAddress: valAddr},
+			}
+		}, true},
+		{"duplicate consensus address identifier", func(data *types.GenesisState) {
+			data.ConsAddrIdentifiers = []types.ConsAddrIdentifier{
+				{ConsAddress: newConsAddr, InitialConsAddress: oldConsAddr},
+				{ConsAddress: newConsAddr, InitialConsAddress: valAddr},
+			}
 		}, true},
 	}
 
