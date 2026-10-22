@@ -44,6 +44,9 @@ Ref: https://keepachangelog.com/en/1.0.0/
 
 ### Bug Fixes
 
+* (x/staking) [#139](https://github.com/atomone-hub/atomone-sdk/pull/139) Store the canonical operator address on validator creation (CONSENSUS BREAKING BUGFIX)
+* (x/gov) [#139](https://github.com/atomone-hub/atomone-sdk/pull/139) Key the governor tally by canonical validator addresses (CONSENSUS BREAKING BUGFIX)
+
 ## [v0.500.6](https://github.com/atomone-hub/cosmos-sdk/releases/tag/v0.500.6) - 2026-10-15
 
 > Note, v0.500.3-v0.500.5 have been retracted because they were tagged on wrong commits.
