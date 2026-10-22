@@ -27,7 +27,7 @@ func GetTxCmd(childCmds []*cobra.Command) *cobra.Command {
 		submitEvidenceCmd.AddCommand(childCmd)
 	}
 
-	// TODO: Add tx commands.
+	cmd.AddCommand(submitEvidenceCmd)
 
 	return cmd
 }
