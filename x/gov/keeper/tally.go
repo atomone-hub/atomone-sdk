@@ -106,15 +106,36 @@ func (keeper Keeper) HasReachedQuorum(ctx sdk.Context, proposal v1.Proposal) (bo
 	return percentVoting.GTE(quorum), nil
 }
 
-// getBondedValidatorsByAddress fetches all the bonded validators and return
-// them in map using their operator address as the key.
+// canonicalValAddr returns the canonical bech32 form of a validator operator
+// address. Governor validator shares are keyed by this form. A stored operator
+// address, and the validator address copied into its delegations, can be the
+// all-uppercase form, which bech32 also accepts.
+func canonicalValAddr(addr string) (string, error) {
+	valAddr, err := sdk.ValAddressFromBech32(addr)
+	if err != nil {
+		return "", err
+	}
+	return valAddr.String(), nil
+}
+
+// getBondedValidatorsByAddress fetches all the bonded validators and returns
+// them in a map keyed by their canonical operator address.
 func (keeper Keeper) getBondedValidatorsByAddress(ctx context.Context) (map[string]stakingtypes.ValidatorI, error) {
 	vals := make(map[string]stakingtypes.ValidatorI)
+	var addrErr error
 	err := keeper.sk.IterateBondedValidatorsByPower(ctx, func(_ int64, validator stakingtypes.ValidatorI) (stop bool) {
-		vals[validator.GetOperator()] = validator
+		key, err := canonicalValAddr(validator.GetOperator())
+		if err != nil {
+			addrErr = err
+			return true
+		}
+		vals[key] = validator
 		return false
 	})
-	return vals, err
+	if err != nil {
+		return nil, err
+	}
+	return vals, addrErr
 }
 
 // tallyVotes returns the total voting power and tally results of the votes
@@ -176,17 +197,25 @@ func (keeper Keeper) tallyVotes(
 		}
 
 		// iterate over all delegations from voter, deduct from any delegated-to validators
+		var delegationErr error
 		err = keeper.sk.IterateDelegations(ctx, voter, func(_ int64, delegation stakingtypes.DelegationI) (stop bool) {
-			valAddrStr := delegation.GetValidatorAddr()
+			valAddrStr, addrErr := canonicalValAddr(delegation.GetValidatorAddr())
+			if addrErr != nil {
+				delegationErr = addrErr
+				return true
+			}
 			votingPower := math.LegacyZeroDec()
 
 			if val, ok := currValidators[valAddrStr]; ok {
 				// delegation shares * bonded / total shares
 				votingPower = votingPower.Add(delegation.GetShares().MulInt(val.GetBondedTokens()).Quo(val.GetDelegatorShares()))
 
-				// remove the delegation shares from the governor
+				// remove the delegation shares from the governor. A governor
+				// with no shares on this validator has nothing to deduct.
 				if hasGovernor {
-					governor.ValSharesDeductions[valAddrStr] = governor.ValSharesDeductions[valAddrStr].Add(delegation.GetShares())
+					if deduction, ok := governor.ValSharesDeductions[valAddrStr]; ok {
+						governor.ValSharesDeductions[valAddrStr] = deduction.Add(delegation.GetShares())
+					}
 				}
 			}
 
@@ -200,6 +229,9 @@ func (keeper Keeper) tallyVotes(
 
 			return false
 		})
+		if err == nil {
+			err = delegationErr
+		}
 		if err != nil {
 			return true, err
 		}
