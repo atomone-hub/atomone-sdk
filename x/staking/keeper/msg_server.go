@@ -104,7 +104,13 @@ func (k msgServer) CreateValidator(ctx context.Context, msg *types.MsgCreateVali
 		}
 	}
 
-	validator, err := types.NewValidator(msg.ValidatorAddress, pk, msg.Description)
+	// Bech32 accepts an all-uppercase string. Store the canonical form, because
+	// delegations copy the operator address and other modules key by it.
+	valAddrStr, err := k.validatorAddressCodec.BytesToString(valAddr)
+	if err != nil {
+		return nil, err
+	}
+	validator, err := types.NewValidator(valAddrStr, pk, msg.Description)
 	if err != nil {
 		return nil, err
 	}
@@ -152,7 +158,7 @@ func (k msgServer) CreateValidator(ctx context.Context, msg *types.MsgCreateVali
 	sdkCtx.EventManager().EmitEvents(sdk.Events{
 		sdk.NewEvent(
 			types.EventTypeCreateValidator,
-			sdk.NewAttribute(types.AttributeKeyValidator, msg.ValidatorAddress),
+			sdk.NewAttribute(types.AttributeKeyValidator, valAddrStr),
 			sdk.NewAttribute(sdk.AttributeKeyAmount, msg.Value.String()),
 		),
 	})
