@@ -2,6 +2,7 @@ package keeper
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"cosmossdk.io/x/evidence/types"
@@ -30,6 +31,15 @@ func (k Keeper) handleEquivocationEvidence(ctx context.Context, evidence *types.
 	consAddr := evidence.GetConsensusAddress(k.stakingKeeper.ConsensusAddressCodec())
 
 	validator, err := k.stakingKeeper.ValidatorByConsAddr(ctx, consAddr)
+	if errors.Is(err, stakingtypes.ErrNoValidatorFound) {
+		// CometBFT accepts evidence for any key in its validator set at the
+		// evidence height, for as long as the evidence parameters allow. That
+		// window can outlast the validator's record in x/staking, which deletes
+		// a validator once it has unbonded with no delegations left. Ignore the
+		// evidence instead of failing the block.
+		logger.Info("ignored equivocation; no validator for consensus address", "validator", consAddr)
+		return nil
+	}
 	if err != nil {
 		return err
 	}
