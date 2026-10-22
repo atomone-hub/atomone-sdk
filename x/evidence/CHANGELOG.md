@@ -23,6 +23,13 @@ Ref: https://keepachangelog.com/en/1.0.0/
 
 # Changelog
 
+## [Unreleased]
+
+### Bug Fixes
+
+* [#138](https://github.com/atomone-hub/atomone-sdk/pull/138) Ignore equivocation evidence whose consensus address resolves to no validator (backport of cosmos/cosmos-sdk#26481).
+* [#138](https://github.com/atomone-hub/atomone-sdk/pull/138) Register the `submit` subcommand under the evidence tx command (backport of cosmos/cosmos-sdk#25750).
+
 ## [v0.1.1](https://github.com/cosmos/cosmos-sdk/releases/tag/x/evidence/v0.1.1) - 2024-04-22
 
 ### Improvements
