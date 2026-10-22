@@ -20,11 +20,11 @@ func NewGenesisState(e []exported.Evidence) *GenesisState {
 		if !ok {
 			panic(fmt.Errorf("cannot proto marshal %T", evi))
 		}
-		any, err := types.NewAnyWithValue(msg)
+		evidenceAny, err := types.NewAnyWithValue(msg)
 		if err != nil {
 			panic(err)
 		}
-		evidence[i] = any
+		evidence[i] = evidenceAny
 	}
 	return &GenesisState{
 		Evidence: evidence,
@@ -56,9 +56,9 @@ func (gs GenesisState) Validate() error {
 
 // UnpackInterfaces implements UnpackInterfacesMessage.UnpackInterfaces
 func (gs GenesisState) UnpackInterfaces(unpacker types.AnyUnpacker) error {
-	for _, any := range gs.Evidence {
+	for _, evidenceAny := range gs.Evidence {
 		var evi exported.Evidence
-		err := unpacker.UnpackAny(any, &evi)
+		err := unpacker.UnpackAny(evidenceAny, &evi)
 		if err != nil {
 			return err
 		}
