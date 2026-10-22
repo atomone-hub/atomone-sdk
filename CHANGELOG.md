@@ -44,6 +44,9 @@ Ref: https://keepachangelog.com/en/1.0.0/
 
 ### Bug Fixes
 
+* (x/evidence) [#138](https://github.com/atomone-hub/atomone-sdk/pull/138) Fork `cosmossdk.io/x/evidence` v0.1.1 and ignore equivocation evidence whose consensus address resolves to no validator, backporting cosmos/cosmos-sdk#26481 (CONSENSUS BREAKING BUGFIX)
+* (x/staking) [#138](https://github.com/atomone-hub/atomone-sdk/pull/138) Resolve rotated consensus addresses through the full rotation chain (CONSENSUS BREAKING BUGFIX)
+
 ## [v0.500.6](https://github.com/atomone-hub/cosmos-sdk/releases/tag/v0.500.6) - 2026-10-15
 
 > Note, v0.500.3-v0.500.5 have been retracted because they were tagged on wrong commits.

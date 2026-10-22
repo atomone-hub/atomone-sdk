@@ -3,6 +3,7 @@ package keeper_test
 import (
 	"context"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -333,6 +334,71 @@ func TestHandleDoubleSign_AfterConsKeyRotation(t *testing.T) {
 	assert.Error(t, f.slashingKeeper.Unjail(ctx, operatorAddr), slashingtypes.ErrValidatorJailed.Error())
 }
 
+func TestHandleDoubleSign_AfterTwoConsKeyRotations(t *testing.T) {
+	t.Parallel()
+	f := initFixture(t)
+	f.stakingKeeper.SetDistributionKeeper(noopDistributionKeeper{})
+
+	ctx := f.sdkCtx.WithIsCheckTx(false).WithBlockHeight(1)
+	populateValidators(t, f)
+
+	power := int64(100)
+	operatorAddr, firstPubKey := valAddresses[0], pubkeys[0]
+	tstaking := stakingtestutil.NewHelper(t, ctx, f.stakingKeeper)
+	tstaking.CreateValidatorWithValPower(operatorAddr, firstPubKey, power, true)
+	_, err := f.stakingKeeper.EndBlocker(ctx)
+	assert.NilError(t, err)
+
+	firstConsAddr := sdk.ConsAddress(firstPubKey.Address())
+	assert.NilError(t, f.slashingKeeper.AddPubkey(ctx, firstPubKey))
+	info := slashingtypes.NewValidatorSigningInfo(firstConsAddr, ctx.BlockHeight(), int64(0), time.Unix(0, 0), false, int64(0))
+	assert.NilError(t, f.slashingKeeper.SetValidatorSigningInfo(ctx, firstConsAddr, info))
+
+	valBefore, err := f.stakingKeeper.Validator(ctx, operatorAddr)
+	assert.NilError(t, err)
+	oldTokens := valBefore.GetTokens()
+
+	stakingParams, err := f.stakingKeeper.GetParams(ctx)
+	assert.NilError(t, err)
+	msgServer := stakingkeeper.NewMsgServerImpl(f.stakingKeeper)
+
+	rotateMsg, err := stakingtypes.NewMsgRotateConsPubKey(operatorAddr.String(), ed25519.GenPrivKey().PubKey())
+	assert.NilError(t, err)
+	_, err = msgServer.RotateConsPubKey(ctx, rotateMsg)
+	assert.NilError(t, err)
+	_, err = f.stakingKeeper.EndBlocker(ctx)
+	assert.NilError(t, err)
+
+	// One rotation is allowed per unbonding period.
+	ctx = ctx.WithBlockHeight(2).WithBlockTime(ctx.BlockTime().Add(stakingParams.UnbondingTime).Add(time.Second))
+	_, err = f.stakingKeeper.EndBlocker(ctx)
+	assert.NilError(t, err)
+
+	thirdPubKey := ed25519.GenPrivKey().PubKey()
+	rotateMsg, err = stakingtypes.NewMsgRotateConsPubKey(operatorAddr.String(), thirdPubKey)
+	assert.NilError(t, err)
+	_, err = msgServer.RotateConsPubKey(ctx, rotateMsg)
+	assert.NilError(t, err)
+	_, err = f.stakingKeeper.EndBlocker(ctx)
+	assert.NilError(t, err)
+
+	nci := NewCometInfo(abci.RequestFinalizeBlock{
+		Misbehavior: []abci.Misbehavior{{
+			Validator: abci.Validator{Address: firstPubKey.Address(), Power: power},
+			Type:      abci.MisbehaviorType_DUPLICATE_VOTE,
+			Time:      time.Now().UTC(),
+			Height:    1,
+		}},
+	})
+	assert.NilError(t, f.evidenceKeeper.BeginBlocker(ctx.WithCometInfo(nci)))
+
+	val, err := f.stakingKeeper.Validator(ctx, operatorAddr)
+	assert.NilError(t, err)
+	assert.Assert(t, val.IsJailed())
+	assert.Assert(t, val.GetTokens().LT(oldTokens))
+	assert.Assert(t, f.slashingKeeper.IsTombstoned(ctx, sdk.ConsAddress(thirdPubKey.Address())))
+}
+
 func TestHandleDoubleSign_TooOld(t *testing.T) {
 	t.Parallel()
 	f := initFixture(t)
@@ -383,6 +449,52 @@ func TestHandleDoubleSign_TooOld(t *testing.T) {
 	assert.NilError(t, err)
 	assert.Assert(t, val.IsJailed() == false)
 	assert.Assert(t, f.slashingKeeper.IsTombstoned(ctx, sdk.ConsAddress(valpubkey.Address())) == false)
+}
+
+func TestHandleDoubleSign_RemovedValidator(t *testing.T) {
+	t.Parallel()
+	f := initFixture(t)
+
+	ctx := f.sdkCtx.WithIsCheckTx(false).WithBlockHeight(1)
+	populateValidators(t, f)
+
+	power := int64(100)
+	stakingParams, err := f.stakingKeeper.GetParams(ctx)
+	assert.NilError(t, err)
+	operatorAddr, valpubkey := valAddresses[0], pubkeys[0]
+	tstaking := stakingtestutil.NewHelper(t, ctx, f.stakingKeeper)
+	tstaking.Denom = stakingParams.BondDenom
+
+	selfDelegation := tstaking.CreateValidatorWithValPower(operatorAddr, valpubkey, power, true)
+	_, err = f.stakingKeeper.EndBlocker(ctx)
+	assert.NilError(t, err)
+
+	// Unbond everything, then let the unbonding period pass so that x/staking
+	// deletes the validator.
+	tstaking.Undelegate(sdk.AccAddress(operatorAddr), operatorAddr, selfDelegation, true)
+	_, err = f.stakingKeeper.EndBlocker(ctx)
+	assert.NilError(t, err)
+	ctx = ctx.WithBlockHeight(2).WithBlockTime(ctx.BlockTime().Add(stakingParams.UnbondingTime).Add(time.Second))
+	_, err = f.stakingKeeper.EndBlocker(ctx)
+	assert.NilError(t, err)
+	_, err = f.stakingKeeper.GetValidator(ctx, operatorAddr)
+	assert.Assert(t, errors.Is(err, stakingtypes.ErrNoValidatorFound))
+
+	nci := NewCometInfo(abci.RequestFinalizeBlock{
+		Misbehavior: []abci.Misbehavior{{
+			Validator: abci.Validator{Address: valpubkey.Address(), Power: power},
+			Type:      abci.MisbehaviorType_DUPLICATE_VOTE,
+			Time:      time.Now().UTC(),
+			Height:    1,
+		}},
+	})
+	assert.NilError(t, f.evidenceKeeper.BeginBlocker(ctx.WithCometInfo(nci)))
+
+	iter, err := f.evidenceKeeper.Evidences.Iterate(ctx, nil)
+	assert.NilError(t, err)
+	values, err := iter.Values()
+	assert.NilError(t, err)
+	assert.Equal(t, 0, len(values))
 }
 
 func populateValidators(t assert.TestingT, f *fixture) {
