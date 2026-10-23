@@ -31,29 +31,14 @@ func (p Periods) TotalDuration() time.Duration {
 	return time.Duration(length) * time.Second
 }
 
-// TotalAmount returns the sum of coins for the period.
-//
-// It accumulates per denom and sorts once at the end: Coins.Add re-inserts
-// and re-sorts the entire accumulated set on every call, which makes summing
-// N periods O(N² log N) in unmetered CPU.
+// TotalAmount returns the sum of coins for the periods, accumulated per
+// denom and sorted once; linear in the number of coins.
 func (p Periods) TotalAmount() sdk.Coins {
-	totals := make(map[string]sdk.Coin, len(p))
+	m := sdk.NewMapCoins(nil)
 	for _, period := range p {
-		for _, coin := range period.Amount {
-			if prev, ok := totals[coin.Denom]; ok {
-				totals[coin.Denom] = sdk.NewCoin(coin.Denom, prev.Amount.Add(coin.Amount))
-			} else {
-				totals[coin.Denom] = coin
-			}
-		}
+		m.Add(period.Amount...)
 	}
-
-	total := make(sdk.Coins, 0, len(totals))
-	for _, coin := range totals {
-		total = append(total, coin)
-	}
-
-	return total.Sort()
+	return m.ToCoins()
 }
 
 // String implements the fmt.Stringer interface

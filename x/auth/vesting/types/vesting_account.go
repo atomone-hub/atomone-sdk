@@ -308,41 +308,27 @@ func (pva PeriodicVestingAccount) GetVestedCoins(blockTime time.Time) sdk.Coins 
 	currentPeriodStartTime := pva.StartTime
 
 	// for each period, if the period is over, add those coins as vested and check the next period.
-	//
-	// Accumulate per denom instead of calling Coins.Add inside the loop: Add
-	// re-inserts and re-sorts the entire accumulated set on every call, which
-	// makes this loop O(K² log K) in the period count. The schedule is stored
-	// on-chain and attacker-sized, and this loop re-runs unmetered on every
-	// LockedCoins/SpendableCoins call (fee deduction, send, query).
-	amounts := make(map[string]math.Int)
+	// This runs unmetered on every LockedCoins/SpendableCoins call (fee
+	// deduction, send, query), so it must stay linear in the period count:
+	// accumulate per denom and build the coins once after the loop.
+	m := sdk.NewMapCoins(nil)
 	for _, period := range pva.VestingPeriods {
 		x := blockTime.Unix() - currentPeriodStartTime
 		if x < period.Length {
 			break
 		}
 
-		for _, coin := range period.Amount {
-			prev, ok := amounts[coin.Denom]
-			if !ok {
-				prev = math.ZeroInt()
-			}
-			amounts[coin.Denom] = prev.Add(coin.Amount)
-		}
+		m.Add(period.Amount...)
 
 		// update the start time of the next period
 		currentPeriodStartTime += period.Length
 	}
 
-	if len(amounts) == 0 {
+	vestedCoins := m.ToCoins()
+	if len(vestedCoins) == 0 {
 		return nil
 	}
-
-	vestedCoins := make(sdk.Coins, 0, len(amounts))
-	for denom, amount := range amounts {
-		vestedCoins = append(vestedCoins, sdk.NewCoin(denom, amount))
-	}
-
-	return vestedCoins.Sort()
+	return vestedCoins
 }
 
 // GetVestingCoins returns the total number of vesting coins. If no coins are
@@ -397,8 +383,7 @@ func (pva PeriodicVestingAccount) Validate() error {
 	if endTime < pva.GetStartTime() {
 		return errors.New("cumulative endTime overflowed, and/or is less than startTime")
 	}
-	// sum via TotalAmount: accumulating with Coins.Add per period is
-	// O(N² log N) in the period count
+	// summed via TotalAmount in one linear pass
 	if originalVesting := Periods(pva.VestingPeriods).TotalAmount(); !originalVesting.Equal(pva.OriginalVesting) {
 		return fmt.Errorf("original vesting coins (%v) does not match the sum of all coins in vesting periods (%v)", pva.OriginalVesting, originalVesting)
 	}
