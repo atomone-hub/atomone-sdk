@@ -98,6 +98,21 @@ func (k Keeper) UpdateParams(ctx context.Context, msg *types.MsgUpdateParams) (*
 		return nil, err
 	}
 
+	// SECURITY: Block.MaxGas of 0 must never be accepted. CometBFT's
+	// ValidateBasic only rejects MaxGas < -1, so a proposal setting
+	// MaxGas = 0 passes every existing check, but 0 is not a benign value:
+	// CometBFT's mempool post-check (PostCheckMaxGas) enforces it as a block
+	// gas budget of zero and permanently rejects every transaction (no
+	// admissible tx has GasWanted == 0) from every node's mempool. Reversing
+	// the parameter is itself a transaction, so this locks governance out of
+	// the chain. Note the asymmetry: MaxBytes == 0 IS rejected by
+	// ValidateBasic, and baseapp's block gas meter treats 0 as unlimited
+	// (GetMaximumBlockGas), confirming 0 is the degenerate "unset" shape
+	// rather than an intended configuration.
+	if nextParams.Block.MaxGas == 0 {
+		return nil, fmt.Errorf("Block.MaxGas cannot be 0: a zero block gas budget makes every node's mempool reject all transactions permanently; use -1 for unlimited or a positive limit")
+	}
+
 	// SECURITY: Validator.PubKeyTypes may only be extended, never shrunk.
 	// CometBFT's ValidateBasic only checks that the list is non-empty and
 	// contains known types, so an update that drops a currently allowed type
