@@ -43,6 +43,11 @@ func (g GenesisState) UnpackInterfaces(c codectypes.AnyUnpacker) error {
 			return err
 		}
 	}
+	for i := range g.RotationHistory {
+		if err := g.RotationHistory[i].UnpackInterfaces(c); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

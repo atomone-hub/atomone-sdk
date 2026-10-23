@@ -48,7 +48,63 @@ func ValidateGenesis(data *types.GenesisState) error {
 		return err
 	}
 
+	if err := validateGenesisConsKeyRotations(data); err != nil {
+		return err
+	}
+
 	return data.Params.Validate()
+}
+
+// validateGenesisConsKeyRotations checks the consensus key rotation state for
+// records InitGenesis cannot write or that would overwrite one another.
+func validateGenesisConsKeyRotations(data *types.GenesisState) error {
+	for _, record := range data.RotationIndexRecords {
+		if err := sdk.VerifyAddressFormat(record.Address); err != nil {
+			return fmt.Errorf("invalid rotation index record address: %w", err)
+		}
+	}
+
+	for _, history := range data.RotationHistory {
+		if history.OldConsPubkey == nil || history.NewConsPubkey == nil {
+			return fmt.Errorf("rotation history for %s at height %d is missing a consensus pubkey", history.OperatorAddress, history.Height)
+		}
+	}
+
+	for _, record := range data.RotationQueue {
+		if len(record.ValAddrs.Addresses) == 0 {
+			return fmt.Errorf("rotation queue record at %s lists no validators", record.Time)
+		}
+	}
+
+	rotated := make(map[string]struct{}, len(data.RotatedConsAddresses))
+	for _, r := range data.RotatedConsAddresses {
+		if err := sdk.VerifyAddressFormat(r.OldAddress); err != nil {
+			return fmt.Errorf("invalid rotated consensus address: %w", err)
+		}
+		if err := sdk.VerifyAddressFormat(r.NewAddress); err != nil {
+			return fmt.Errorf("invalid rotated-to consensus address for %X: %w", r.OldAddress, err)
+		}
+		if _, dup := rotated[string(r.OldAddress)]; dup {
+			return fmt.Errorf("duplicate rotated consensus address %X", r.OldAddress)
+		}
+		rotated[string(r.OldAddress)] = struct{}{}
+	}
+
+	identified := make(map[string]struct{}, len(data.ConsAddrIdentifiers))
+	for _, id := range data.ConsAddrIdentifiers {
+		if err := sdk.VerifyAddressFormat(id.ConsAddress); err != nil {
+			return fmt.Errorf("invalid consensus address identifier key: %w", err)
+		}
+		if err := sdk.VerifyAddressFormat(id.InitialConsAddress); err != nil {
+			return fmt.Errorf("invalid initial consensus address for %X: %w", id.ConsAddress, err)
+		}
+		if _, dup := identified[string(id.ConsAddress)]; dup {
+			return fmt.Errorf("duplicate consensus address identifier %X", id.ConsAddress)
+		}
+		identified[string(id.ConsAddress)] = struct{}{}
+	}
+
+	return nil
 }
 
 func validateGenesisStateValidators(validators []types.Validator) error {
