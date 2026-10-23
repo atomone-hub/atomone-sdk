@@ -23,8 +23,10 @@ const maxAuthzNestingDepth = 8
 // cumulative constitution growth via passed proposals.
 const (
 	// MaxConstitutionAmendmentLength is the maximum byte size of a single
-	// constitution-amendment diff accepted in a proposal message.
-	MaxConstitutionAmendmentLength = 16 * 1024
+	// constitution-amendment diff accepted in a proposal message. It must
+	// comfortably cover a whole-constitution rewrite as one diff (the live
+	// constitution is ~42 KB, so a full-text replacement is an ~85 KB diff).
+	MaxConstitutionAmendmentLength = 256 * 1024
 
 	// MaxConstitutionLength is the maximum byte size of the stored
 	// constitution; applying an amendment that would grow the constitution
@@ -255,6 +257,53 @@ func ContainsSelfExecAsAuthority(cdc codec.Codec, msgs []sdk.Msg, authority sdk.
 		}
 	}
 	return false, nil
+}
+
+// CountMessages returns the number of executable messages in msgs, including
+// the messages nested in authz.MsgExec wrappers (bounded by
+// maxAuthzNestingDepth). authz dispatches every inner message when the
+// proposal executes, so message-count bounds must count them too.
+func CountMessages(cdc codec.Codec, msgs []sdk.Msg) (int, error) {
+	count := 0
+	for _, msg := range msgs {
+		count++
+		exec, ok := msg.(*authz.MsgExec)
+		if !ok {
+			continue
+		}
+		nested, err := countExecMessages(cdc, exec, 1)
+		if err != nil {
+			return 0, err
+		}
+		count += nested
+	}
+	return count, nil
+}
+
+// countExecMessages counts the inner messages of an authz.MsgExec, recursing
+// through nested MsgExec layers.
+func countExecMessages(cdc codec.Codec, exec *authz.MsgExec, depth int) (int, error) {
+	if depth > maxAuthzNestingDepth {
+		return 0, errorsmod.Wrap(types.ErrInvalidProposalMsg, "authz nesting depth exceeded")
+	}
+	count := 0
+	for _, anyInner := range exec.Msgs {
+		var inner sdk.Msg
+		if err := cdc.UnpackAny(anyInner, &inner); err != nil {
+			// authz must unpack inner messages to dispatch them, so a message the
+			// codec cannot unpack can never execute; skipping it is safe.
+			continue
+		}
+		count++
+		if innerExec, ok := inner.(*authz.MsgExec); ok {
+			nested, err := countExecMessages(cdc, innerExec, depth+1)
+			if err != nil {
+				return 0, err
+			}
+			count += nested
+		}
+	}
+	return count, nil
 }
 
 // execReachesAuthority reports whether exec is a self-executing chain reaching a leaf

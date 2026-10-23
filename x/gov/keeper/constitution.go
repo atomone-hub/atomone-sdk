@@ -29,9 +29,12 @@ func (keeper Keeper) ApplyConstitutionAmendment(ctx sdk.Context, amendment strin
 
 	// The constitution is re-read, re-applied and re-stored in full on every
 	// amendment message, and this code runs in the gov EndBlocker where no
-	// gas meter bounds the work. Cap the stored size so per-message cost and
-	// cumulative growth across proposals stay bounded.
-	if len(updatedConstitution) > v1.MaxConstitutionLength {
+	// gas meter bounds the work. Reject growth past MaxConstitutionLength so
+	// per-message cost and cumulative growth across proposals stay bounded;
+	// shrinking amendments are always allowed so a constitution that is
+	// already over the cap (e.g. from a genesis predating it) can still be
+	// amended back under it.
+	if len(updatedConstitution) > v1.MaxConstitutionLength && len(updatedConstitution) > len(currentConstitution) {
 		return "", types.ErrInvalidConstitutionAmendment.Wrapf("resulting constitution exceeds maximum size of %d bytes", v1.MaxConstitutionLength)
 	}
 

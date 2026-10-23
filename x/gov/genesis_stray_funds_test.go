@@ -1,6 +1,7 @@
 package gov_test
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -61,17 +62,24 @@ func TestInitGenesis_StillPanicsOnMissingDepositFunds(t *testing.T) {
 	suite := createTestSuite(t)
 	ctx := suite.App.BaseApp.NewContext(false)
 
-	require.Panics(t, func() {
-		gov.InitGenesis(ctx, suite.AccountKeeper, suite.BankKeeper, suite.GovKeeper, &v1.GenesisState{
-			Deposits: v1.Deposits{
-				{
-					ProposalId: 1234,
-					Depositor:  "me",
-					Amount: sdk.Coins{
-						sdk.NewCoin("stake", sdkmath.NewInt(1234)),
-					},
-				},
+	depositor := sdk.AccAddress([]byte("depositor___________")).String()
+	data := v1.DefaultGenesisState()
+	data.Deposits = v1.Deposits{
+		{
+			ProposalId: 1234,
+			Depositor:  depositor,
+			Amount: sdk.Coins{
+				sdk.NewCoin("stake", sdkmath.NewInt(1234)),
 			},
-		})
-	})
+		},
+	}
+
+	var panicValue any
+	func() {
+		defer func() { panicValue = recover() }()
+		gov.InitGenesis(ctx, suite.AccountKeeper, suite.BankKeeper, suite.GovKeeper, data)
+	}()
+	require.NotNil(t, panicValue, "InitGenesis must panic when deposits are not covered by the module balance")
+	require.Contains(t, fmt.Sprintf("%v", panicValue), "to cover total deposits",
+		"the panic must come from the deposit-coverage check, not from malformed genesis fields")
 }
