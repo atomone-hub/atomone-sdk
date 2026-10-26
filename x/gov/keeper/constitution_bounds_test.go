@@ -66,15 +66,18 @@ func TestConstitutionAmendmentBounds(t *testing.T) {
 
 	// 4. A constitution already over MaxConstitutionLength (e.g. from a
 	// genesis predating the cap) must still be amendable, as long as the
-	// amendment shrinks it: the cap blocks growth, not recovery.
+	// amendment shrinks it: the cap blocks growth, not recovery. The result
+	// stays over the cap, so only the growth-only clause accepts it — a plain
+	// absolute cap would reject this amendment.
 	overCap := strings.Repeat("c\n", v1.MaxConstitutionLength/2+50_000) // ~100 KB over the cap
 	require.NoError(t, govKeeper.Constitution.Set(ctx, overCap))
-	shrink := deletionDiff(50_000) // removes 50,000 "c" lines (~100 KB)
+	shrink := deletionDiff(10_000) // removes 10,000 "c" lines (~20 KB); result stays ~80 KB over the cap
 	_, err = srv.ProposeConstitutionAmendment(ctx, v1.NewMsgProposeConstitutionAmendment(authority, shrink))
 	require.NoError(t, err, "a shrinking amendment on an over-cap constitution must be accepted")
 	c, err = govKeeper.Constitution.Get(ctx)
 	require.NoError(t, err)
-	require.Equal(t, big, c, "the shrink amendment must have been applied")
+	require.Len(t, c, len(overCap)-20_000)
+	require.Greater(t, len(c), v1.MaxConstitutionLength)
 }
 
 // TestSubmitProposalCountsNestedAuthzMessages guards the message-count bound
