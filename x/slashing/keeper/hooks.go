@@ -31,7 +31,32 @@ func (h Hooks) AfterValidatorBonded(ctx context.Context, consAddr sdk.ConsAddres
 	signingInfo, err := h.k.GetValidatorSigningInfo(ctx, consAddr)
 	if err == nil {
 		signingInfo.StartHeight = sdkCtx.BlockHeight()
+
+		// A live validator can never be tombstoned here: Unjail rejects
+		// tombstoned validators, so a tombstone cannot survive the only path
+		// back to the Bonded state. A tombstoned record at this point is a
+		// leftover of a previous, removed validator that used the same
+		// consensus key: validator removal deletes only the addr-pubkey
+		// relation, the signing info record survives it, and the key can be
+		// re-registered afterwards. Clear the tombstone so double-sign
+		// evidence against the new validator is processed instead of being
+		// ignored by the evidence handler's IsTombstoned early-return.
+		signingInfo.Tombstoned = false
 	} else {
+		// A brand-new signing-info record is created. Any missed-block bitmap
+		// still stored under this consensus address belongs to a previous
+		// validator that used the same key: consensus-key rotation migrates the
+		// signing-info record to the new key and deletes the old key's record,
+		// but deliberately leaves the bitmap keyed under the old (initial)
+		// consensus address for the rotated validator's own use. If that key is
+		// later re-adopted by a new validator, the stale bitmap paired with the
+		// fresh MissedBlocksCounter would let the counter go negative as the
+		// new validator signs and freeze below the jail threshold while it
+		// misses every block — permanent downtime-jail evasion. Delete the
+		// stale bitmap so the fresh record starts paired with an empty bitmap.
+		if err := h.k.DeleteMissedBlockBitmap(ctx, consAddr); err != nil {
+			return err
+		}
 		signingInfo = types.NewValidatorSigningInfo(
 			consAddr,
 			sdkCtx.BlockHeight(),
