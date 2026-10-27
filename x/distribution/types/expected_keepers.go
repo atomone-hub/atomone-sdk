@@ -62,8 +62,21 @@ type StakingKeeper interface {
 
 	// AddValidatorTokens increases a bonded validator's token balance without
 	// issuing new delegator shares, raising the per-share exchange rate.
-	// The caller must transfer equivalent coins to the bonded pool before calling this.
+	// The caller must transfer equivalent coins to the pool holding the
+	// validator's tokens before calling this.
 	AddValidatorTokens(ctx context.Context, valAddr sdk.ValAddress, tokensToAdd math.Int) error
+
+	// GetValidator returns the concrete Validator for the given operator
+	// address, as required by Delegate.
+	GetValidator(ctx context.Context, valAddr sdk.ValAddress) (stakingtypes.Validator, error)
+
+	// Delegate performs a delegation through the standard staking path,
+	// firing BeforeDelegationSharesModified and AfterDelegationModified
+	// hooks. The v5 migration uses it to stake pending bond denom rewards
+	// into the delegation that earned them.
+	Delegate(ctx context.Context, delAddr sdk.AccAddress, bondAmt math.Int,
+		tokenSrc stakingtypes.BondStatus, validator stakingtypes.Validator,
+		subtractAccount bool) (math.LegacyDec, error)
 }
 
 // StakingHooks event hooks for staking validator object (noalias)

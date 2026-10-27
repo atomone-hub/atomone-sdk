@@ -287,6 +287,21 @@ func (mr *MockStakingKeeperMockRecorder) ConsensusAddressCodec() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ConsensusAddressCodec", reflect.TypeOf((*MockStakingKeeper)(nil).ConsensusAddressCodec))
 }
 
+// Delegate mocks base method.
+func (m *MockStakingKeeper) Delegate(ctx context.Context, delAddr types.AccAddress, bondAmt math.Int, tokenSrc types0.BondStatus, validator types0.Validator, subtractAccount bool) (math.LegacyDec, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Delegate", ctx, delAddr, bondAmt, tokenSrc, validator, subtractAccount)
+	ret0, _ := ret[0].(math.LegacyDec)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Delegate indicates an expected call of Delegate.
+func (mr *MockStakingKeeperMockRecorder) Delegate(ctx, delAddr, bondAmt, tokenSrc, validator, subtractAccount any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Delegate", reflect.TypeOf((*MockStakingKeeper)(nil).Delegate), ctx, delAddr, bondAmt, tokenSrc, validator, subtractAccount)
+}
+
 // Delegation mocks base method.
 func (m *MockStakingKeeper) Delegation(arg0 context.Context, arg1 types.AccAddress, arg2 types.ValAddress) (types0.DelegationI, error) {
 	m.ctrl.T.Helper()
@@ -360,6 +375,21 @@ func (m *MockStakingKeeper) GetBondedValidatorsByPower(ctx context.Context) ([]t
 func (mr *MockStakingKeeperMockRecorder) GetBondedValidatorsByPower(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetBondedValidatorsByPower", reflect.TypeOf((*MockStakingKeeper)(nil).GetBondedValidatorsByPower), ctx)
+}
+
+// GetValidator mocks base method.
+func (m *MockStakingKeeper) GetValidator(ctx context.Context, valAddr types.ValAddress) (types0.Validator, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetValidator", ctx, valAddr)
+	ret0, _ := ret[0].(types0.Validator)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetValidator indicates an expected call of GetValidator.
+func (mr *MockStakingKeeperMockRecorder) GetValidator(ctx, valAddr any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetValidator", reflect.TypeOf((*MockStakingKeeper)(nil).GetValidator), ctx, valAddr)
 }
 
 // IterateDelegations mocks base method.
