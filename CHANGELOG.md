@@ -40,7 +40,7 @@ Ref: https://keepachangelog.com/en/1.0.0/
 
 ### Features
 
-* (x/distribution) [#93](https://github.com/atomone-hub/atomone-sdk/pull/93) Auto-stake the bond denom share of delegator rewards and switch F1 to rewards-per-share; the v5 store migration stakes pending bond denom rewards into each delegation (STATE MACHINE BREAKING)
+* (x/distribution) [#94](https://github.com/atomone-hub/atomone-sdk/pull/94) Auto-stake the bond denom share of delegator rewards and validator commission (commission on `MsgWithdrawValidatorCommission` and at each `commission_auto_stake_epoch_identifier` epoch) and switch F1 to rewards-per-share; the v5 store migration stakes pending bond denom rewards into each delegation (STATE MACHINE BREAKING)
 
 ### Improvements
 
