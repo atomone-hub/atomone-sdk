@@ -124,6 +124,16 @@ it is still in the last commit) has nobody to credit: its bond denom
 delegator rewards go to the community pool, as F1 does for any reward of
 a validator without shares.
 
+The exchange rate is also capped at one token per smallest share unit
+(1e-18 share). Delegations, undelegations and slashes can never exceed
+it, but adding tokens without shares could: an operator could deposit to
+their own validator with `MsgDepositValidatorRewardsPool`, undelegate
+almost everything and repeat, until a later delegation truncates to zero
+shares and its tokens go to the operator's remaining share. Bond denom
+delegator rewards that would push a validator past the cap go to the
+community pool instead, and `AddValidatorTokens` rejects them. Real
+validators sit many orders of magnitude below the cap.
+
 This path is invisible to the F1 calculation because F1 ratios are stored
 per-share, not per-token (see the next section). A bump in
 `validator.Tokens` therefore does not require any per-delegator state

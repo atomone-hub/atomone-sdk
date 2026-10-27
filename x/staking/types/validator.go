@@ -332,6 +332,17 @@ func (v Validator) SharesFromTokens(amt math.Int) (math.LegacyDec, error) {
 	return v.GetDelegatorShares().MulInt(amt).QuoInt(v.GetTokens()), nil
 }
 
+// CanAddTokensWithoutShares reports whether amt tokens can be added to a
+// validator holding tokens against shares, without issuing shares, while
+// keeping at most one token per smallest share unit (1e-18 share).
+// SharesFromTokens truncates, so above that rate a delegation could be issued
+// zero shares and its tokens would go to the existing delegators.
+// Delegations, undelegations and slashes never push the rate above it; only
+// adding tokens without shares can.
+func CanAddTokensWithoutShares(tokens math.Int, shares math.LegacyDec, amt math.Int) bool {
+	return tokens.Add(amt).LTE(math.NewIntFromBigInt(shares.BigInt()))
+}
+
 // SharesFromTokensTruncated returns the truncated shares of a delegation given
 // a bond amount. It returns an error if the validator has no tokens.
 func (v Validator) SharesFromTokensTruncated(amt math.Int) (math.LegacyDec, error) {

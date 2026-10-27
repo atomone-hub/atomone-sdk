@@ -515,3 +515,24 @@ func (s *KeeperTestSuite) TestAddValidatorTokens_RejectsValidatorWithoutShares()
 	require.NoError(err)
 	require.True(updated.Tokens.IsZero())
 }
+
+func (s *KeeperTestSuite) TestAddValidatorTokens_RejectsExchangeRateAboveOneTokenPerShareUnit() {
+	ctx, keeper := s.ctx, s.stakingKeeper
+	require := s.Require()
+
+	valPubKey := PKs[3]
+	valAddr := sdk.ValAddress(valPubKey.Address().Bytes())
+	validator := testutil.NewValidator(s.T(), valAddr, valPubKey)
+	// 1000 smallest share units backing 400 tokens: 600 more tokens fit, 601 do not.
+	validator.Tokens = math.NewInt(400)
+	validator.DelegatorShares = math.LegacyNewDecWithPrec(1000, math.LegacyPrecision)
+	require.NoError(keeper.SetValidator(ctx, validator))
+
+	err := keeper.AddValidatorTokens(ctx, valAddr, math.NewInt(601))
+	require.ErrorIs(err, stakingtypes.ErrInsufficientShares)
+
+	require.NoError(keeper.AddValidatorTokens(ctx, valAddr, math.NewInt(600)))
+	updated, err := keeper.GetValidator(ctx, valAddr)
+	require.NoError(err)
+	require.Equal(math.NewInt(1000), updated.Tokens)
+}
