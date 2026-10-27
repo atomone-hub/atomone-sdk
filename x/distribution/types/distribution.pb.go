@@ -542,16 +542,13 @@ var xxx_messageInfo_CommunityPoolSpendProposal proto.InternalMessageInfo
 
 // DelegatorStartingInfo represents the starting info for a delegator reward
 // period. It tracks the previous validator period, the delegation's share
-// count snapshot, and the creation height (to check later on if any slashes
-// have occurred).
+// count snapshot, and the creation height.
 //
-// NOTE: The `stake` field is named for historical reasons — under the
-// original tokens-based F1 reward distribution it held the delegator's
-// tokens-from-shares value. Under the revised shares-based F1 it
-// stores the delegator's share count at init time, which is invariant to
-// slashing and auto-staking (both modify validator.Tokens but not
-// validator.DelegatorShares). The field is unchanged and remains a
-// math.LegacyDec because shares are stored as Dec in the staking module.
+// NOTE: Despite its name, the `stake` field holds the delegator's share count
+// at init time, not a token amount. Shares are invariant to slashing and
+// auto-staking (both modify validator.Tokens but not
+// validator.DelegatorShares). It is a math.LegacyDec because shares are
+// stored as Dec in the staking module.
 type DelegatorStartingInfo struct {
 	PreviousPeriod uint64                      `protobuf:"varint,1,opt,name=previous_period,json=previousPeriod,proto3" json:"previous_period,omitempty"`
 	Stake          cosmossdk_io_math.LegacyDec `protobuf:"bytes,2,opt,name=stake,proto3,customtype=cosmossdk.io/math.LegacyDec" json:"stake"`
