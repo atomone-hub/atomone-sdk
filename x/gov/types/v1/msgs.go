@@ -16,6 +16,28 @@ import (
 // in a proposal message. Nesting depth beyond this limit is rejected altogether.
 const maxAuthzNestingDepth = 8
 
+// Bounds on constitution-amendment inputs. Amendments are executed by the gov
+// EndBlocker (no gas meter) with O(constitution-size) string/store work per
+// message, so both the amendment diff and the constitution itself must be
+// explicitly size-bounded to prevent unbounded unmetered CPU churn and
+// cumulative constitution growth via passed proposals.
+const (
+	// MaxConstitutionAmendmentLength is the maximum byte size of a single
+	// constitution-amendment diff accepted in a proposal message. It must
+	// comfortably cover a whole-constitution rewrite as one diff (the live
+	// constitution is ~42 KB, so a full-text replacement is an ~85 KB diff).
+	MaxConstitutionAmendmentLength = 256 * 1024
+
+	// MaxConstitutionLength is the maximum byte size of the stored
+	// constitution; applying an amendment that would grow the constitution
+	// past this bound fails.
+	MaxConstitutionLength = 2 * 1024 * 1024
+
+	// MaxProposalMessages bounds the number of messages a single proposal may
+	// carry, capping the total EndBlocker work a passed proposal can request.
+	MaxProposalMessages = 200
+)
+
 var (
 	_, _, _, _, _, _, _, _, _, _, _, _, _ sdk.Msg                            = &MsgSubmitProposal{}, &MsgDeposit{}, &MsgVote{}, &MsgVoteWeighted{}, &MsgExecLegacyContent{}, &MsgUpdateParams{}, &MsgProposeConstitutionAmendment{}, &MsgProposeLaw{}, &MsgCreateGovernor{}, &MsgEditGovernor{}, &MsgDelegateGovernor{}, &MsgUndelegateGovernor{}, &MsgUpdateGovernorStatus{}
 	_, _                                  codectypes.UnpackInterfacesMessage = &MsgSubmitProposal{}, &MsgExecLegacyContent{}
@@ -117,6 +139,10 @@ func NewMsgProposeConstitutionAmendment(authority sdk.AccAddress, amendment stri
 func (msg MsgProposeConstitutionAmendment) ValidateBasic() error {
 	if msg.Amendment == "" {
 		return types.ErrInvalidProposalContent.Wrap("amendment cannot be empty")
+	}
+
+	if len(msg.Amendment) > MaxConstitutionAmendmentLength {
+		return types.ErrInvalidProposalContent.Wrapf("amendment length exceeds maximum of %d bytes", MaxConstitutionAmendmentLength)
 	}
 
 	_, err := types.ParseUnifiedDiff(msg.Amendment)
@@ -231,6 +257,53 @@ func ContainsSelfExecAsAuthority(cdc codec.Codec, msgs []sdk.Msg, authority sdk.
 		}
 	}
 	return false, nil
+}
+
+// CountMessages returns the number of executable messages in msgs, including
+// the messages nested in authz.MsgExec wrappers (bounded by
+// maxAuthzNestingDepth). authz dispatches every inner message when the
+// proposal executes, so message-count bounds must count them too.
+func CountMessages(cdc codec.Codec, msgs []sdk.Msg) (int, error) {
+	count := 0
+	for _, msg := range msgs {
+		count++
+		exec, ok := msg.(*authz.MsgExec)
+		if !ok {
+			continue
+		}
+		nested, err := countExecMessages(cdc, exec, 1)
+		if err != nil {
+			return 0, err
+		}
+		count += nested
+	}
+	return count, nil
+}
+
+// countExecMessages counts the inner messages of an authz.MsgExec, recursing
+// through nested MsgExec layers.
+func countExecMessages(cdc codec.Codec, exec *authz.MsgExec, depth int) (int, error) {
+	if depth > maxAuthzNestingDepth {
+		return 0, errorsmod.Wrap(types.ErrInvalidProposalMsg, "authz nesting depth exceeded")
+	}
+	count := 0
+	for _, anyInner := range exec.Msgs {
+		var inner sdk.Msg
+		if err := cdc.UnpackAny(anyInner, &inner); err != nil {
+			// authz must unpack inner messages to dispatch them, so a message the
+			// codec cannot unpack can never execute; skipping it is safe.
+			continue
+		}
+		count++
+		if innerExec, ok := inner.(*authz.MsgExec); ok {
+			nested, err := countExecMessages(cdc, innerExec, depth+1)
+			if err != nil {
+				return 0, err
+			}
+			count += nested
+		}
+	}
+	return count, nil
 }
 
 // execReachesAuthority reports whether exec is a self-executing chain reaching a leaf

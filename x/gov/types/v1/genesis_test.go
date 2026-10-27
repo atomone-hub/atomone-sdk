@@ -66,6 +66,34 @@ func TestValidateGenesis(t *testing.T) {
 			expErrMsg: "invalid minimum deposit floor",
 		},
 		{
+			name: "min deposit throttler floor is too large",
+			genesisState: func() *v1.GenesisState {
+				params := v1.DefaultParams()
+				mdt := *params.MinDepositThrottler
+				mdt.FloorValue = sdk.NewCoins(sdk.Coin{
+					Denom:  sdk.DefaultBondDenom,
+					Amount: v1.MaxDepositThrottlerFloorAmount.MulRaw(10),
+				})
+				params.MinDepositThrottler = &mdt
+				return v1.NewGenesisState(v1.DefaultStartingProposalID, v1.DefaultParticipationEma, v1.DefaultParticipationEma, v1.DefaultParticipationEma, params)
+			},
+			expErrMsg: "minimum deposit floor amount too large",
+		},
+		{
+			name: "min initial deposit throttler floor is too large",
+			genesisState: func() *v1.GenesisState {
+				params := v1.DefaultParams()
+				midt := *params.MinInitialDepositThrottler
+				midt.FloorValue = sdk.NewCoins(sdk.Coin{
+					Denom:  sdk.DefaultBondDenom,
+					Amount: v1.MaxDepositThrottlerFloorAmount.MulRaw(10),
+				})
+				params.MinInitialDepositThrottler = &midt
+				return v1.NewGenesisState(v1.DefaultStartingProposalID, v1.DefaultParticipationEma, v1.DefaultParticipationEma, v1.DefaultParticipationEma, params)
+			},
+			expErrMsg: "minimum initial deposit floor amount too large",
+		},
+		{
 			name: "min deposit throttler update period is nil",
 			genesisState: func() *v1.GenesisState {
 				params := v1.DefaultParams()
