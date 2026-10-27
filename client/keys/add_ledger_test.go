@@ -1,5 +1,4 @@
-//go:build ledger || test_ledger_mock
-// +build ledger test_ledger_mock
+//go:build test_ledger_mock || test_ledger_device
 
 package keys
 

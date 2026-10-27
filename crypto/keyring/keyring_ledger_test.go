@@ -1,5 +1,4 @@
-//go:build ledger || test_ledger_mock
-// +build ledger test_ledger_mock
+//go:build test_ledger_mock || test_ledger_device
 
 package keyring
 
@@ -24,15 +23,9 @@ func TestInMemoryCreateLedger(t *testing.T) {
 	kb := NewInMemory(cdc)
 
 	k, err := kb.SaveLedgerKey("some_account", hd.Secp256k1, "cosmos", 118, 3, 1)
-	if err != nil {
-		require.Error(t, err)
-		require.Equal(t, "ledger nano S: support for ledger devices is not available in this executable", err.Error())
-		require.Nil(t, k)
-		t.Skip("ledger nano S: support for ledger devices is not available in this executable")
-		return
-	}
+	require.NoError(t, err)
 
-	// The mock is available, check that the address is correct
+	// Check that the address is correct
 	pubKey, err := k.GetPubKey()
 	require.NoError(t, err)
 	expectedPkStr := "PubKeySecp256k1{03602C0CB4D8C0081FEE794BDE96E7B95FA16F2B5283B764AC070584327B2C7202}"
@@ -63,11 +56,7 @@ func TestSignVerifyKeyRingWithLedger(t *testing.T) {
 	require.NoError(t, err)
 
 	k, err := kb.SaveLedgerKey("key", hd.Secp256k1, "cosmos", 118, 0, 0)
-	if err != nil {
-		require.Equal(t, "ledger nano S: support for ledger devices is not available in this executable", err.Error())
-		t.Skip("ledger nano S: support for ledger devices is not available in this executable")
-		return
-	}
+	require.NoError(t, err)
 	require.Equal(t, "key", k.Name)
 
 	d1 := []byte("my first message")
@@ -108,13 +97,9 @@ func TestAltKeyring_SaveLedgerKey(t *testing.T) {
 	require.True(t, errors.Is(err, ErrUnsupportedSigningAlgo))
 
 	k, err := kr.SaveLedgerKey("some_account", hd.Secp256k1, "cosmos", 118, 3, 1)
-	if err != nil {
-		require.Equal(t, "ledger nano S: support for ledger devices is not available in this executable", err.Error())
-		t.Skip("ledger nano S: support for ledger devices is not available in this executable")
-		return
-	}
+	require.NoError(t, err)
 
-	// The mock is available, check that the address is correct
+	// Check that the address is correct
 	require.Equal(t, "some_account", k.Name)
 	pubKey, err := k.GetPubKey()
 	require.NoError(t, err)

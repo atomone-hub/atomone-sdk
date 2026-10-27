@@ -7,7 +7,7 @@ COPY go.mod go.sum /work/
 RUN go mod download
 
 COPY ./ /work
-RUN LEDGER_ENABLED=false make clean build
+RUN make clean build
 
 
 FROM alpine AS run
