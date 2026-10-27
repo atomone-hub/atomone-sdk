@@ -7,6 +7,7 @@ package v5_test
 // cleanliness.
 
 import (
+	"fmt"
 	"testing"
 
 	cmtabcitypes "github.com/cometbft/cometbft/abci/types"
@@ -380,4 +381,133 @@ func TestMigrateStore_OperatorAndExternalDelegator(t *testing.T) {
 	del, err := f.stakingKeeper.GetDelegation(f.sdkCtx, delAddr, f.valAddr)
 	require.NoError(t, err)
 	require.True(t, info.Stake.Equal(del.GetShares()))
+}
+
+// requireStakingPoolsConsistent checks the staking module account invariant:
+// the bonded and not-bonded pools hold exactly the tokens of the validators
+// in the corresponding status (no unbonding delegations exist in these tests).
+func requireStakingPoolsConsistent(t *testing.T, f *fixture) {
+	t.Helper()
+	bondedTokens, notBondedTokens := math.ZeroInt(), math.ZeroInt()
+	vals, err := f.stakingKeeper.GetAllValidators(f.sdkCtx)
+	require.NoError(t, err)
+	for _, v := range vals {
+		if v.IsBonded() {
+			bondedTokens = bondedTokens.Add(v.Tokens)
+		} else {
+			notBondedTokens = notBondedTokens.Add(v.Tokens)
+		}
+	}
+	bondedPool := f.bankKeeper.GetBalance(f.sdkCtx, f.stakingKeeper.GetBondedPool(f.sdkCtx).GetAddress(), sdk.DefaultBondDenom)
+	notBondedPool := f.bankKeeper.GetBalance(f.sdkCtx, f.stakingKeeper.GetNotBondedPool(f.sdkCtx).GetAddress(), sdk.DefaultBondDenom)
+	require.Equal(t, bondedTokens, bondedPool.Amount, "bonded pool balance must equal bonded validators' tokens")
+	require.Equal(t, notBondedTokens, notBondedPool.Amount, "not-bonded pool balance must equal non-bonded validators' tokens")
+}
+
+// setPendingLegacyRewards seeds the validator's current period with bond denom
+// rewards as the pre-upgrade F1 would have accumulated them, funding the
+// distribution module accordingly.
+func setPendingLegacyRewards(t *testing.T, f *fixture, amount math.Int) {
+	t.Helper()
+	f.fundDistribution(t, sdk.NewCoins(sdk.NewCoin(sdk.DefaultBondDenom, amount)))
+	rewards := sdk.NewDecCoinsFromCoins(sdk.NewCoin(sdk.DefaultBondDenom, amount))
+	cur, err := f.distrKeeper.GetValidatorCurrentRewards(f.sdkCtx, f.valAddr)
+	require.NoError(t, err)
+	require.NoError(t, f.distrKeeper.SetValidatorCurrentRewards(f.sdkCtx, f.valAddr,
+		distrtypes.NewValidatorCurrentRewards(rewards, cur.Period)))
+	require.NoError(t, f.distrKeeper.SetValidatorOutstandingRewards(f.sdkCtx, f.valAddr,
+		distrtypes.ValidatorOutstandingRewards{Rewards: rewards}))
+}
+
+// TestMigrateStore_PendingRewardsStakedIntoEarningDelegation checks that each
+// delegator's pending bond denom rewards are staked into their own delegation
+// rather than spread over every delegator of the validator.
+func TestMigrateStore_PendingRewardsStakedIntoEarningDelegation(t *testing.T) {
+	for _, bonded := range []bool{false, true} {
+		t.Run(fmt.Sprintf("bonded=%t", bonded), func(t *testing.T) {
+			f := initFixture(t)
+			f.fundOperator(t, f.stakingKeeper.TokensFromConsensusPower(f.sdkCtx, 1000))
+			tstaking := stakingtestutil.NewHelper(t, f.sdkCtx, f.stakingKeeper)
+			tstaking.Commission = stakingtypes.NewCommissionRates(math.LegacyZeroDec(), math.LegacyNewDecWithPrec(5, 1), math.LegacyZeroDec())
+			selfBond := f.stakingKeeper.TokensFromConsensusPower(f.sdkCtx, 1)
+			tstaking.CreateValidator(f.valAddr, valConsPk0, selfBond, true)
+			if bonded {
+				_, err := f.stakingKeeper.EndBlocker(f.sdkCtx)
+				require.NoError(t, err)
+			}
+
+			// All pending rewards were earned by the operator, the only
+			// delegator so far.
+			pending := math.NewInt(1000)
+			setPendingLegacyRewards(t, f, pending)
+
+			// A delegator joining afterwards is owed none of them.
+			newcomer := sdk.AccAddress(pks[2].Address())
+			require.NoError(t, f.bankKeeper.MintCoins(f.sdkCtx, distrtypes.ModuleName, sdk.NewCoins(sdk.NewCoin(sdk.DefaultBondDenom, selfBond))))
+			require.NoError(t, f.bankKeeper.SendCoinsFromModuleToAccount(f.sdkCtx, distrtypes.ModuleName, newcomer, sdk.NewCoins(sdk.NewCoin(sdk.DefaultBondDenom, selfBond))))
+			tstaking.Delegate(newcomer, f.valAddr, selfBond)
+
+			preOpBalance := f.bankKeeper.GetBalance(f.sdkCtx, sdk.AccAddress(f.valAddr), sdk.DefaultBondDenom)
+
+			f.runMigration(t)
+
+			val, err := f.stakingKeeper.GetValidator(f.sdkCtx, f.valAddr)
+			require.NoError(t, err)
+			require.Equal(t, bonded, val.IsBonded())
+			opDel, err := f.stakingKeeper.GetDelegation(f.sdkCtx, sdk.AccAddress(f.valAddr), f.valAddr)
+			require.NoError(t, err)
+			newDel, err := f.stakingKeeper.GetDelegation(f.sdkCtx, newcomer, f.valAddr)
+			require.NoError(t, err)
+
+			require.Equal(t, math.LegacyNewDecFromInt(selfBond.Add(pending)), val.TokensFromShares(opDel.Shares),
+				"operator's pending rewards must be staked into the operator's delegation")
+			require.Equal(t, math.LegacyNewDecFromInt(selfBond), val.TokensFromShares(newDel.Shares),
+				"newcomer must not receive rewards earned before delegating")
+			require.Equal(t, preOpBalance, f.bankKeeper.GetBalance(f.sdkCtx, sdk.AccAddress(f.valAddr), sdk.DefaultBondDenom),
+				"pending bond denom rewards must not be paid out")
+			requireStakingPoolsConsistent(t, f)
+
+			// F1 bookkeeping must be consistent with the new shares.
+			info, err := f.distrKeeper.GetDelegatorStartingInfo(f.sdkCtx, f.valAddr, sdk.AccAddress(f.valAddr))
+			require.NoError(t, err)
+			require.True(t, info.Stake.Equal(opDel.Shares))
+			msg, broken := distrkeeper.ReferenceCountInvariant(f.distrKeeper)(f.sdkCtx)
+			require.False(t, broken, msg)
+			msg, broken = distrkeeper.ModuleAccountInvariant(f.distrKeeper)(f.sdkCtx)
+			require.False(t, broken, msg)
+		})
+	}
+}
+
+// TestMigrateStore_PendingRewardsPaidOutOnInvalidExchangeRate checks that a
+// validator which cannot accept delegations (all tokens slashed away) does not
+// block the migration: its delegators receive their pending rewards instead.
+func TestMigrateStore_PendingRewardsPaidOutOnInvalidExchangeRate(t *testing.T) {
+	f := initFixture(t)
+	f.fundOperator(t, f.stakingKeeper.TokensFromConsensusPower(f.sdkCtx, 1000))
+	tstaking := stakingtestutil.NewHelper(t, f.sdkCtx, f.stakingKeeper)
+	tstaking.Commission = stakingtypes.NewCommissionRates(math.LegacyZeroDec(), math.LegacyNewDecWithPrec(5, 1), math.LegacyZeroDec())
+	tstaking.CreateValidator(f.valAddr, valConsPk0, math.NewInt(100), true)
+
+	pending := math.NewInt(1000)
+	setPendingLegacyRewards(t, f, pending)
+	// Close the period so the rewards are attributed before the tokens vanish.
+	val, err := f.stakingKeeper.GetValidator(f.sdkCtx, f.valAddr)
+	require.NoError(t, err)
+	_, err = f.distrKeeper.IncrementValidatorPeriod(f.sdkCtx, val)
+	require.NoError(t, err)
+
+	// Simulate a 100% slash: tokens burned, shares left in place.
+	require.NoError(t, f.bankKeeper.BurnCoins(f.sdkCtx, stakingtypes.NotBondedPoolName, sdk.NewCoins(sdk.NewCoin(sdk.DefaultBondDenom, val.Tokens))))
+	val.Tokens = math.ZeroInt()
+	require.NoError(t, f.stakingKeeper.SetValidator(f.sdkCtx, val))
+	require.True(t, val.InvalidExRate())
+
+	preOpBalance := f.bankKeeper.GetBalance(f.sdkCtx, sdk.AccAddress(f.valAddr), sdk.DefaultBondDenom)
+
+	f.runMigration(t)
+
+	postOpBalance := f.bankKeeper.GetBalance(f.sdkCtx, sdk.AccAddress(f.valAddr), sdk.DefaultBondDenom)
+	require.Equal(t, preOpBalance.Amount.Add(pending), postOpBalance.Amount)
+	requireStakingPoolsConsistent(t, f)
 }

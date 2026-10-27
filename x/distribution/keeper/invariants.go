@@ -125,14 +125,12 @@ func CanWithdrawInvariant(k Keeper) sdk.Invariant {
 
 // ReferenceCountInvariant checks that the number of historical rewards records is correct.
 //
-// Under shares-based F1 the only references to historical-rewards records
-// are (a) one per validator for its initial period 0 (set by
-// initializeValidator) and (b) one per delegation for its starting period
-// (incremented by initializeDelegation, decremented by withdraw / re-init).
-// Slash events no longer hold a reference: the slash hook still records
-// the event for the ValidatorSlashes gRPC endpoint but does NOT bump the
-// historical record's ref count, because the post-upgrade reward
-// calculation never reads slash events.
+// Historical-rewards records are referenced (a) once per validator, by the
+// record preceding its current period (moved by IncrementValidatorPeriod) and
+// (b) once per delegation, by its starting period (incremented by
+// initializeDelegation, decremented by withdraw / re-init). Slash events hold
+// no reference: they are recorded only for the ValidatorSlashes gRPC endpoint
+// and the reward calculation never reads them.
 func ReferenceCountInvariant(k Keeper) sdk.Invariant {
 	return func(ctx sdk.Context) (string, bool) {
 		valCount := uint64(0)

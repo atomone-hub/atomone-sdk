@@ -150,16 +150,14 @@ func (k Keeper) decrementReferenceCount(ctx context.Context, valAddr sdk.ValAddr
 }
 
 // updateValidatorSlashFraction records a slash event for the given validator,
-// solely for client visibility via the ValidatorSlashes GRPC endpoint. Under
-// shares-based F1 the reward calculation does not consume slash events.
+// solely for client visibility via the ValidatorSlashes GRPC endpoint. The
+// reward calculation does not consume slash events, so the event takes no
+// reference on a historical rewards record.
 //
-// We still bump the validator period so each slash event lands at a unique
+// The validator period is incremented so each slash event lands at a unique
 // (height, period) storage key — this avoids overwrites when multiple slashes
 // hit the same validator in the same block (rare, but possible for cross-
-// validator redelegation infractions). We do NOT increment the historical
-// reference count: that was needed in the old tokens-based scheme to keep the
-// historical record alive for slash-event lookups that scaled stake by
-// (1 - fraction); shares-based F1 has no such lookup.
+// validator redelegation infractions).
 func (k Keeper) updateValidatorSlashFraction(ctx context.Context, valAddr sdk.ValAddress, fraction math.LegacyDec) error {
 	if fraction.GT(math.LegacyOneDec()) || fraction.IsNegative() {
 		panic(fmt.Sprintf("fraction must be >=0 and <=1, current fraction: %v", fraction))

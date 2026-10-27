@@ -93,14 +93,14 @@ func (k Keeper) AllocateTokens(ctx context.Context, totalPreviousPower int64, bo
 		// Add fixed Nakamoto bonus to proportional share
 		reward := proportional.Add(nbPerValidator...)
 
-		dust, err := k.AllocateTokensToValidator(ctx, validator, reward)
+		bondRemainder, err := k.AllocateTokensToValidator(ctx, validator, reward)
 		if err != nil {
 			return err
 		}
-		// Bond denom auto-staked portion was sent to the bonded pool and left the
-		// distribution module. Add back the decimal truncation dust (which stayed)
-		// so the community pool accounting remains correct.
-		remaining = remaining.Sub(reward).Add(dust...)
+		// Bond denom auto-staked portion was sent to a staking pool and left the
+		// distribution module. Add back the bond denom that was not auto-staked
+		// (which stayed) so the community pool accounting remains correct.
+		remaining = remaining.Sub(reward).Add(bondRemainder...)
 	}
 
 	// allocate community funding
@@ -110,15 +110,17 @@ func (k Keeper) AllocateTokens(ctx context.Context, totalPreviousPower int64, bo
 
 // AllocateTokensToValidator distributes a validator's reward allocation.
 // Bond denom delegator rewards are auto-staked: tokens are sent directly to the
-// bonded pool and validator.Tokens is increased (raising the per-share exchange
-// rate). Commission and non-bond-denom rewards continue through the F1 mechanism
-// and remain withdrawable. Returns the bond denom decimal truncation dust so the
-// caller can route it to the community pool.
+// staking pool holding the validator's tokens and validator.Tokens is increased
+// (raising the per-share exchange rate). Commission and non-bond-denom rewards
+// continue through the F1 mechanism and remain withdrawable. Returns the bond
+// denom delegator rewards that were not auto-staked (decimal truncation dust, or
+// the whole amount if the validator has no delegator shares to credit) so the
+// caller can route them to the community pool.
 func (k Keeper) AllocateTokensToValidator(
 	ctx context.Context,
 	val stakingtypes.ValidatorI,
 	tokens sdk.DecCoins,
-) (bondDust sdk.DecCoins, err error) {
+) (bondRemainder sdk.DecCoins, err error) {
 	// split tokens between validator and delegators according to commission
 	commission := tokens.MulDec(val.GetCommission())
 	shared := tokens.Sub(commission)
@@ -136,16 +138,30 @@ func (k Keeper) AllocateTokensToValidator(
 	// --- Auto-stake bond denom delegator rewards ---
 	// Truncate to an integer so it can be transferred as sdk.Coins; the decimal
 	// remainder is returned to the caller for community pool accounting.
+	// A validator without delegator shares (e.g. still in the last commit after
+	// all its delegations were removed) has nobody to credit: tokens added to it
+	// would be owned by no one and would block its removal once unbonded.
 	sharedBondDec := shared.AmountOf(bondDenom)
-	sharedBondInt := sharedBondDec.TruncateInt()
-	if dust := sharedBondDec.Sub(math.LegacyNewDecFromInt(sharedBondInt)); dust.IsPositive() {
-		bondDust = sdk.NewDecCoins(sdk.NewDecCoinFromDec(bondDenom, dust))
+	sharedBondInt := math.ZeroInt()
+	if val.GetDelegatorShares().IsPositive() {
+		sharedBondInt = sharedBondDec.TruncateInt()
+	}
+	if rem := sharedBondDec.Sub(math.LegacyNewDecFromInt(sharedBondInt)); rem.IsPositive() {
+		bondRemainder = sdk.NewDecCoins(sdk.NewDecCoinFromDec(bondDenom, rem))
 	}
 
 	if sharedBondInt.IsPositive() {
-		// Transfer to bonded pool first (satisfies ModuleAccountInvariant), then update validator.Tokens.
+		// Validators can still receive rewards after leaving the bonded set
+		// (they remain in the last commit), and MsgDepositValidatorRewardsPool
+		// accepts any validator, so the coins must go to the pool that holds
+		// this validator's tokens.
+		pool := stakingtypes.NotBondedPoolName
+		if val.IsBonded() {
+			pool = stakingtypes.BondedPoolName
+		}
+		// Transfer to the staking pool first (satisfies ModuleAccountInvariant), then update validator.Tokens.
 		if err := k.bankKeeper.SendCoinsFromModuleToModule(
-			ctx, types.ModuleName, stakingtypes.BondedPoolName,
+			ctx, types.ModuleName, pool,
 			sdk.NewCoins(sdk.NewCoin(bondDenom, sharedBondInt)),
 		); err != nil {
 			return nil, err
@@ -155,8 +171,8 @@ func (k Keeper) AllocateTokensToValidator(
 		}
 	}
 
-	// Exclude all bond denom from F1: integer went to bonded pool, dust goes to
-	// community pool via the caller. sdk.NewDecCoins filters zero amounts automatically.
+	// Exclude all bond denom from F1: integer went to the staking pool, the
+	// remainder goes to community pool via the caller. sdk.NewDecCoins filters zero amounts automatically.
 	sharedForF1 := shared.Sub(sdk.NewDecCoins(sdk.NewDecCoinFromDec(bondDenom, sharedBondDec)))
 
 	// --- F1 path: commission (all denoms) + non-bond-denom delegator rewards ---
@@ -206,5 +222,5 @@ func (k Keeper) AllocateTokensToValidator(
 		return nil, err
 	}
 
-	return bondDust, nil
+	return bondRemainder, nil
 }

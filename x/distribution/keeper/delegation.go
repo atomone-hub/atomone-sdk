@@ -36,12 +36,7 @@ func (k Keeper) initializeDelegation(ctx context.Context, val sdk.ValAddress, de
 	// is the right unit to multiply against later. This is invariant to the
 	// per-share exchange rate, which can shift between init and withdrawal due
 	// to auto-staking and slashing — neither modifies validator.DelegatorShares.
-	//
-	// The DelegatorStartingInfo proto field is named `Stake` for historical
-	// reasons (it held tokens-from-shares under the old tokens-based F1). It
-	// now stores the delegator's share count. We keep the proto name for
-	// backwards compatibility with stored state but use `shares` in code so
-	// the semantics are clear.
+	// It is stored in the DelegatorStartingInfo `Stake` field.
 	shares := delegation.GetShares()
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	return k.SetDelegatorStartingInfo(ctx, val, del, types.NewDelegatorStartingInfo(previousPeriod, shares, uint64(sdkCtx.BlockHeight())))
@@ -51,9 +46,7 @@ func (k Keeper) initializeDelegation(ctx context.Context, val sdk.ValAddress, de
 // across periods [startingPeriod, endingPeriod].
 //
 // The `shares` argument is the delegator's share-count snapshot stored in
-// DelegatorStartingInfo at init time. The proto field is still named `Stake`
-// (see initializeDelegation for the rationale), but in shares-based F1 it
-// holds shares, not tokens-from-shares.
+// DelegatorStartingInfo.Stake at init time.
 func (k Keeper) calculateDelegationRewardsBetween(ctx context.Context, val stakingtypes.ValidatorI,
 	startingPeriod, endingPeriod uint64, shares math.LegacyDec,
 ) (sdk.DecCoins, error) {
@@ -118,8 +111,7 @@ func (k Keeper) CalculateDelegationRewards(ctx context.Context, val stakingtypes
 	}
 
 	startingPeriod := startingInfo.PreviousPeriod
-	// The DelegatorStartingInfo proto field is named `Stake` but, under
-	// shares-based F1, holds the delegator's share count at init time.
+	// DelegatorStartingInfo.Stake holds the delegator's share count at init time.
 	startingShares := startingInfo.Stake
 
 	// Shares only change when the delegator delegates, undelegates, or

@@ -32,16 +32,26 @@ package v5
 //     historical period) record the migration needs before mutating the
 //     stores.
 //  3. For each validator currently in staking (in deterministic key order):
-//     close its current period under legacy F1, pay out each delegation's
-//     pending rewards (auto-staking the bond denom delegator portion),
-//     wipe the F1 stores while preserving accumulatedCommission and
-//     setting outstandingRewards to exactly that preserved commission,
-//     re-seed period 0/1, and re-initialize the `DelegatorStartingInfo`
-//     for each of its active delegations using the shares-based semantic.
+//     close its current period under legacy F1, settle each delegation's
+//     pending rewards (non-bond denoms are paid out, the bond denom integer
+//     amount is set aside to be staked), wipe the F1 stores while
+//     preserving accumulatedCommission and setting outstandingRewards to
+//     exactly that preserved commission, re-seed period 0/1, and
+//     re-initialize the `DelegatorStartingInfo` for each of its active
+//     delegations using the shares-based semantic.
 //  4. For each orphan (an address with leftover F1 records but no matching
 //     validator in staking): sweep all outstanding state to the community
 //     pool — including accumulated commission, since there is no operator
 //     to preserve it for — and wipe storage.
+//  5. Stake each delegation's pending bond denom rewards into that same
+//     delegation through the standard staking Delegate path, minting new
+//     shares for the delegator who earned them. Pending rewards differ per
+//     delegator, so they cannot be added to validator.Tokens without
+//     shares (that would spread them across all delegators pro rata).
+//     Delegate fires the staking hooks, keeping x/distribution and x/gov
+//     bookkeeping consistent, and moves the tokens to the pool matching the
+//     validator's status. Running this after every validator is re-seeded
+//     means the hooks operate on post-migration F1 state only.
 //
 // `ValidatorSlashEvent` records are intentionally left in storage. They are
 // no longer consumed by reward computation, but the public ValidatorSlashes
@@ -71,7 +81,9 @@ type bankKeeper interface {
 // stakingKeeper enumerates the staking methods needed by the migration.
 type stakingKeeper interface {
 	BondDenom(ctx context.Context) (string, error)
-	AddValidatorTokens(ctx context.Context, valAddr sdk.ValAddress, tokensToAdd math.Int) error
+	GetValidator(ctx context.Context, valAddr sdk.ValAddress) (stakingtypes.Validator, error)
+	Delegate(ctx context.Context, delAddr sdk.AccAddress, bondAmt math.Int, tokenSrc stakingtypes.BondStatus,
+		validator stakingtypes.Validator, subtractAccount bool) (math.LegacyDec, error)
 	ValidatorAddressCodec() addresscodec.Codec
 	IterateValidators(ctx context.Context, fn func(int64, stakingtypes.ValidatorI) bool) error
 	Validator(ctx context.Context, valAddr sdk.ValAddress) (stakingtypes.ValidatorI, error)
@@ -149,6 +161,7 @@ func MigrateStore(
 	// re-init delegations. IterateValidators yields validators in store-key
 	// order so the operation is deterministic across nodes.
 	live := map[string]struct{}{}
+	var stakes []pendingStake
 	if err := sk.IterateValidators(ctx, func(_ int64, val stakingtypes.ValidatorI) bool {
 		valBz, errStr := sk.ValidatorAddressCodec().StringToBytes(val.GetOperator())
 		if errStr != nil {
@@ -156,7 +169,7 @@ func MigrateStore(
 			return true
 		}
 		live[string(valBz)] = struct{}{}
-		err = processValidator(ctx, dk, storeService, cdc, bk, sk, &fp, snap, valBz, val, bondDenom)
+		err = processValidator(ctx, dk, storeService, cdc, bk, sk, &fp, snap, valBz, val, bondDenom, &stakes)
 		return err != nil
 	}); err != nil {
 		return err
@@ -174,7 +187,63 @@ func MigrateStore(
 		}
 	}
 
-	return feePool.Set(ctx, fp)
+	// Persist the fee pool before staking: the Delegate hooks below read and
+	// write it through the keeper.
+	if err := feePool.Set(ctx, fp); err != nil {
+		return err
+	}
+
+	return stakePendingRewards(ctx, dk, bk, sk, stakes, bondDenom)
+}
+
+// pendingStake is a delegation's pending bond denom reward, settled under
+// legacy F1 and waiting to be staked into that delegation.
+type pendingStake struct {
+	valAddr sdk.ValAddress
+	delAddr sdk.AccAddress
+	amount  math.Int
+}
+
+// stakePendingRewards stakes each pending bond denom reward into the
+// delegation that earned it via the standard staking Delegate path. The coins
+// are moved to the bonded pool and Delegate is told they come from it, so
+// staking moves them to the not-bonded pool when the validator is not bonded,
+// exactly as for a redelegation; no account balance is involved. A validator
+// whose exchange rate is invalid (all tokens slashed away) cannot accept
+// delegations, so its delegators receive their pending reward in their
+// withdraw address instead, as they would have by withdrawing pre-upgrade.
+func stakePendingRewards(
+	ctx context.Context,
+	dk Migrator,
+	bk bankKeeper,
+	sk stakingKeeper,
+	stakes []pendingStake,
+	bondDenom string,
+) error {
+	for _, s := range stakes {
+		coins := sdk.NewCoins(sdk.NewCoin(bondDenom, s.amount))
+		val, err := sk.GetValidator(ctx, s.valAddr)
+		if err != nil {
+			return err
+		}
+		if val.InvalidExRate() {
+			withdrawAddr, err := dk.GetDelegatorWithdrawAddr(ctx, s.delAddr)
+			if err != nil {
+				return err
+			}
+			if err := bk.SendCoinsFromModuleToAccount(ctx, dstrtypes.ModuleName, withdrawAddr, coins); err != nil {
+				return err
+			}
+			continue
+		}
+		if err := bk.SendCoinsFromModuleToModule(ctx, dstrtypes.ModuleName, stakingtypes.BondedPoolName, coins); err != nil {
+			return err
+		}
+		if _, err := sk.Delegate(ctx, s.delAddr, s.amount, stakingtypes.Bonded, val, false); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // stateSnapshot collects every pre-mutation read the migration needs, so we
@@ -235,22 +304,26 @@ func processValidator(
 	valBz []byte,
 	val stakingtypes.ValidatorI,
 	bondDenom string,
+	stakes *[]pendingStake,
 ) error {
 	valAddr := sdk.ValAddress(valBz)
 	valKey := string(valBz)
 	dels := snap.delegations[valKey]
 
 	// 1. Close the current period under legacy F1 so pending rewards roll up
-	//    at the pre-upgrade exchange rate. val.GetTokens() reflects post-slash,
-	//    pre-auto-stake state — the same value the legacy keeper would have
-	//    used.
+	//    at the pre-upgrade exchange rate. val.GetTokens() reflects post-slash
+	//    state — the same value the legacy keeper would have used.
 	endingPeriod, err := legacyIncrementValidatorPeriod(ctx, dk, valAddr, val.GetTokens())
 	if err != nil {
 		return err
 	}
+	// The historical record just written for endingPeriod postdates the
+	// snapshot; track it so step 3 deletes it along with the others.
+	snap.periods[valKey] = append(snap.periods[valKey], endingPeriod)
 
-	// 2. Pay out each delegation's pending rewards. Bond denom is auto-staked
-	//    while non-bond is paid to the delegator's withdraw address.
+	// 2. Settle each delegation's pending rewards. Non-bond denoms are paid to
+	//    the delegator's withdraw address; the bond denom integer amount is
+	//    queued to be staked into the delegation once F1 is re-seeded.
 	for _, d := range dels {
 		rewards, err := legacyCalculateDelegationRewards(
 			ctx, dk, storeService, cdc, valAddr,
@@ -260,8 +333,12 @@ func processValidator(
 		if err != nil {
 			return err
 		}
-		if err := payOutRewards(ctx, dk, bk, sk, fp, valAddr, d.delAddr, rewards, bondDenom, true /* autoStakeBond */); err != nil {
+		bondInt, err := settleRewards(ctx, dk, bk, fp, valAddr, d.delAddr, rewards, bondDenom)
+		if err != nil {
 			return err
+		}
+		if bondInt.IsPositive() {
+			*stakes = append(*stakes, pendingStake{valAddr: valAddr, delAddr: d.delAddr, amount: bondInt})
 		}
 	}
 
@@ -462,47 +539,28 @@ func initNewParams(ctx sdk.Context, params collections.Item[dstrtypes.Params]) e
 	return params.Set(ctx, p)
 }
 
-// payOutRewards routes a delegator's (or operator's) reward DecCoins after
-// the migration has computed them under legacy F1.
+// settleRewards settles a delegator's reward DecCoins after the migration
+// has computed them under legacy F1.
 //
-// `autoStakeBond` controls how the bond denom portion is handled:
-//
-//   - true (delegator path): the bond denom integer is sent from the
-//     distribution module to the bonded pool, and validator.Tokens is
-//     incremented via AddValidatorTokens (no new shares). This carries
-//     the new auto-staking semantic into the migration: pre-upgrade the
-//     bond denom would have been claimed by the delegator, post-upgrade
-//     it auto-compounds.
-//
-//   - false (commission path): bond denom
-//     is paid out to the recipient just like any other denom, because
-//     only delegator rewards are auto-staked — commission stays fully
-//     claimable in F1.
-//
-// Bond denom decimal dust always goes to the community pool. The non-bond
-// integer portion is always paid to the recipient's withdraw address;
-// non-bond decimal dust always goes to the community pool. The validator's
-// outstanding-rewards record is decremented by the full DecCoins amount we
-// consumed so the module-account invariant continues to hold.
-func payOutRewards(
+// The bond denom integer amount stays in the distribution module and is
+// returned so the caller can stake it into the delegation that earned it
+// (see stakePendingRewards). The non-bond integer portion is paid to the
+// delegator's withdraw address. Decimal dust of every denom goes to the
+// community pool. The validator's outstanding-rewards record is decremented
+// by the full DecCoins amount consumed so the module-account invariant
+// continues to hold once the returned amount is staked.
+func settleRewards(
 	ctx context.Context,
 	dk Migrator,
 	bk bankKeeper,
-	sk stakingKeeper,
 	fp *dstrtypes.FeePool,
 	valAddr sdk.ValAddress,
 	recipient sdk.AccAddress,
 	rewards sdk.DecCoins,
 	bondDenom string,
-	autoStakeBond bool,
-) error {
+) (math.Int, error) {
 	if rewards.IsZero() {
-		return nil
-	}
-
-	withdrawAddr, err := dk.GetDelegatorWithdrawAddr(ctx, recipient)
-	if err != nil {
-		return err
+		return math.ZeroInt(), nil
 	}
 
 	// Split bond denom from the rest.
@@ -513,22 +571,7 @@ func payOutRewards(
 	}
 	nonBond := rewards.Sub(bondPortion)
 
-	// Bond denom integer: either auto-stake into the bonded pool or pay to
-	// the recipient. Bond denom decimal dust always goes to the community pool.
 	bondInt := bondDec.TruncateInt()
-	if bondInt.IsPositive() {
-		bondCoins := sdk.NewCoins(sdk.NewCoin(bondDenom, bondInt))
-		if autoStakeBond {
-			if err := bk.SendCoinsFromModuleToModule(ctx, dstrtypes.ModuleName, stakingtypes.BondedPoolName, bondCoins); err != nil {
-				return err
-			}
-			if err := sk.AddValidatorTokens(ctx, valAddr, bondInt); err != nil {
-				return err
-			}
-		} else if err := bk.SendCoinsFromModuleToAccount(ctx, dstrtypes.ModuleName, withdrawAddr, bondCoins); err != nil {
-			return err
-		}
-	}
 	if dust := bondDec.Sub(math.LegacyNewDecFromInt(bondInt)); dust.IsPositive() {
 		fp.CommunityPool = fp.CommunityPool.Add(sdk.NewDecCoinFromDec(bondDenom, dust))
 	}
@@ -536,8 +579,12 @@ func payOutRewards(
 	// Non-bond integer to recipient; non-bond decimal dust to the community pool.
 	nonBondCoins, nonBondDust := nonBond.TruncateDecimal()
 	if !nonBondCoins.IsZero() {
+		withdrawAddr, err := dk.GetDelegatorWithdrawAddr(ctx, recipient)
+		if err != nil {
+			return math.Int{}, err
+		}
 		if err := bk.SendCoinsFromModuleToAccount(ctx, dstrtypes.ModuleName, withdrawAddr, nonBondCoins); err != nil {
-			return err
+			return math.Int{}, err
 		}
 	}
 	fp.CommunityPool = fp.CommunityPool.Add(nonBondDust...)
@@ -545,8 +592,11 @@ func payOutRewards(
 	// Decrement outstanding rewards by the full DecCoins amount we consumed.
 	outstanding, err := dk.GetValidatorOutstandingRewards(ctx, valAddr)
 	if err != nil {
-		return err
+		return math.Int{}, err
 	}
 	outstanding.Rewards = outstanding.Rewards.Sub(rewards)
-	return dk.SetValidatorOutstandingRewards(ctx, valAddr, outstanding)
+	if err := dk.SetValidatorOutstandingRewards(ctx, valAddr, outstanding); err != nil {
+		return math.Int{}, err
+	}
+	return bondInt, nil
 }

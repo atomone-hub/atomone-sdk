@@ -109,12 +109,20 @@ requirements with respect to F1.
 
 Every block, in `AllocateTokensToValidator`, the bond denom portion of
 each validator's _delegator_ reward share is sent directly from the
-distribution module to the bonded pool. The integer amount is added to
-`validator.Tokens` via `AddValidatorTokens`, **without issuing new
-shares**. The per-share exchange rate (`Tokens / DelegatorShares`) rises,
-so every existing delegator's stake — measured in tokens — compounds
-automatically. The decimal remainder (truncation dust) is routed to the
-community pool.
+distribution module to the staking pool holding the validator's tokens
+(the bonded pool for bonded validators, the not-bonded pool otherwise:
+validators keep receiving rewards for a couple of blocks after leaving the
+bonded set, and `MsgDepositValidatorRewardsPool` accepts any validator).
+The integer amount is added to `validator.Tokens` via
+`AddValidatorTokens`, **without issuing new shares**. The per-share
+exchange rate (`Tokens / DelegatorShares`) rises, so every existing
+delegator's stake — measured in tokens — compounds automatically. The
+decimal remainder (truncation dust) is routed to the community pool.
+
+A validator without delegator shares (all its delegations removed while
+it is still in the last commit) has nobody to credit: its bond denom
+delegator rewards go to the community pool, as F1 does for any reward of
+a validator without shares.
 
 This path is invisible to the F1 calculation because F1 ratios are stored
 per-share, not per-token (see the next section). A bump in
@@ -221,7 +229,7 @@ and on a chain that has had slashes the legacy values, read under the new
 interpretation, would over-pay delegators on slashed validators.
 
 The v4->v5 in-place store migration (`x/distribution/migrations/v5`)
-handles the transition in four phases:
+handles the transition in five phases:
 
 1. **Snapshot.** Every active `(validator, delegator)` pair with F1
    starting info, plus every validator's accumulated commission, is
@@ -232,12 +240,10 @@ handles the transition in four phases:
    to close the current period at pre-upgrade exchange rates, then for
    each delegation under that validator computes the pending rewards
    using the slash-event-iterating algorithm of legacy F1
-   (`migrations/v5/legacy.go`). Bond denom delegator rewards are
-   auto-staked into the bonded pool (the integer portion goes via
-   `AddValidatorTokens` — same path runtime auto-staking uses every
-   block); non-bond-denom rewards are paid to the delegator's withdraw
-   address; decimal dust is swept to the community pool. Validator
-   commission is preserved.
+   (`migrations/v5/legacy.go`). The integer bond denom amount is set
+   aside for phase 5; non-bond-denom rewards are paid to the delegator's
+   withdraw address; decimal dust is swept to the community pool.
+   Validator commission is preserved.
 3. **Wipe F1 stores while preserving commission.** All
    `ValidatorHistoricalRewards` and `ValidatorCurrentRewards` records
    are deleted; the post-delegator-payout dust in
@@ -254,6 +260,18 @@ handles the transition in four phases:
 4. **Re-initialise delegations.** Every snapshotted delegation gets a
    fresh `DelegatorStartingInfo` with `PreviousPeriod = 0` and `Stake`
    holding `delegation.GetShares()`.
+5. **Stake pending bond denom rewards.** Each delegation's pending bond
+   denom reward is staked into that same delegation through the standard
+   staking `Delegate` path, minting new shares for the delegator who
+   earned it. Pending rewards differ per delegator (they depend on when
+   each one last withdrew), so they cannot be added to `validator.Tokens`
+   without shares the way runtime auto-staking does: that would spread
+   them across all delegators of the validator. `Delegate` fires the
+   staking hooks (keeping x/distribution and x/gov bookkeeping in sync)
+   and routes the tokens to the pool matching the validator's status.
+   Delegators of a validator whose exchange rate is invalid (all tokens
+   slashed away), which cannot accept delegations, receive the reward in
+   their withdraw address instead.
 
 `ValidatorSlashEvent` records are intentionally left in storage so the
 `ValidatorSlashes` gRPC endpoint keeps returning historical slash data
@@ -265,11 +283,12 @@ Client-visible behaviour at the upgrade boundary:
 * Every active delegator receives a one-time forced reward withdrawal
   at upgrade height — the exact amount that
   `WithdrawDelegationRewards` would have produced on the previous
-  binary, with the bond denom portion auto-staked instead of paid out
-  (`validator.Tokens` rises and the per-share exchange rate reflects
-  the compounded bond denom rewards). Wallets and explorers should
-  expect a balance bump for active delegators in the upgrade block on
-  non-bond denominations only.
+  binary, with the bond denom portion delegated back to the same
+  validator instead of paid out (the delegation's shares increase, so no
+  bond denom reaches the delegator's balance). Wallets and explorers
+  should expect a balance bump for active delegators in the upgrade
+  block on non-bond denominations only, and a share increase on their
+  delegations.
 * Commission balances are unchanged across the upgrade. Operators that
   had accumulated commission pre-upgrade still have exactly the same
   amount available to withdraw post-upgrade via
