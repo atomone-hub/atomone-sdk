@@ -128,9 +128,14 @@ func InitGenesis(ctx sdk.Context, ak types.AccountKeeper, bk types.BankKeeper, k
 		ak.SetModuleAccount(ctx, moduleAcc)
 	}
 
-	// check if total deposits equals balance, if it doesn't panic because there were export/import errors
-	if !balance.Equal(totalDeposits) {
-		panic(fmt.Sprintf("expected module account was %s but we got %s", balance.String(), totalDeposits.String()))
+	// Check that the module account balance covers all imported deposits; if it
+	// doesn't, panic because there were export/import errors. Exact equality is
+	// NOT required: the gov module account is allowed to receive external funds
+	// (it is excluded from BlockedModuleAccountAddrs), so its balance may be
+	// strictly larger than totalDeposits — the same relation the
+	// ModuleAccountInvariant tolerates while the chain is running.
+	if !balance.IsAllGTE(totalDeposits) {
+		panic(fmt.Sprintf("expected module account balance %s to cover total deposits %s", balance.String(), totalDeposits.String()))
 	}
 
 	t := ctx.BlockTime()
