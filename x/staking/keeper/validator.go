@@ -205,7 +205,9 @@ func (k Keeper) RemoveValidatorTokens(ctx context.Context,
 // not-bonded pool otherwise) before calling this function, to satisfy
 // ModuleAccountInvariant. Validators without delegator shares are rejected,
 // since nobody would own the added tokens and the validator could never be
-// removed once unbonded.
+// removed once unbonded. So are additions that would exceed the exchange rate
+// allowed by types.CanAddTokensWithoutShares, at which later delegations could
+// be issued zero shares.
 func (k Keeper) AddValidatorTokens(ctx context.Context, valAddr sdk.ValAddress, tokensToAdd math.Int) error {
 	if !tokensToAdd.IsPositive() {
 		return nil
@@ -218,6 +220,9 @@ func (k Keeper) AddValidatorTokens(ctx context.Context, valAddr sdk.ValAddress, 
 
 	if !validator.DelegatorShares.IsPositive() {
 		return errorsmod.Wrapf(types.ErrInsufficientShares, "validator %s has no delegator shares", validator.GetOperator())
+	}
+	if !types.CanAddTokensWithoutShares(validator.Tokens, validator.DelegatorShares, tokensToAdd) {
+		return errorsmod.Wrapf(types.ErrInsufficientShares, "validator %s has too few delegator shares for %s more tokens", validator.GetOperator(), tokensToAdd)
 	}
 
 	if err := k.DeleteValidatorByPowerIndex(ctx, validator); err != nil {

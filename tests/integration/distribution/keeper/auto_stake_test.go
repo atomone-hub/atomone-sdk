@@ -141,3 +141,84 @@ func TestAutoStakeToValidatorWithoutShares(t *testing.T) {
 	_, err = f.stakingKeeper.GetValidator(matured, f.valAddr)
 	require.ErrorIs(t, err, stakingtypes.ErrNoValidatorFound)
 }
+
+// TestAutoStakeCannotInflateSharePrice checks that an operator cannot use
+// deposits to their own validator, followed by undelegating almost
+// everything, to raise the exchange rate until a later delegation is issued
+// zero shares and its tokens go to the operator's remaining dust of shares.
+func TestAutoStakeCannotInflateSharePrice(t *testing.T) {
+	f := initFixture(t)
+	attacker := sdk.AccAddress(f.valAddr)
+	victim := sdk.AccAddress(PKS[2].Address())
+	fund := func(addr sdk.AccAddress, amt math.Int) {
+		coins := sdk.NewCoins(sdk.NewCoin(sdk.DefaultBondDenom, amt))
+		require.NoError(t, f.bankKeeper.MintCoins(f.sdkCtx, distrtypes.ModuleName, coins))
+		require.NoError(t, f.bankKeeper.SendCoinsFromModuleToAccount(f.sdkCtx, distrtypes.ModuleName, addr, coins))
+	}
+
+	createZeroCommissionValidator(t, f, math.NewInt(1_000_000))
+	_, err := f.stakingKeeper.EndBlocker(f.sdkCtx)
+	require.NoError(t, err)
+
+	deposit := math.NewInt(1_000_000_000)
+	refused := false
+	for round := 0; round < 5 && !refused; round++ {
+		before, err := f.stakingKeeper.GetValidator(f.sdkCtx, f.valAddr)
+		require.NoError(t, err)
+		feePoolBefore, err := f.distrKeeper.FeePool.Get(f.sdkCtx)
+		require.NoError(t, err)
+
+		fund(attacker, deposit)
+		_, err = f.app.RunMsg(&distrtypes.MsgDepositValidatorRewardsPool{
+			Depositor:        attacker.String(),
+			ValidatorAddress: f.valAddr.String(),
+			Amount:           sdk.NewCoins(sdk.NewCoin(sdk.DefaultBondDenom, deposit)),
+		})
+		require.NoError(t, err)
+
+		val, err := f.stakingKeeper.GetValidator(f.sdkCtx, f.valAddr)
+		require.NoError(t, err)
+		require.True(t, stakingtypes.CanAddTokensWithoutShares(val.Tokens, val.DelegatorShares, math.ZeroInt()),
+			"exchange rate above one token per share unit: tokens=%s shares=%s", val.Tokens, val.DelegatorShares)
+		if val.Tokens.Equal(before.Tokens) {
+			// The deposit did not fit under the bound: it went to the community pool.
+			feePoolAfter, err := f.distrKeeper.FeePool.Get(f.sdkCtx)
+			require.NoError(t, err)
+			require.Equal(t,
+				feePoolBefore.CommunityPool.AmountOf(sdk.DefaultBondDenom).Add(math.LegacyNewDecFromInt(deposit)),
+				feePoolAfter.CommunityPool.AmountOf(sdk.DefaultBondDenom))
+			refused = true
+			break
+		}
+
+		_, err = f.app.RunMsg(&stakingtypes.MsgUndelegate{
+			DelegatorAddress: attacker.String(),
+			ValidatorAddress: f.valAddr.String(),
+			Amount:           sdk.NewCoin(sdk.DefaultBondDenom, val.Tokens.SubRaw(1)),
+		})
+		require.NoError(t, err)
+		_, err = f.stakingKeeper.EndBlocker(f.sdkCtx)
+		require.NoError(t, err)
+	}
+	require.True(t, refused, "a deposit should have been refused before the exchange rate bound")
+	requireStakingPoolsConsistent(t, f, f.sdkCtx)
+
+	victimAmt := math.NewInt(999_000_000)
+	fund(victim, victimAmt)
+	_, err = f.app.RunMsg(&stakingtypes.MsgDelegate{
+		DelegatorAddress: victim.String(),
+		ValidatorAddress: f.valAddr.String(),
+		Amount:           sdk.NewCoin(sdk.DefaultBondDenom, victimAmt),
+	})
+	require.NoError(t, err)
+
+	val, err := f.stakingKeeper.GetValidator(f.sdkCtx, f.valAddr)
+	require.NoError(t, err)
+	del, err := f.stakingKeeper.GetDelegation(f.sdkCtx, victim, f.valAddr)
+	require.NoError(t, err)
+	require.True(t, del.Shares.IsPositive())
+	// Rounding can cost the victim less than one token.
+	require.True(t, val.TokensFromShares(del.Shares).TruncateInt().GTE(victimAmt.SubRaw(1)),
+		"victim's delegation is worth %s, delegated %s", val.TokensFromShares(del.Shares), victimAmt)
+	requireStakingPoolsConsistent(t, f, f.sdkCtx)
+}

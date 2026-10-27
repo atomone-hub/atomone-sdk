@@ -138,13 +138,21 @@ func (k Keeper) AllocateTokensToValidator(
 	// --- Auto-stake bond denom delegator rewards ---
 	// Truncate to an integer so it can be transferred as sdk.Coins; the decimal
 	// remainder is returned to the caller for community pool accounting.
-	// A validator without delegator shares (e.g. still in the last commit after
-	// all its delegations were removed) has nobody to credit: tokens added to it
-	// would be owned by no one and would block its removal once unbonded.
+	// The whole amount goes to the community pool instead when the validator
+	// cannot take it without shares:
+	//   - a validator without delegator shares (e.g. still in the last commit
+	//     after all its delegations were removed) has nobody to credit: tokens
+	//     added to it would be owned by no one and would block its removal once
+	//     unbonded;
+	//   - a validator with very few shares would reach an exchange rate at which
+	//     delegations are issued zero shares, letting its delegators (e.g. an
+	//     operator who deposited to their own validator via
+	//     MsgDepositValidatorRewardsPool and undelegated almost everything)
+	//     take the tokens of later delegations.
 	sharedBondDec := shared.AmountOf(bondDenom)
-	sharedBondInt := math.ZeroInt()
-	if val.GetDelegatorShares().IsPositive() {
-		sharedBondInt = sharedBondDec.TruncateInt()
+	sharedBondInt := sharedBondDec.TruncateInt()
+	if !stakingtypes.CanAddTokensWithoutShares(val.GetTokens(), val.GetDelegatorShares(), sharedBondInt) {
+		sharedBondInt = math.ZeroInt()
 	}
 	if rem := sharedBondDec.Sub(math.LegacyNewDecFromInt(sharedBondInt)); rem.IsPositive() {
 		bondRemainder = sdk.NewDecCoins(sdk.NewDecCoinFromDec(bondDenom, rem))
