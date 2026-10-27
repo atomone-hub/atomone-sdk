@@ -13,13 +13,17 @@ import (
 // AutoStakeValidatorCommission moves the bond denom portion of a validator's
 // accumulated commission into the operator's self-delegation by routing it
 // through the standard staking Delegate path. The integer amount is sent
-// from the distribution module to the operator's account, then immediately
-// re-delegated via stakingKeeper.Delegate (which fires
-// BeforeDelegationSharesModified / AfterDelegationModified hooks normally,
-// keeping shares-based F1 accounting consistent with the standard hook
-// flow). The truncation dust is swept to the community pool. Non-bond
-// denominations remain in accumulatedCommission for the operator to claim
-// manually via MsgWithdrawValidatorCommission.
+// from the distribution module to the bonded pool and delegated on behalf of
+// the operator via stakingKeeper.Delegate with the bonded pool as token
+// source (which fires BeforeDelegationSharesModified /
+// AfterDelegationModified hooks normally, keeping shares-based F1 accounting
+// consistent with the standard hook flow, and moves the tokens to the
+// not-bonded pool if the validator is not bonded). The coins never transit
+// the operator's account: delegating from a vesting account would consume
+// its locked coins first and leave the commission spendable. The truncation
+// dust is swept to the community pool. Non-bond denominations remain in
+// accumulatedCommission for the operator to claim manually via
+// MsgWithdrawValidatorCommission.
 //
 // Two callers invoke this helper:
 //
@@ -91,14 +95,12 @@ func (k Keeper) AutoStakeValidatorCommission(ctx context.Context, valAddr sdk.Va
 		return sdk.NewCoin(bondDenom, math.ZeroInt()), nil
 	}
 
-	// Move the integer bond denom from the distribution module to the
-	// operator's account so the standard Delegate path can pull it via
-	// subtractAccount=true. Distribution → operator → bonded pool in two
-	// hops, but the alternative (custom module-to-pool primitive +
-	// hand-rolled hook firing) is what we explicitly want to avoid.
+	// Move the integer bond denom from the distribution module to the bonded
+	// pool and delegate it from there, as a redelegation would
+	// (subtractAccount=false, token source Bonded).
 	operatorAcc := sdk.AccAddress(valAddr)
 	bondCoins := sdk.NewCoins(sdk.NewCoin(bondDenom, bondDenomInt))
-	if err := k.bankKeeper.SendCoinsFromModuleToAccount(ctx, types.ModuleName, operatorAcc, bondCoins); err != nil {
+	if err := k.bankKeeper.SendCoinsFromModuleToModule(ctx, types.ModuleName, stakingtypes.BondedPoolName, bondCoins); err != nil {
 		return sdk.Coin{}, err
 	}
 
@@ -107,7 +109,7 @@ func (k Keeper) AutoStakeValidatorCommission(ctx context.Context, valAddr sdk.Va
 		return sdk.Coin{}, err
 	}
 	if _, err := k.stakingKeeper.Delegate(ctx, operatorAcc, bondDenomInt,
-		stakingtypes.Unbonded, validator, true /* subtractAccount */); err != nil {
+		stakingtypes.Bonded, validator, false /* subtractAccount */); err != nil {
 		return sdk.Coin{}, err
 	}
 
@@ -130,26 +132,37 @@ func (k Keeper) AutoStakeValidatorCommission(ctx context.Context, valAddr sdk.Va
 // auto-stake epoch identifier fires.
 //
 // Validators that are unbonding, unbonded, or jailed are not in the
-// bonded set and are therefore skipped. They no longer accrue commission
-// (AllocateTokens only iterates bondedVotes), so any commission they
-// earned during their bonded period sits in accumulatedCommission until
-// they are removed (at which point the AfterValidatorRemoved hook
-// handles the residual via the existing force-payout). The bound on
-// what can be liquidated through that escape route is one epoch's worth
-// of commission per validator lifetime.
+// bonded set and are therefore skipped. They stop accruing commission once
+// they leave the last commit (AllocateTokens only iterates bondedVotes), so
+// any commission they earned during their bonded period sits in
+// accumulatedCommission until they are removed (at which point the
+// AfterValidatorRemoved hook handles the residual via the existing
+// force-payout). The bound on what can be liquidated through that escape
+// route is one epoch's worth of commission per validator lifetime.
+//
+// Each validator is processed in its own cache context and failures are
+// logged and skipped: the epochs module discards the whole AfterEpochEnd
+// run on error, so one failing validator would otherwise cancel the
+// auto-stake of every other validator as well as the other hooks sharing
+// this epoch identifier (e.g. the Nakamoto bonus adjustment).
 func (k Keeper) AutoStakeBondedValidatorsCommission(ctx context.Context) error {
 	validators, err := k.stakingKeeper.GetBondedValidatorsByPower(ctx)
 	if err != nil {
 		return err
 	}
+	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	for _, val := range validators {
 		valAddr, err := k.stakingKeeper.ValidatorAddressCodec().StringToBytes(val.GetOperator())
 		if err != nil {
 			return err
 		}
-		if _, err := k.AutoStakeValidatorCommission(ctx, valAddr); err != nil {
-			return err
+		cacheCtx, write := sdkCtx.CacheContext()
+		if _, err := k.AutoStakeValidatorCommission(cacheCtx, valAddr); err != nil {
+			k.Logger(ctx).Error("failed to auto-stake validator commission",
+				"validator", val.GetOperator(), "err", err)
+			continue
 		}
+		write()
 	}
 	return nil
 }

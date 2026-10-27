@@ -65,10 +65,8 @@ func TestAutoStakeValidatorCommission_BondDenomOnly(t *testing.T) {
 		}))
 
 	bondInt := math.NewInt(7)
-	expectedBondCoins := sdk.NewCoins(sdk.NewCoin(sdk.DefaultBondDenom, bondInt))
-	s.bankKeeper.EXPECT().SendCoinsFromModuleToAccount(gomock.Any(), disttypes.ModuleName, operatorAcc, expectedBondCoins).Return(nil)
 	s.stakingKeeper.EXPECT().GetValidator(gomock.Any(), sdk.ValAddress(valAddr)).Return(val, nil)
-	s.stakingKeeper.EXPECT().Delegate(gomock.Any(), operatorAcc, bondInt, stakingtypes.Unbonded, val, true).Return(math.LegacyNewDecFromInt(bondInt), nil)
+	s.stakingKeeper.EXPECT().Delegate(gomock.Any(), operatorAcc, bondInt, stakingtypes.Bonded, val, false).Return(math.LegacyNewDecFromInt(bondInt), nil)
 
 	staked, err := s.distrKeeper.AutoStakeValidatorCommission(s.ctx, sdk.ValAddress(valAddr))
 	require.NoError(t, err)
@@ -114,15 +112,60 @@ func TestAutoStakeBondedValidatorsCommission_EpochTrigger(t *testing.T) {
 	// return a one-validator slice.
 	s.stakingKeeper.EXPECT().GetBondedValidatorsByPower(gomock.Any()).Return([]stakingtypes.Validator{val0}, nil)
 	bondInt := math.NewInt(2)
-	s.bankKeeper.EXPECT().SendCoinsFromModuleToAccount(gomock.Any(), disttypes.ModuleName, operator0, sdk.NewCoins(sdk.NewCoin(sdk.DefaultBondDenom, bondInt))).Return(nil)
 	s.stakingKeeper.EXPECT().GetValidator(gomock.Any(), sdk.ValAddress(valAddr0)).Return(val0, nil)
-	s.stakingKeeper.EXPECT().Delegate(gomock.Any(), operator0, bondInt, stakingtypes.Unbonded, val0, true).Return(math.LegacyNewDecFromInt(bondInt), nil)
+	s.stakingKeeper.EXPECT().Delegate(gomock.Any(), operator0, bondInt, stakingtypes.Bonded, val0, false).Return(math.LegacyNewDecFromInt(bondInt), nil)
 
 	require.NoError(t, s.distrKeeper.AutoStakeBondedValidatorsCommission(s.ctx))
 
 	got, err := s.distrKeeper.GetValidatorAccumulatedCommission(s.ctx, valAddr0)
 	require.NoError(t, err)
 	require.True(t, got.Commission.IsZero())
+}
+
+// TestAutoStakeBondedValidatorsCommission_FailureIsolated asserts that a
+// validator whose auto-stake fails keeps its commission untouched and does
+// not prevent the other validators from being processed.
+func TestAutoStakeBondedValidatorsCommission_FailureIsolated(t *testing.T) {
+	s := setupTestKeeper(t, math.LegacyZeroDec(), 100)
+
+	val0, err := distrtestutil.CreateValidator(valConsPk0, math.NewInt(100))
+	require.NoError(t, err)
+	valAddr0, err := s.valCodec.StringToBytes(val0.GetOperator())
+	require.NoError(t, err)
+	val1, err := distrtestutil.CreateValidator(valConsPk1, math.NewInt(100))
+	require.NoError(t, err)
+	valAddr1, err := s.valCodec.StringToBytes(val1.GetOperator())
+	require.NoError(t, err)
+
+	commission := sdk.DecCoins{sdk.NewDecCoinFromDec(sdk.DefaultBondDenom, math.LegacyNewDec(2))}
+	for _, va := range [][]byte{valAddr0, valAddr1} {
+		require.NoError(t, s.distrKeeper.SetValidatorAccumulatedCommission(s.ctx, va,
+			disttypes.ValidatorAccumulatedCommission{Commission: commission}))
+		require.NoError(t, s.distrKeeper.SetValidatorOutstandingRewards(s.ctx, va,
+			disttypes.ValidatorOutstandingRewards{Rewards: commission}))
+	}
+
+	s.stakingKeeper.EXPECT().GetBondedValidatorsByPower(gomock.Any()).Return([]stakingtypes.Validator{val0, val1}, nil)
+	bondInt := math.NewInt(2)
+	s.stakingKeeper.EXPECT().GetValidator(gomock.Any(), sdk.ValAddress(valAddr0)).Return(val0, nil)
+	s.stakingKeeper.EXPECT().Delegate(gomock.Any(), sdk.AccAddress(valAddr0), bondInt, stakingtypes.Bonded, val0, false).
+		Return(math.LegacyZeroDec(), stakingtypes.ErrDelegatorShareExRateInvalid)
+	s.stakingKeeper.EXPECT().GetValidator(gomock.Any(), sdk.ValAddress(valAddr1)).Return(val1, nil)
+	s.stakingKeeper.EXPECT().Delegate(gomock.Any(), sdk.AccAddress(valAddr1), bondInt, stakingtypes.Bonded, val1, false).
+		Return(math.LegacyNewDecFromInt(bondInt), nil)
+
+	require.NoError(t, s.distrKeeper.AutoStakeBondedValidatorsCommission(s.ctx))
+
+	got0, err := s.distrKeeper.GetValidatorAccumulatedCommission(s.ctx, valAddr0)
+	require.NoError(t, err)
+	require.Equal(t, commission, got0.Commission, "failed validator's commission must be left untouched")
+	out0, err := s.distrKeeper.GetValidatorOutstandingRewards(s.ctx, valAddr0)
+	require.NoError(t, err)
+	require.Equal(t, commission, out0.Rewards)
+
+	got1, err := s.distrKeeper.GetValidatorAccumulatedCommission(s.ctx, valAddr1)
+	require.NoError(t, err)
+	require.True(t, got1.Commission.IsZero(), "other validators must still be auto-staked")
 }
 
 // TestAutoStakeValidatorCommission_MixedDenoms asserts only the bond denom
@@ -148,9 +191,8 @@ func TestAutoStakeValidatorCommission_MixedDenoms(t *testing.T) {
 		disttypes.ValidatorOutstandingRewards{Rewards: commission}))
 
 	bondInt := math.NewInt(5)
-	s.bankKeeper.EXPECT().SendCoinsFromModuleToAccount(gomock.Any(), disttypes.ModuleName, operatorAcc, sdk.NewCoins(sdk.NewCoin(sdk.DefaultBondDenom, bondInt))).Return(nil)
 	s.stakingKeeper.EXPECT().GetValidator(gomock.Any(), sdk.ValAddress(valAddr)).Return(val, nil)
-	s.stakingKeeper.EXPECT().Delegate(gomock.Any(), operatorAcc, bondInt, stakingtypes.Unbonded, val, true).Return(math.LegacyNewDecFromInt(bondInt), nil)
+	s.stakingKeeper.EXPECT().Delegate(gomock.Any(), operatorAcc, bondInt, stakingtypes.Bonded, val, false).Return(math.LegacyNewDecFromInt(bondInt), nil)
 
 	staked, err := s.distrKeeper.AutoStakeValidatorCommission(s.ctx, sdk.ValAddress(valAddr))
 	require.NoError(t, err)

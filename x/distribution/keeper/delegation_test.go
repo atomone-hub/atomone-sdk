@@ -565,10 +565,8 @@ func TestWithdrawDelegationRewardsBasic(t *testing.T) {
 	// withdraw commission: 50% of each denom. Bond denom (initial/2 stake)
 	// auto-stakes via the standard Delegate path; non-bond (initial/2 photon)
 	// pays out to the operator's withdraw address.
-	bondCoins := sdk.Coins{sdk.NewCoin(sdk.DefaultBondDenom, initial.QuoRaw(2))}
-	bankKeeper.EXPECT().SendCoinsFromModuleToAccount(ctx, disttypes.ModuleName, addr, bondCoins).Return(nil)
 	stakingKeeper.EXPECT().GetValidator(gomock.Any(), valAddr).Return(val, nil)
-	stakingKeeper.EXPECT().Delegate(gomock.Any(), addr, initial.QuoRaw(2), stakingtypes.Unbonded, val, true).Return(math.LegacyNewDecFromInt(initial.QuoRaw(2)), nil)
+	stakingKeeper.EXPECT().Delegate(gomock.Any(), addr, initial.QuoRaw(2), stakingtypes.Bonded, val, false).Return(math.LegacyNewDecFromInt(initial.QuoRaw(2)), nil)
 	expNonBondCommission := sdk.Coins{sdk.NewCoin("photon", initial.QuoRaw(2))}
 	bankKeeper.EXPECT().SendCoinsFromModuleToAccount(ctx, disttypes.ModuleName, addr, expNonBondCommission).Return(nil)
 	_, err = distrKeeper.WithdrawValidatorCommission(ctx, valAddr)
@@ -960,10 +958,8 @@ func TestCalculateRewardsMultiDelegatorMultWithdraw(t *testing.T) {
 	// path: distribution → operator's account → bonded pool. Non-bond
 	// commission (20 photon) pays out to the operator's withdraw address as
 	// before.
-	bondCoins := sdk.Coins{sdk.NewCoin(sdk.DefaultBondDenom, math.NewInt(initial))}
-	bankKeeper.EXPECT().SendCoinsFromModuleToAccount(ctx, disttypes.ModuleName, addr, bondCoins).Return(nil)
 	stakingKeeper.EXPECT().GetValidator(gomock.Any(), valAddr).Return(val, nil)
-	stakingKeeper.EXPECT().Delegate(gomock.Any(), addr, math.NewInt(initial), stakingtypes.Unbonded, val, true).Return(math.LegacyNewDec(initial), nil)
+	stakingKeeper.EXPECT().Delegate(gomock.Any(), addr, math.NewInt(initial), stakingtypes.Bonded, val, false).Return(math.LegacyNewDec(initial), nil)
 	expNonBondCommission := sdk.Coins{sdk.NewCoin("photon", math.NewInt(initial))}
 	bankKeeper.EXPECT().SendCoinsFromModuleToAccount(ctx, disttypes.ModuleName, addr, expNonBondCommission).Return(nil)
 	_, err = distrKeeper.WithdrawValidatorCommission(ctx, valAddr)
@@ -1037,10 +1033,8 @@ func TestCalculateRewardsMultiDelegatorMultWithdraw(t *testing.T) {
 	// withdraw commission: block4 (10 photon, 10 stake) + block5 (10 photon, 10 stake) = {20 photon, 20 stake}.
 	// Bond denom (20 stake) auto-stakes via the standard Delegate path; non-bond
 	// (20 photon) pays out to the operator's withdraw address.
-	bondCoins = sdk.Coins{sdk.NewCoin(sdk.DefaultBondDenom, math.NewInt(initial))}
-	bankKeeper.EXPECT().SendCoinsFromModuleToAccount(ctx, disttypes.ModuleName, addr, bondCoins).Return(nil)
 	stakingKeeper.EXPECT().GetValidator(gomock.Any(), valAddr).Return(val, nil)
-	stakingKeeper.EXPECT().Delegate(gomock.Any(), addr, math.NewInt(initial), stakingtypes.Unbonded, val, true).Return(math.LegacyNewDec(initial), nil)
+	stakingKeeper.EXPECT().Delegate(gomock.Any(), addr, math.NewInt(initial), stakingtypes.Bonded, val, false).Return(math.LegacyNewDec(initial), nil)
 	expNonBondCommission = sdk.Coins{sdk.NewCoin("photon", math.NewInt(initial))}
 	bankKeeper.EXPECT().SendCoinsFromModuleToAccount(ctx, disttypes.ModuleName, addr, expNonBondCommission).Return(nil)
 	_, err = distrKeeper.WithdrawValidatorCommission(ctx, valAddr)

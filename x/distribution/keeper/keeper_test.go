@@ -121,8 +121,8 @@ func TestWithdrawValidatorCommission(t *testing.T) {
 	val := stakingtypes.Validator{}
 	stakingKeeper.EXPECT().BondDenom(gomock.Any()).Return("stake", nil).AnyTimes()
 	stakingKeeper.EXPECT().GetValidator(gomock.Any(), valAddr).Return(val, nil)
-	bankKeeper.EXPECT().SendCoinsFromModuleToAccount(gomock.Any(), "distribution", sdk.AccAddress(valAddr), sdk.NewCoins(sdk.NewCoin("stake", math.NewInt(1)))).Return(nil)
-	stakingKeeper.EXPECT().Delegate(gomock.Any(), sdk.AccAddress(valAddr), math.NewInt(1), stakingtypes.Unbonded, val, true).Return(math.LegacyOneDec(), nil)
+	bankKeeper.EXPECT().SendCoinsFromModuleToModule(gomock.Any(), "distribution", stakingtypes.BondedPoolName, sdk.NewCoins(sdk.NewCoin("stake", math.NewInt(1)))).Return(nil)
+	stakingKeeper.EXPECT().Delegate(gomock.Any(), sdk.AccAddress(valAddr), math.NewInt(1), stakingtypes.Bonded, val, false).Return(math.LegacyOneDec(), nil)
 	// non-bond commission payout
 	bankKeeper.EXPECT().SendCoinsFromModuleToAccount(gomock.Any(), "distribution", addrs[0], sdk.NewCoins(sdk.NewCoin("mytoken", math.NewInt(1)))).Return(nil)
 

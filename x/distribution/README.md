@@ -152,10 +152,10 @@ invoke this:
 
 * **`MsgWithdrawValidatorCommission`** (operator-initiated). When the
   operator submits a commission withdrawal, the bond denom portion is
-  routed to the operator's account and immediately re-delegated through
-  `staking.Delegate(operator, validator, amount, Unbonded, validator,
-  true)`. The non-bond portion is paid out to the operator's withdraw
-  address as before.
+  sent to the bonded pool and delegated on the operator's behalf through
+  `staking.Delegate(operator, amount, Bonded, validator, false)`. The
+  non-bond portion is paid out to the operator's withdraw address as
+  before.
 * **`AfterEpochEnd` hook** (protocol-driven), gated on the
   `commission_auto_stake_epoch_identifier` distribution param. When the
   configured epoch fires (default: "week"), the handler iterates the
@@ -163,12 +163,17 @@ invoke this:
   same commission auto-stake helper for each validator with positive
   bond denom in `accumulatedCommission`. Operators can still withdraw
   more often if they prefer — the epoch trigger is a floor on the
-  compounding cadence, not a ceiling.
+  compounding cadence, not a ceiling. Each validator is processed in its
+  own cache context: a failure is logged and skipped, so it cannot cancel
+  the other validators' auto-stake or the other hooks sharing the epoch.
 
-In both triggers the integer bond denom amount goes through the
-distribution module -> operator account -> bonded pool flow that
-`staking.Delegate` already implements; the truncation dust is swept to
-the community pool. Non-bond commission is never touched by the
+In both triggers the integer bond denom amount goes from the distribution
+module to the bonded pool, and `staking.Delegate` treats it like a
+redelegation (moving it to the not-bonded pool if the validator is not
+bonded). The coins never transit the operator's account: delegating from
+a vesting account consumes its locked coins first, which would leave the
+commission spendable. The truncation dust is swept to the community
+pool. Non-bond commission is never touched by the
 auto-stake path — it stays in `accumulatedCommission` for the operator
 to claim manually whenever they want.
 

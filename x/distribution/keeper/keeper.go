@@ -144,7 +144,7 @@ func (k Keeper) WithdrawDelegationRewards(ctx context.Context, delAddr sdk.AccAd
 // portion of the accumulated commission is auto-staked into the operator's
 // self-delegation via AutoStakeValidatorCommission (compounding into stake
 // rather than landing as spendable balance); the remaining non-bond
-// denominations are paid out to the operator's withdraw address as before.
+// denominations are paid out to the operator's withdraw address.
 //
 // The returned coins are the non-bond portion that was paid out to the
 // operator's withdraw address. The auto-staked bond denom amount is not
