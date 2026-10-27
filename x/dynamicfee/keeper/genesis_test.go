@@ -39,6 +39,15 @@ func TestInitGenesis(t *testing.T) {
 			k.InitGenesis(ctx, *gs)
 		})
 	})
+
+	t.Run("state index out of range should panic", func(t *testing.T) {
+		gs := types.DefaultAIMDGenesisState()
+		gs.State.Index = uint64(len(gs.State.Window))
+
+		require.Panics(t, func() {
+			k.InitGenesis(ctx, *gs)
+		})
+	})
 }
 
 func TestExportGenesis(t *testing.T) {

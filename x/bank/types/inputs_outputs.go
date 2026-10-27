@@ -10,20 +10,23 @@ import (
 // ValidateInputOutputs validates that each respective input and output is
 // valid and that the sum of inputs is equal to the sum of outputs.
 func ValidateInputOutputs(input Input, outputs []Output) error {
-	var totalIn, totalOut sdk.Coins
-
 	if err := input.ValidateBasic(); err != nil {
 		return err
 	}
-	totalIn = input.Coins
+	totalIn := input.Coins
 
+	// Output.ValidateBasic guarantees each output's coins are positive, sorted
+	// and unique, so the per-denom sum stays positive. This must stay linear in
+	// the number of coins: it runs unmetered in FinalizeBlock.
+	m := sdk.NewMapCoins(nil)
 	for _, out := range outputs {
 		if err := out.ValidateBasic(); err != nil {
 			return err
 		}
 
-		totalOut = totalOut.Add(out.Coins...)
+		m.Add(out.Coins...)
 	}
+	totalOut := m.ToCoins()
 
 	// make sure inputs and outputs match
 	if !totalIn.Equal(totalOut) {

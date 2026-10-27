@@ -35,6 +35,29 @@ func (k Keeper) IncrementUnbondingID(ctx context.Context) (unbondingID uint64, e
 	return unbondingID, err
 }
 
+// ensureUnbondingIDAtLeast advances the unbonding-operation counter to id when
+// it is behind, so the next IncrementUnbondingID returns a value above every
+// id already in use. It never lowers the counter.
+func (k Keeper) ensureUnbondingIDAtLeast(ctx context.Context, id uint64) error {
+	store := k.storeService.OpenKVStore(ctx)
+	bz, err := store.Get(types.UnbondingIDKey)
+	if err != nil {
+		return err
+	}
+
+	var current uint64
+	if bz != nil {
+		current = binary.BigEndian.Uint64(bz)
+	}
+	if current >= id {
+		return nil
+	}
+
+	bz = make([]byte, 8)
+	binary.BigEndian.PutUint64(bz, id)
+	return store.Set(types.UnbondingIDKey, bz)
+}
+
 // DeleteUnbondingIndex removes a mapping from UnbondingId to unbonding operation
 func (k Keeper) DeleteUnbondingIndex(ctx context.Context, id uint64) error {
 	store := k.storeService.OpenKVStore(ctx)

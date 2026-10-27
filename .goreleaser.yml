@@ -3,8 +3,8 @@ project_name: cosmos-sdk
 
 release:
   github:
-    owner: cosmos
-    name: cosmos-sdk
+    owner: atomone-hub
+    name: atomone-sdk
 
 builds:
   - skip: true

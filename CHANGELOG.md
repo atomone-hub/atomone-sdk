@@ -44,10 +44,49 @@ Ref: https://keepachangelog.com/en/1.0.0/
 
 ### Bug Fixes
 
-## [v0.500.0-rc.1](https://github.com/atomone-hub/cosmos-sdk/releases/tag/v0.500.0-rc.1) - 2026-04-17
+* (x/gov) [#130](https://github.com/atomone-hub/atomone-sdk/pull/130) Cap deposit throttler floors to prevent an EndBlocker Int overflow (halt via a passed params-update proposal)
+* (x/consensus) [#135](https://github.com/atomone-hub/atomone-sdk/pull/135) Reject `Block.MaxGas = 0` in `UpdateParams` (mempool tx lockout via a passed proposal)
+* (x/slashing) [#134](https://github.com/atomone-hub/atomone-sdk/pull/134) Do not inherit stale slashing state (tombstone, missed-block bitmap) on consensus-key re-adoption
+* (x/gov) [#133](https://github.com/atomone-hub/atomone-sdk/pull/133) Tolerate stray gov module-account funds in InitGenesis and bound constitution-amendment inputs (DoS)
+* (x/bank) [#132](https://github.com/atomone-hub/atomone-sdk/pull/132) Linearize MsgMultiSend output validation (DoS)
+* (x/auth/vesting) [#131](https://github.com/atomone-hub/atomone-sdk/pull/131) Linearize and bound vesting schedule processing (DoS)
+
+## [v0.500.6](https://github.com/atomone-hub/cosmos-sdk/releases/tag/v0.500.6) - 2026-10-15
+
+> Note, v0.500.3-v0.500.5 have been retracted because they were tagged on wrong commits.
+
+* (baseapp) [#119](https://github.com/atomone-hub/atomone-sdk/pull/119) Drop unbounded telemetry keyed by query path
+
+### Bug Fixes
+
+* (x/slashing) [#111](https://github.com/atomone-hub/atomone-sdk/pull/111) Process old-key equivocation evidence after consensus key rotation (CONSENSUS BREAKING BUGFIX)
+* (x/dynamicfee) [#110](https://github.com/atomone-hub/cosmos-sdk/pull/110) Account for failed and out-of-gas tx gas in the dynamic fee window
+* (x/dynamicfee) [#113](https://github.com/atomone-hub/cosmos-sdk/pull/113) Enforce `params.Window == len(state.Window)` in genesis validation
+* (x/gov) [#116](https://github.com/atomone-hub/cosmos-sdk/pull/116) Prevent an integer divide by zero in the `EndBlocker` quorum check when `(VotingPeriod - QuorumTimeout) / QuorumCheckCount` truncates to zero, and reject such parameters in `Params.ValidateBasic`.
+* (x/mint) [#117](https://github.com/atomone-hub/atomone-sdk/pull/117) Prevent x/mint block per year overflow
+* (x/consensus) [#118](https://github.com/atomone-hub/atomone-sdk/pull/118) Forbid removing active validator pubkey types
+* (x/staking) [#115](https://github.com/atomone-hub/atomone-sdk/pull/115) Rebuild unbonding-operation indexes and counter at InitGenesis
+* (x/dynamicfee) [#120](https://github.com/atomone-hub/atomone-sdk/pull/120) Prevent block gas int64 overflow
+* (x/dynamicfee) [#121](https://github.com/atomone-hub/atomone-sdk/pull/121) Bound window size to prevent DoS
+* (x/gov) [#122](https://github.com/atomone-hub/atomone-sdk/pull/122) Always validate quorum check params
+* (x/auth/tx) [#123](https://github.com/atomone-hub/atomone-sdk/pull/123) Clamp tx slice capacity to block size
+* (x/staking) [#124](https://github.com/atomone-hub/atomone-sdk/pull/124) Dedupe validator updates on key rotation
+
+## [v0.500.2](https://github.com/atomone-hub/cosmos-sdk/releases/tag/v0.500.2) - 2026-07-27
+
+### Improvements
+
+* (x/gov) [#106](https://github.com/atomone-hub/cosmos-sdk/pull/106) Reject proposals with self-executing authz.MsgExec messages (granter == grantee == authority).
+
+### Bug Fixes
+
+* (x/staking) [#108](https://github.com/atomone-hub/atomone-sdk/pull/108) Cherry-pick #19038 from upstream Cosmos SDK and add regression test.
+
+## [v0.500.0 / v0.500.1](https://github.com/atomone-hub/cosmos-sdk/releases/tag/v0.500.0) - 2026-06-22
 
 ### Features
 
+* (x/staking) [#99](https://github.com/atomone-hub/cosmos-sdk/issues/99) Add consensus key rotation (`MsgRotateConsPubKey`) to `x/staking` module.
 * (x/gov) [#36](https://github.com/atomone-hub/cosmos-sdk/pull/36) Add Governors to `x/gov` module.
 * (x/gov) [#17](https://github.com/atomone-hub/cosmos-sdk/pull/17) Upstream `x/gov` modules changes from [AtomOne](https://github.com/atomone-hub/atomone/tree/966c800/x/gov)
 * (baseapp) [#1](https://github.com/atomone-hub/cosmos-sdk/pull/1) `SetProtocolVersion` has been renamed to `SetAppVersion`. It now updates the consensus params in baseapp's `ParamStore`.
@@ -84,6 +123,8 @@ Ref: https://keepachangelog.com/en/1.0.0/
 * (x/staking) [#83](https://github.com/atomone-hub/cosmos-sdk/pull/83) Update existing validator commissions when commission params change.
 * (x/gov) [#71](https://github.com/atomone-hub/cosmos-sdk/pull/71) Validate minimum self-delegation for imported governors in InitGenesis
 * (x/gov) [#87](https://github.com/atomone-hub/cosmos-sdk/pull/87) Add safeguard to prevent proposals to be added to the quorum check queue if functionality is disabled by setting `QuorumCheckCount` to 0.
+* (x/auth) [#96](https://github.com/atomone-hub/cosmos-sdk/pull/96) Update `address_by_id` endpoint to use `account_id` instead of deprecated `id`.
+* (x/gov) [#98](https://github.com/atomone-hub/cosmos-sdk/pull/98) Keep governor IsActive in sync with min self-delegation.
 
 ## [v0.50.15](https://github.com/cosmos/cosmos-sdk/releases/tag/v0.50.15) - 2025-12-12
 

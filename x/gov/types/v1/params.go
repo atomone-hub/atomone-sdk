@@ -2,6 +2,7 @@ package v1
 
 import (
 	"fmt"
+	"math/big"
 	"time"
 
 	"cosmossdk.io/math"
@@ -30,6 +31,14 @@ const (
 	// resource consumption.
 	MaxQuorumCheckCount = 1000
 )
+
+// MaxDepositThrottlerFloorAmount is the maximum coin amount accepted for
+// the deposit throttlers' floor values. The gov EndBlocker multiplies the
+// stored deposit by a percChange derived from the throttler targets
+// (|percChange| can reach ~1.9e19 with a uint64-max target), so the product
+// must stay far below the LegacyDec limit (~1.16e77) or GetNewMinDeposit
+// panics with an Int overflow on every validator.
+var MaxDepositThrottlerFloorAmount = math.NewIntFromBigInt(new(big.Int).Exp(big.NewInt(10), big.NewInt(30), nil))
 
 // MinVotingPeriod is set in stone by the constitution at 21 days, but it can
 // be overridden with ldflags for devnet/testnet environments (hence the use of
@@ -340,37 +349,49 @@ func (p Params) ValidateBasic() error {
 		return fmt.Errorf("minimum deposit ratio of proposal is too large: %s", minDepositRatio)
 	}
 
-	if p.QuorumCheckCount > 0 {
-		// If quorum check is enabled, validate quorum check params
-		if p.QuorumTimeout == nil {
-			return fmt.Errorf("quorum timeout must not be nil")
-		}
-		if p.QuorumTimeout.Seconds() < 0 {
-			return fmt.Errorf("quorum timeout must be 0 or greater: %s", p.QuorumTimeout)
-		}
-		if p.QuorumTimeout.Nanoseconds() >= p.VotingPeriod.Nanoseconds() {
-			return fmt.Errorf("quorum timeout %s must be strictly less than the voting period %s", p.QuorumTimeout, p.VotingPeriod)
-		}
+	// Quorum check params must be fully valid even when quorum checks are
+	// disabled (QuorumCheckCount == 0). Quorum check queue entries created
+	// while checks were enabled persist across params updates, and the
+	// EndBlocker dereferences params.MaxVotingPeriodExtension for those
+	// entries regardless of the current QuorumCheckCount. Gating these
+	// checks on QuorumCheckCount > 0 would therefore allow nil pointers
+	// into state, crashing every validator in FinalizeBlock with a nil
+	// dereference (a permanent consensus halt, as the queue entry removal
+	// never commits).
+	if p.QuorumTimeout == nil {
+		return fmt.Errorf("quorum timeout must not be nil")
+	}
+	if p.QuorumTimeout.Seconds() < 0 {
+		return fmt.Errorf("quorum timeout must be 0 or greater: %s", p.QuorumTimeout)
+	}
+	if p.QuorumTimeout.Nanoseconds() >= p.VotingPeriod.Nanoseconds() {
+		return fmt.Errorf("quorum timeout %s must be strictly less than the voting period %s", p.QuorumTimeout, p.VotingPeriod)
+	}
 
-		if p.MaxVotingPeriodExtension == nil {
-			return fmt.Errorf("max voting period extension must not be nil")
-		}
-		if p.MaxVotingPeriodExtension.Nanoseconds() < p.VotingPeriod.Nanoseconds()-p.QuorumTimeout.Nanoseconds() {
-			return fmt.Errorf("max voting period extension %s must be greater than or equal to the difference between the voting period %s and the quorum timeout %s", p.MaxVotingPeriodExtension, p.VotingPeriod, p.QuorumTimeout)
-		}
+	if p.MaxVotingPeriodExtension == nil {
+		return fmt.Errorf("max voting period extension must not be nil")
+	}
+	if p.MaxVotingPeriodExtension.Nanoseconds() < p.VotingPeriod.Nanoseconds()-p.QuorumTimeout.Nanoseconds() {
+		return fmt.Errorf("max voting period extension %s must be greater than or equal to the difference between the voting period %s and the quorum timeout %s", p.MaxVotingPeriodExtension, p.VotingPeriod, p.QuorumTimeout)
+	}
 
-		// avoid a quorum check count that is too large
-		if p.QuorumCheckCount > MaxQuorumCheckCount {
-			return fmt.Errorf("quorum check count %d is too large, allowed max is %d", p.QuorumCheckCount, MaxQuorumCheckCount)
-		}
+	// avoid a quorum check count that is too large
+	if p.QuorumCheckCount > MaxQuorumCheckCount {
+		return fmt.Errorf("quorum check count %d is too large, allowed max is %d", p.QuorumCheckCount, MaxQuorumCheckCount)
+	}
+	// When quorum checks are enabled, the EndBlocker schedules them at
+	// intervals of (VotingPeriod - QuorumTimeout) / QuorumCheckCount; this
+	// integer division must not truncate to zero.
+	if p.QuorumCheckCount > 0 && (*p.VotingPeriod-*p.QuorumTimeout)/time.Duration(p.QuorumCheckCount) <= 0 {
+		return fmt.Errorf("quorum check interval must be positive: voting period %s minus quorum timeout %s must be at least %dns for %d quorum checks", p.VotingPeriod, p.QuorumTimeout, p.QuorumCheckCount, p.QuorumCheckCount)
 	}
 
 	if p.MinDepositThrottler == nil {
 		return fmt.Errorf("min deposit throttler must not be nil")
 	}
 
-	if minDepositFloor := sdk.Coins(p.MinDepositThrottler.FloorValue); minDepositFloor.Empty() || !minDepositFloor.IsValid() {
-		return fmt.Errorf("invalid minimum deposit floor: %s", minDepositFloor)
+	if err := validateDepositThrottlerFloor("minimum deposit floor", sdk.Coins(p.MinDepositThrottler.FloorValue)); err != nil {
+		return err
 	}
 
 	if p.MinDepositThrottler.UpdatePeriod == nil {
@@ -423,8 +444,8 @@ func (p Params) ValidateBasic() error {
 		return fmt.Errorf("min initial deposit throttler must not be nil")
 	}
 
-	if minInitialDepositFloor := sdk.Coins(p.MinInitialDepositThrottler.FloorValue); minInitialDepositFloor.Empty() || !minInitialDepositFloor.IsValid() {
-		return fmt.Errorf("invalid minimum initial deposit floor: %s", minInitialDepositFloor)
+	if err := validateDepositThrottlerFloor("minimum initial deposit floor", sdk.Coins(p.MinInitialDepositThrottler.FloorValue)); err != nil {
+		return err
 	}
 
 	if p.MinInitialDepositThrottler.UpdatePeriod == nil {
@@ -510,6 +531,23 @@ func (p Params) ValidateBasic() error {
 		return fmt.Errorf("minimum governor self delegation must be positive: %s", minGovernorSelfDelegation)
 	}
 
+	return nil
+}
+
+// validateDepositThrottlerFloor checks that a deposit throttler floor is a
+// valid non-empty coin set and that each coin amount stays below
+// MaxDepositThrottlerFloorAmount. An uncapped floor combined with the
+// percChange computed from the throttler targets overflows LegacyDec.Mul in
+// GetNewMinDeposit and panics the EndBlocker on every block.
+func validateDepositThrottlerFloor(label string, floor sdk.Coins) error {
+	if floor.Empty() || !floor.IsValid() {
+		return fmt.Errorf("invalid %s: %s", label, floor)
+	}
+	for _, coin := range floor {
+		if coin.Amount.GT(MaxDepositThrottlerFloorAmount) {
+			return fmt.Errorf("%s amount too large: %s is above the maximum %s", label, coin, MaxDepositThrottlerFloorAmount)
+		}
+	}
 	return nil
 }
 

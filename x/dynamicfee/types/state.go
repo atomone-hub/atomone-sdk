@@ -3,7 +3,6 @@ package types
 import (
 	fmt "fmt"
 
-	errorsmod "cosmossdk.io/errors"
 	"cosmossdk.io/log"
 	"cosmossdk.io/math"
 )
@@ -23,18 +22,6 @@ func NewState(
 		Index:        0,
 		LearningRate: learningRate,
 	}
-}
-
-// Update updates the block gas for the current height with the given
-// transaction gas i.e. gas limit.
-func (s *State) Update(gas, maxBlockGas uint64) error {
-	update := s.Window[s.Index] + gas
-	if update > maxBlockGas {
-		return errorsmod.Wrapf(ErrMaxGasExceeded, "gas %d > max %d", update, maxBlockGas)
-	}
-
-	s.Window[s.Index] = update
-	return nil
 }
 
 // IncrementHeight increments the current height of the state.
@@ -156,8 +143,12 @@ func (s *State) GetAverageGas(maxBlockGas uint64) math.LegacyDec {
 
 // ValidateBasic performs basic validation on the state.
 func (s *State) ValidateBasic() error {
-	if s.Window == nil {
+	if len(s.Window) == 0 {
 		return fmt.Errorf("block gas window cannot be nil or empty")
+	}
+
+	if s.Index >= uint64(len(s.Window)) {
+		return fmt.Errorf("index (%d) out of range for window of length %d", s.Index, len(s.Window))
 	}
 
 	if s.BaseGasPrice.IsNil() || s.BaseGasPrice.LTE(math.LegacyZeroDec()) {
@@ -171,7 +162,24 @@ func (s *State) ValidateBasic() error {
 	return nil
 }
 
+// GetTargetBlockGas returns the target block gas, i.e. the max block gas
+// scaled by the target block utilization.
+//
+// The truncated product must be converted with Uint64() and not Int64():
+// for validated params (TargetBlockUtilization is in (0, 1]) it is within
+// [0, maxBlockGas] and always fits in a uint64, but it exceeds MaxInt64
+// as soon as maxBlockGas does (e.g. DefaultMaxBlockGas >= 2^63 combined
+// with TargetBlockUtilization == 1), where Int64() panics with
+// "Int64() out of bound". That panic escaped the recover in
+// UpdateBaseGasPrice and crashed the dynamicfee EndBlocker unrecovered,
+// because GetNetGas evaluates it for the EndBlocker's log call.
 func GetTargetBlockGas(maxBlockGas uint64, params Params) uint64 {
 	targetBlockUtilization := params.TargetBlockUtilization
-	return uint64(math.LegacyNewDecFromInt(math.NewIntFromUint64(maxBlockGas)).Mul(targetBlockUtilization).TruncateInt().Int64())
+	target := math.LegacyNewDecFromInt(math.NewIntFromUint64(maxBlockGas)).Mul(targetBlockUtilization).TruncateInt()
+	if !target.IsUint64() {
+		// Unreachable for validated params (utilization is in (0, 1]);
+		// clamp so that no param value can panic the EndBlocker.
+		return 0
+	}
+	return target.Uint64()
 }

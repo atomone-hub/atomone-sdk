@@ -182,6 +182,8 @@ replace (
 )
 
 retract (
+    // tagged from wrong branch
+    [v0.500.3, v0.500.5]
 	// false start by tagging the wrong branch
 	v0.50.0
 	// revert fix https://github.com/cosmos/cosmos-sdk/pull/16331

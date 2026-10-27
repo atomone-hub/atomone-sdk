@@ -5,6 +5,7 @@ import (
 
 	sdkmath "cosmossdk.io/math"
 
+	cryptotypes "github.com/cosmos/cosmos-sdk/crypto/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/x/distribution/types"
 	epochstypes "github.com/cosmos/cosmos-sdk/x/epochs/types"
@@ -182,6 +183,10 @@ func (h Hooks) BeforeDelegationRemoved(_ context.Context, _ sdk.AccAddress, _ sd
 }
 
 func (h Hooks) AfterUnbondingInitiated(_ context.Context, _ uint64) error {
+	return nil
+}
+
+func (h Hooks) AfterConsensusPubKeyUpdate(_ context.Context, _, _ cryptotypes.PubKey, _ sdk.Coin) error {
 	return nil
 }
 

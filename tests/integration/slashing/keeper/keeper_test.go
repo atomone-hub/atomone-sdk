@@ -1,6 +1,7 @@
 package keeper_test
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -95,6 +96,9 @@ func initFixture(t testing.TB) *fixture {
 
 	slashingKeeper := slashingkeeper.NewKeeper(cdc, &codec.LegacyAmino{}, runtime.NewKVStoreService(keys[slashingtypes.StoreKey]), stakingKeeper, authority.String())
 
+	stakingKeeper.SetHooks(slashingKeeper.Hooks())
+	stakingKeeper.SetDistributionKeeper(noopDistributionKeeper{})
+
 	bankModule := bank.NewAppModule(cdc, bankKeeper, accountKeeper, nil)
 	stakingModule := staking.NewAppModule(cdc, stakingKeeper, accountKeeper, bankKeeper, nil)
 	slashingModule := slashing.NewAppModule(cdc, slashingKeeper, accountKeeper, bankKeeper, stakingKeeper, nil, cdc.InterfaceRegistry())
@@ -134,6 +138,13 @@ func initFixture(t testing.TB) *fixture {
 		addrDels:       addrDels,
 		valAddrs:       valAddrs,
 	}
+}
+
+// noopDistributionKeeper is a minimal DistributionKeeper.
+type noopDistributionKeeper struct{}
+
+func (noopDistributionKeeper) FundCommunityPool(_ context.Context, _ sdk.Coins, _ sdk.AccAddress) error {
+	return nil
 }
 
 func TestUnJailNotBonded(t *testing.T) {

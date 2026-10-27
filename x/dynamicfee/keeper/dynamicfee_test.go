@@ -6,6 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"cosmossdk.io/math"
+	storetypes "cosmossdk.io/store/types"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/x/dynamicfee/testutil"
@@ -112,8 +113,7 @@ func TestUpdateDynamicfee(t *testing.T) {
 
 		// Reaching the target block gas means that we expect this to not
 		// increase.
-		err := state.Update(types.GetTargetBlockGas(testutil.MaxBlockGas, params), testutil.MaxBlockGas)
-		require.NoError(err)
+		state.Window[state.Index] = types.GetTargetBlockGas(testutil.MaxBlockGas, params)
 
 		k.InitGenesis(ctx, types.GenesisState{Params: params, State: state})
 
@@ -138,8 +138,7 @@ func TestUpdateDynamicfee(t *testing.T) {
 		state.BaseGasPrice = state.BaseGasPrice.Mul(math.LegacyNewDec(2))
 		// Reaching the target block gas means that we expect this to not
 		// increase.
-		err := state.Update(types.GetTargetBlockGas(testutil.MaxBlockGas, params), testutil.MaxBlockGas)
-		require.NoError(err)
+		state.Window[state.Index] = types.GetTargetBlockGas(testutil.MaxBlockGas, params)
 
 		k.InitGenesis(ctx, types.GenesisState{Params: params, State: state})
 
@@ -163,8 +162,7 @@ func TestUpdateDynamicfee(t *testing.T) {
 
 		// Reaching the target block gas means that we expect this to not
 		// increase.
-		err := state.Update(testutil.MaxBlockGas, testutil.MaxBlockGas)
-		require.NoError(err)
+		state.Window[state.Index] = testutil.MaxBlockGas
 
 		k.InitGenesis(ctx, types.GenesisState{Params: params, State: state})
 
@@ -192,8 +190,7 @@ func TestUpdateDynamicfee(t *testing.T) {
 		state.BaseGasPrice = state.BaseGasPrice.Mul(math.LegacyNewDec(2))
 		// Reaching the target block gas means that we expect this to not
 		// increase.
-		err := state.Update(testutil.MaxBlockGas, testutil.MaxBlockGas)
-		require.NoError(err)
+		state.Window[state.Index] = testutil.MaxBlockGas
 
 		k.InitGenesis(ctx, types.GenesisState{Params: params, State: state})
 
@@ -212,6 +209,32 @@ func TestUpdateDynamicfee(t *testing.T) {
 		require.Equal(math.LegacyMustNewDecFromStr("0.125"), lr)
 	})
 
+	t.Run("full block charged only through the block gas meter raises the base fee", func(t *testing.T) {
+		require := require.New(t)
+		k, ctx := testutil.SetupKeeper(t, 0)
+		state := types.DefaultState()
+		params := types.DefaultParams()
+		k.InitGenesis(ctx, types.GenesisState{Params: params, State: state})
+
+		// Model a block whose entire gas was consumed by transactions that
+		// failed or ran out of gas: the per-transaction post handler never
+		// recorded any of it (the window slot is empty), yet the consensus
+		// block gas meter is full. The base fee must still react to the full
+		// block, exactly as it would for a block of successful transactions.
+		maxBlockGas := k.GetMaxBlockGas(ctx, params)
+		blockGasMeter := storetypes.NewGasMeter(maxBlockGas)
+		blockGasMeter.ConsumeGas(maxBlockGas, "failed transactions")
+		ctx = ctx.WithBlockGasMeter(blockGasMeter)
+
+		require.NoError(k.UpdateDynamicfee(ctx))
+
+		// A full block raises the base fee by 1/8th.
+		fee, err := k.GetBaseGasPrice(ctx)
+		require.NoError(err)
+		factor := math.LegacyMustNewDecFromStr("1.125")
+		require.Equal(state.BaseGasPrice.Mul(factor), fee)
+	})
+
 	t.Run("in-between min and target block with default eip1559 at min base fee", func(t *testing.T) {
 		require := require.New(t)
 		maxBlockGas := uint64(100)
@@ -219,8 +242,7 @@ func TestUpdateDynamicfee(t *testing.T) {
 		state := types.DefaultState()
 		params := types.DefaultParams()
 
-		err := state.Update(25, maxBlockGas)
-		require.NoError(err)
+		state.Window[state.Index] = 25
 
 		k.InitGenesis(ctx, types.GenesisState{Params: params, State: state})
 
@@ -244,9 +266,7 @@ func TestUpdateDynamicfee(t *testing.T) {
 		state.BaseGasPrice = state.BaseGasPrice.Mul(math.LegacyNewDec(2))
 
 		params := types.DefaultParams()
-		err := state.Update(25, maxBlockGas)
-
-		require.NoError(err)
+		state.Window[state.Index] = 25
 
 		k.InitGenesis(ctx, types.GenesisState{Params: params, State: state})
 
@@ -272,8 +292,7 @@ func TestUpdateDynamicfee(t *testing.T) {
 		state := types.DefaultState()
 		params := types.DefaultParams()
 
-		err := state.Update(75, maxBlockGas)
-		require.NoError(err)
+		state.Window[state.Index] = 75
 
 		k.InitGenesis(ctx, types.GenesisState{Params: params, State: state})
 
@@ -300,8 +319,7 @@ func TestUpdateDynamicfee(t *testing.T) {
 		state.BaseGasPrice = state.BaseGasPrice.Mul(math.LegacyNewDec(2))
 		params := types.DefaultParams()
 
-		err := state.Update(75, maxBlockGas)
-		require.NoError(err)
+		state.Window[state.Index] = 75
 
 		k.InitGenesis(ctx, types.GenesisState{Params: params, State: state})
 

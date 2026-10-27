@@ -25,10 +25,8 @@ func TestLearningRate(t *testing.T) {
 		// Randomly generate the block gas.
 		blockGas := rapid.Uint64Range(0, maxBlockGas).Draw(t, "gas")
 
-		// Update the dynamic fee pricing.
-		if err := state.Update(blockGas, maxBlockGas); err != nil {
-			t.Fatalf("block update errors: %v", err)
-		}
+		// Record the block gas, as the endblocker does from the block gas meter.
+		state.Window[state.Index] = blockGas
 
 		// Update the learning rate.
 		lr := state.UpdateLearningRate(params, maxBlockGas)
@@ -51,10 +49,8 @@ func TestGasPrice(t *testing.T) {
 		// Randomly generate the block gas.
 		blockGas := rapid.Uint64Range(0, maxBlockGas).Draw(t, "gas")
 
-		// Update the dynamic fee pricing.
-		if err := state.Update(blockGas, maxBlockGas); err != nil {
-			t.Fatalf("block update errors: %v", err)
-		}
+		// Record the block gas, as the endblocker does from the block gas meter.
+		state.Window[state.Index] = blockGas
 
 		// Update the learning rate.
 		state.UpdateLearningRate(params, maxBlockGas)

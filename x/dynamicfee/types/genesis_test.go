@@ -18,4 +18,16 @@ func TestGenesis(t *testing.T) {
 		gs := types.DefaultAIMDGenesisState()
 		require.NoError(t, gs.ValidateBasic())
 	})
+
+	t.Run("rejects params.window that does not match state.window length", func(t *testing.T) {
+		gs := types.DefaultAIMDGenesisState()
+		gs.Params.Window = 4 // state.Window still has 8 slots
+		require.Error(t, gs.ValidateBasic())
+	})
+
+	t.Run("rejects state index out of range", func(t *testing.T) {
+		gs := types.DefaultAIMDGenesisState()
+		gs.State.Index = uint64(len(gs.State.Window))
+		require.Error(t, gs.ValidateBasic())
+	})
 }

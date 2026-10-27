@@ -10,8 +10,11 @@ import (
 
 	"cosmossdk.io/collections"
 
+	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 	"github.com/cosmos/cosmos-sdk/testutil/testdata"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	"github.com/cosmos/cosmos-sdk/x/authz"
+	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
 	"github.com/cosmos/cosmos-sdk/x/gov/types"
 	v1 "github.com/cosmos/cosmos-sdk/x/gov/types/v1"
 	"github.com/cosmos/cosmos-sdk/x/gov/types/v1beta1"
@@ -155,6 +158,60 @@ func (suite *KeeperTestSuite) TestSubmitProposal() {
 		suite.Require().NoError(err)
 		_, err = suite.govKeeper.SubmitProposal(suite.ctx, []sdk.Msg{prop}, tc.metadata, "title", "", suite.addrs[0])
 		suite.Require().True(errors.Is(tc.expectedErr, err), "tc #%d; got: %v, expected: %v", i, err, tc.expectedErr)
+	}
+}
+
+// TestSubmitProposalSelfExec verifies how SubmitProposal treats authz.MsgExec proposal
+// messages: a self-executing one (grantee == granter == authority, possibly nested,
+// up to the nesting-depth cap) is rejected, while a valid cross-account MsgExec — grantee
+// is the authority but the inner message is signed by another account — is accepted.
+func (suite *KeeperTestSuite) TestSubmitProposalSelfExec() {
+	govAddr := suite.govKeeper.GetGovernanceAccount(suite.ctx).GetAddress()
+	other := suite.addrs[1]
+
+	pack := func(msg sdk.Msg) *codectypes.Any {
+		a, err := codectypes.NewAnyWithValue(msg)
+		suite.Require().NoError(err)
+		return a
+	}
+	// nestSelfExec wraps an authority-signed amendment in `depth` authz.MsgExec layers,
+	// each with grantee == authority (a self-executing chain).
+	nestSelfExec := func(depth int) sdk.Msg {
+		cur := pack(v1.NewMsgProposeConstitutionAmendment(govAddr, "@@ -1 +1 @@\n-\n+Test"))
+		var exec *authz.MsgExec
+		for i := 0; i < depth; i++ {
+			exec = &authz.MsgExec{Grantee: govAddr.String(), Msgs: []*codectypes.Any{cur}}
+			cur = pack(exec)
+		}
+		return exec
+	}
+	crossAccount := &authz.MsgExec{
+		Grantee: govAddr.String(),
+		Msgs:    []*codectypes.Any{pack(banktypes.NewMsgSend(other, govAddr, sdk.NewCoins()))},
+	}
+
+	testCases := []struct {
+		name        string
+		msgs        []sdk.Msg
+		expErr      error // nil => expect success
+		errContains string
+	}{
+		{"direct self-exec is rejected", []sdk.Msg{nestSelfExec(1)}, types.ErrInvalidProposalMsg, "self-executing authz.MsgExec"},
+		{"nested self-exec is rejected", []sdk.Msg{nestSelfExec(3)}, types.ErrInvalidProposalMsg, "self-executing authz.MsgExec"},
+		{"self-exec at depth cap is rejected", []sdk.Msg{nestSelfExec(8)}, types.ErrInvalidProposalMsg, "self-executing authz.MsgExec"},
+		{"self-exec beyond depth cap errors", []sdk.Msg{nestSelfExec(9)}, types.ErrInvalidProposalMsg, "authz nesting depth exceeded"},
+		{"valid cross-account MsgExec passes", []sdk.Msg{crossAccount}, nil, ""},
+	}
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			_, err := suite.govKeeper.SubmitProposal(suite.ctx, tc.msgs, "", "title", "summary", suite.addrs[0])
+			if tc.expErr == nil {
+				suite.Require().NoError(err)
+				return
+			}
+			suite.Require().ErrorIs(err, tc.expErr)
+			suite.Require().ErrorContains(err, tc.errContains)
+		})
 	}
 }
 

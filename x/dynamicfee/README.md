@@ -73,9 +73,11 @@ that transactions with higher gas prices are included in the block with higher p
 
 ### Module state updates
 
-The `dynamicfee` module updates the gas consumed in the current block on a per-tx
-basis relying on the `postHandler`. Updates to the base fee and learning rate
-are instead performed in the `endBlocker`.
+The `dynamicfee` module records the gas consumed in the current block by reading
+the consensus block gas meter in the `endBlocker`, where the base fee and
+learning rate are also updated. Sourcing the value from the block gas meter
+ensures the gas of every transaction charged to the block is accounted for,
+including transactions whose messages failed or ran out of gas.
 
 ## State
 

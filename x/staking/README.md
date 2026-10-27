@@ -332,6 +332,29 @@ they are in a deterministic order.
 The oldest HistoricalEntries will be pruned to ensure that there only exist the parameter-defined number of
 historical entries.
 
+### Consensus Key Rotation
+
+The staking module supports rotating a validator's consensus public key via the
+[`MsgRotateConsPubKey`](#msgrotateconspubkey) message. The state required to track rotations, prevent abuse,
+and correctly handle evidence reported against old consensus keys is indexed as follows:
+
+* ValidatorConsPubKeyRotationHistoryKey: `0x65 | valAddr | height -> ProtocolBuffer(ConsPubKeyRotationHistory)`
+* BlockConsPubKeyRotationHistoryKey: `0x66 | height | valAddr -> ProtocolBuffer(ConsPubKeyRotationHistory)`
+* ValidatorConsensusKeyRotationRecordQueueKey: `0x67 | format(time) -> ProtocolBuffer(ValAddrsOfRotatedConsKeys)`
+* ValidatorConsensusKeyRotationRecordIndexKey: `0x68 | valAddr | format(time) -> []byte{}`
+* OldToNewConsAddrMap: `0x69 | byte(oldConsAddr) -> byte(newConsAddr)`
+* ConsAddrToValidatorIdentifierMapPrefix: `0x6A | byte(newConsAddr) -> byte(initialConsAddr)`
+
+#### Rotation Workflow
+
+* When a `ConsPubkeyRotation` occurs the validator and the
+  `ValidatorConsensusKeyRotationRecordIndexKey` are updated
+* A `ConsPubKeyRotationHistory` object is created every time a consensus pubkey rotation occurs
+* An entry is added in the `OldToNewConsAddrMap` collection for every rotation (to handle evidences submitted with old cons key)
+* An entry is added in the `ConsAddrToValidatorIdentifierMapPrefix` collection for every rotation (to block rotation to a previously used cons key)
+* To prevent spam: only limited rotations per unbonding period, and a non-negligible fee is charged
+* The rotation fee goes to the community pool
+
 ## State Transitions
 
 ### Validators

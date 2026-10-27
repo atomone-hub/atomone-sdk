@@ -20,6 +20,7 @@ var (
 	_ sdk.Msg                            = &MsgBeginRedelegate{}
 	_ sdk.Msg                            = &MsgCancelUnbondingDelegation{}
 	_ sdk.Msg                            = &MsgUpdateParams{}
+	_ sdk.Msg                            = &MsgRotateConsPubKey{}
 )
 
 // NewMsgCreateValidator creates a new MsgCreateValidator instance.
@@ -141,4 +142,37 @@ func NewMsgCancelUnbondingDelegation(delAddr, valAddr string, creationHeight int
 		Amount:           amount,
 		CreationHeight:   creationHeight,
 	}
+}
+
+// NewMsgRotateConsPubKey creates a new MsgRotateConsPubKey instance.
+func NewMsgRotateConsPubKey(validatorAddress string, newPubKey cryptotypes.PubKey) (*MsgRotateConsPubKey, error) {
+	var pkAny *codectypes.Any
+	var err error
+	if newPubKey != nil {
+		pkAny, err = codectypes.NewAnyWithValue(newPubKey)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return &MsgRotateConsPubKey{
+		ValidatorAddress: validatorAddress,
+		NewPubkey:        pkAny,
+	}, nil
+}
+
+// UnpackInterfaces implements UnpackInterfacesMessage.UnpackInterfaces
+func (msg MsgRotateConsPubKey) UnpackInterfaces(unpacker codectypes.AnyUnpacker) error {
+	var pubKey cryptotypes.PubKey
+	return unpacker.UnpackAny(msg.NewPubkey, &pubKey)
+}
+
+// Validate validates the MsgRotateConsPubKey sdk msg.
+func (msg *MsgRotateConsPubKey) Validate(ac address.Codec) error {
+	if _, err := ac.StringToBytes(msg.ValidatorAddress); err != nil {
+		return sdkerrors.ErrInvalidAddress.Wrapf("invalid validator address: %s", err)
+	}
+	if msg.NewPubkey == nil {
+		return ErrEmptyValidatorPubKey
+	}
+	return nil
 }

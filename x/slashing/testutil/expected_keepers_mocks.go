@@ -322,6 +322,21 @@ func (mr *MockStakingKeeperMockRecorder) IsValidatorJailed(ctx, addr any) *gomoc
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsValidatorJailed", reflect.TypeOf((*MockStakingKeeper)(nil).IsValidatorJailed), ctx, addr)
 }
 
+// ValidatorIdentifier mocks base method.
+func (m *MockStakingKeeper) ValidatorIdentifier(ctx context.Context, addr types.ConsAddress) (types.ConsAddress, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ValidatorIdentifier", ctx, addr)
+	ret0, _ := ret[0].(types.ConsAddress)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ValidatorIdentifier indicates an expected call of ValidatorIdentifier.
+func (mr *MockStakingKeeperMockRecorder) ValidatorIdentifier(ctx, addr any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ValidatorIdentifier", reflect.TypeOf((*MockStakingKeeper)(nil).ValidatorIdentifier), ctx, addr)
+}
+
 // IterateValidators mocks base method.
 func (m *MockStakingKeeper) IterateValidators(arg0 context.Context, arg1 func(int64, types1.ValidatorI) bool) error {
 	m.ctrl.T.Helper()
