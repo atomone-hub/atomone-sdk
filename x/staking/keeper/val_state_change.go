@@ -11,9 +11,13 @@ import (
 	gogotypes "github.com/cosmos/gogoproto/types"
 
 	"cosmossdk.io/core/address"
+	errorsmod "cosmossdk.io/errors"
 	"cosmossdk.io/math"
 
+	cryptocodec "github.com/cosmos/cosmos-sdk/crypto/codec"
+	cryptotypes "github.com/cosmos/cosmos-sdk/crypto/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
 	"github.com/cosmos/cosmos-sdk/x/staking/types"
 )
 
@@ -113,6 +117,12 @@ func (k Keeper) BlockValidatorUpdates(ctx context.Context) ([]abci.ValidatorUpda
 		)
 	}
 
+	// Purge all matured consensus key rotations.
+	err = k.PurgeAllMaturedConsKeyRotatedKeys(ctx, sdkCtx.BlockHeader().Time)
+	if err != nil {
+		return nil, err
+	}
+
 	return validatorUpdates, nil
 }
 
@@ -144,6 +154,25 @@ func (k Keeper) ApplyAndReturnValidatorSetUpdates(ctx context.Context) (updates 
 	last, err := k.getLastValidatorsByAddr(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get last validator set: %w", err)
+	}
+
+	// Load the consensus pubkey rotations scheduled for this block up front.
+	// They are processed at the end of this function (see the rotation loop
+	// below), which emits a pair of updates per rotating validator: one
+	// retiring the old consensus key and one adding the new key with the
+	// validator's current power. A validator listed here must not emit a
+	// power-change update in the bonded-set loop below: that update would be
+	// keyed by the old consensus key that is retired this very block,
+	// duplicating the key in the update list. CometBFT rejects validator
+	// updates containing a duplicate pubkey ("duplicate entry"), which would
+	// deterministically halt every node processing the block.
+	historyObjects, err := k.GetBlockConsPubKeyRotationHistory(ctx)
+	if err != nil {
+		return nil, err
+	}
+	rotatingThisBlock := make(map[string]struct{}, len(historyObjects))
+	for _, history := range historyObjects {
+		rotatingThisBlock[history.OperatorAddress] = struct{}{}
 	}
 
 	// Iterate over validators, highest power to lowest.
@@ -203,7 +232,14 @@ func (k Keeper) ApplyAndReturnValidatorSetUpdates(ctx context.Context) (updates 
 
 		// update the validator set if power has changed
 		if !found || !bytes.Equal(oldPowerBytes, newPowerBytes) {
-			updates = append(updates, validator.ABCIValidatorUpdate(powerReduction))
+			// Validators rotating their consensus key this block are handled
+			// exclusively by the rotation loop below, which conveys the new
+			// power under the NEW key. Emitting the power change here under
+			// the old key as well would put the same pubkey in the update
+			// list twice, which CometBFT rejects, halting the chain.
+			if _, isRotating := rotatingThisBlock[valAddrStr]; !isRotating {
+				updates = append(updates, validator.ABCIValidatorUpdate(powerReduction))
+			}
 
 			if err = k.SetLastValidatorPower(ctx, valAddr, newPower); err != nil {
 				return nil, err
@@ -240,6 +276,62 @@ func (k Keeper) ApplyAndReturnValidatorSetUpdates(ctx context.Context) (updates 
 		}
 
 		updates = append(updates, validator.ABCIValidatorUpdateZero())
+	}
+
+	// ApplyAndReturnValidatorSetUpdates checks if there is ConsPubKeyRotationHistory
+	// with ConsPubKeyRotationHistory.Height == ctx.BlockHeight() and if so, generates 2 ValidatorUpdate,
+	// one for removing the old validator key and one for adding the new validator key.
+	for _, history := range historyObjects {
+		valAddr, err := k.validatorAddressCodec.StringToBytes(history.OperatorAddress)
+		if err != nil {
+			return nil, err
+		}
+
+		validator, err := k.GetValidator(ctx, valAddr)
+		if err != nil {
+			return nil, err
+		}
+
+		oldPk, ok := history.OldConsPubkey.GetCachedValue().(cryptotypes.PubKey)
+		if !ok {
+			return nil, errorsmod.Wrapf(sdkerrors.ErrInvalidType, "Expecting cryptotypes.PubKey, got %T", oldPk)
+		}
+		oldCmtPk, err := cryptocodec.ToCmtProtoPublicKey(oldPk)
+		if err != nil {
+			return nil, err
+		}
+
+		newPk, ok := history.NewConsPubkey.GetCachedValue().(cryptotypes.PubKey)
+		if !ok {
+			return nil, errorsmod.Wrapf(sdkerrors.ErrInvalidType, "Expecting cryptotypes.PubKey, got %T", newPk)
+		}
+		newCmtPk, err := cryptocodec.ToCmtProtoPublicKey(newPk)
+		if err != nil {
+			return nil, err
+		}
+
+		// A validator cannot rotate keys if it's not bonded or if it's jailed.
+		if !(validator.Jailed || validator.Status != types.Bonded) {
+			updates = append(updates, abci.ValidatorUpdate{
+				PubKey: oldCmtPk,
+				Power:  0,
+			})
+
+			updates = append(updates, abci.ValidatorUpdate{
+				PubKey: newCmtPk,
+				Power:  validator.ConsensusPower(powerReduction),
+			})
+
+			if err := k.updateToNewPubkey(ctx, validator, history.OldConsPubkey, history.NewConsPubkey, history.Fee); err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	// Prune the height-indexed rotation history for the current block now that it
+	// has been processed. The validator-indexed history (prefix 0x65) is retained.
+	if err := k.DeleteBlockConsPubKeyRotationHistory(ctx); err != nil {
+		return nil, err
 	}
 
 	// Update the pools based on the recent updates in the validator set:

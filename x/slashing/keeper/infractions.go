@@ -23,15 +23,26 @@ func (k Keeper) HandleValidatorSignature(ctx context.Context, addr cryptotypes.A
 	// fetch the validator public key
 	consAddr := sdk.ConsAddress(addr)
 
-	// don't update missed blocks when validator's jailed
-	isJailed, err := k.sk.IsValidatorJailed(ctx, consAddr)
+	// Liveness tracking resolves the address strictly, without the fallback
+	// that signingInfoAddr provides for the jail/tombstone paths: the validator
+	// is needed here anyway (jailed check, downtime slash) and liveness state
+	// must be read and written at the validator's current consensus address, so
+	// an unresolvable address must fail loudly.
+	val, err := k.sk.ValidatorByConsAddr(ctx, consAddr)
 	if err != nil {
 		return err
 	}
 
-	if isJailed {
+	// don't update missed blocks when validator's jailed
+	if val.IsJailed() {
 		return nil
 	}
+
+	currentConsAddr, err := val.GetConsAddr()
+	if err != nil {
+		return err
+	}
+	consAddr = sdk.ConsAddress(currentConsAddr)
 
 	// fetch signing info
 	signInfo, err := k.GetValidatorSigningInfo(ctx, consAddr)

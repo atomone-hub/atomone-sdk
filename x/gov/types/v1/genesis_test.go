@@ -66,6 +66,34 @@ func TestValidateGenesis(t *testing.T) {
 			expErrMsg: "invalid minimum deposit floor",
 		},
 		{
+			name: "min deposit throttler floor is too large",
+			genesisState: func() *v1.GenesisState {
+				params := v1.DefaultParams()
+				mdt := *params.MinDepositThrottler
+				mdt.FloorValue = sdk.NewCoins(sdk.Coin{
+					Denom:  sdk.DefaultBondDenom,
+					Amount: v1.MaxDepositThrottlerFloorAmount.MulRaw(10),
+				})
+				params.MinDepositThrottler = &mdt
+				return v1.NewGenesisState(v1.DefaultStartingProposalID, v1.DefaultParticipationEma, v1.DefaultParticipationEma, v1.DefaultParticipationEma, params)
+			},
+			expErrMsg: "minimum deposit floor amount too large",
+		},
+		{
+			name: "min initial deposit throttler floor is too large",
+			genesisState: func() *v1.GenesisState {
+				params := v1.DefaultParams()
+				midt := *params.MinInitialDepositThrottler
+				midt.FloorValue = sdk.NewCoins(sdk.Coin{
+					Denom:  sdk.DefaultBondDenom,
+					Amount: v1.MaxDepositThrottlerFloorAmount.MulRaw(10),
+				})
+				params.MinInitialDepositThrottler = &midt
+				return v1.NewGenesisState(v1.DefaultStartingProposalID, v1.DefaultParticipationEma, v1.DefaultParticipationEma, v1.DefaultParticipationEma, params)
+			},
+			expErrMsg: "minimum initial deposit floor amount too large",
+		},
+		{
 			name: "min deposit throttler update period is nil",
 			genesisState: func() *v1.GenesisState {
 				params := v1.DefaultParams()
@@ -250,6 +278,39 @@ func TestValidateGenesis(t *testing.T) {
 				return v1.NewGenesisState(v1.DefaultStartingProposalID, v1.DefaultParticipationEma, v1.DefaultParticipationEma, v1.DefaultParticipationEma, params)
 			},
 			expErrMsg: "quorum check count 1001 is too large, allowed max is 1000",
+		},
+		{
+			name: "quorum check interval truncates to zero",
+			genesisState: func() *v1.GenesisState {
+				params := v1.DefaultParams()
+				params.QuorumCheckCount = v1.MaxQuorumCheckCount
+				// 999ns between the quorum timeout and the end of the voting period
+				// cannot be split into 1000 quorum checks.
+				quorumTimeout := *params.VotingPeriod - time.Duration(v1.MaxQuorumCheckCount-1)
+				params.QuorumTimeout = &quorumTimeout
+				return v1.NewGenesisState(v1.DefaultStartingProposalID, v1.DefaultParticipationEma, v1.DefaultParticipationEma, v1.DefaultParticipationEma, params)
+			},
+			expErrMsg: "quorum check interval must be positive: voting period 504h0m0s minus quorum timeout 503h59m59.999999001s must be at least 1000ns for 1000 quorum checks",
+		},
+		{
+			name: "quorum check interval of exactly one nanosecond",
+			genesisState: func() *v1.GenesisState {
+				params := v1.DefaultParams()
+				params.QuorumCheckCount = v1.MaxQuorumCheckCount
+				quorumTimeout := *params.VotingPeriod - time.Duration(v1.MaxQuorumCheckCount)
+				params.QuorumTimeout = &quorumTimeout
+				return v1.NewGenesisState(v1.DefaultStartingProposalID, v1.DefaultParticipationEma, v1.DefaultParticipationEma, v1.DefaultParticipationEma, params)
+			},
+		},
+		{
+			name: "quorum checks disabled skip the interval check",
+			genesisState: func() *v1.GenesisState {
+				params := v1.DefaultParams()
+				params.QuorumCheckCount = 0
+				quorumTimeout := *params.VotingPeriod - time.Nanosecond
+				params.QuorumTimeout = &quorumTimeout
+				return v1.NewGenesisState(v1.DefaultStartingProposalID, v1.DefaultParticipationEma, v1.DefaultParticipationEma, v1.DefaultParticipationEma, params)
+			},
 		},
 		{
 			name: "invalid max deposit period",

@@ -18,6 +18,7 @@ func RegisterLegacyAminoCodec(cdc *codec.LegacyAmino) {
 	legacy.RegisterAminoMsg(cdc, &MsgUndelegate{}, "cosmos-sdk/MsgUndelegate")
 	legacy.RegisterAminoMsg(cdc, &MsgBeginRedelegate{}, "cosmos-sdk/MsgBeginRedelegate")
 	legacy.RegisterAminoMsg(cdc, &MsgCancelUnbondingDelegation{}, "cosmos-sdk/MsgCancelUnbondingDelegation")
+	legacy.RegisterAminoMsg(cdc, &MsgRotateConsPubKey{}, "cosmos-sdk/MsgRotateConsPubKey")
 	legacy.RegisterAminoMsg(cdc, &MsgUpdateParams{}, "cosmos-sdk/x/staking/MsgUpdateParams")
 
 	cdc.RegisterInterface((*isStakeAuthorization_Validators)(nil), nil)
@@ -36,6 +37,7 @@ func RegisterInterfaces(registry types.InterfaceRegistry) {
 		&MsgUndelegate{},
 		&MsgBeginRedelegate{},
 		&MsgCancelUnbondingDelegation{},
+		&MsgRotateConsPubKey{},
 		&MsgUpdateParams{},
 	)
 	registry.RegisterImplementations(

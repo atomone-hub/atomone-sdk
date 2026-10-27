@@ -9,6 +9,8 @@ import (
 	"github.com/cosmos/cosmos-sdk/codec"
 	"github.com/cosmos/cosmos-sdk/codec/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
+	moduletestutil "github.com/cosmos/cosmos-sdk/types/module/testutil"
+	"github.com/cosmos/cosmos-sdk/x/authz"
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
 	v1 "github.com/cosmos/cosmos-sdk/x/gov/types/v1"
 )
@@ -69,6 +71,77 @@ func TestMsgSubmitProposal_GetSignBytes(t *testing.T) {
 			bz, err := pc.MarshalAminoJSON(msg)
 			require.NoError(t, err)
 			require.Equal(t, tc.expSignBz, string(bz))
+		})
+	}
+}
+
+func TestContainsSelfExecAsAuthority(t *testing.T) {
+	encCfg := moduletestutil.MakeTestEncodingConfig()
+	v1.RegisterInterfaces(encCfg.InterfaceRegistry)
+	authz.RegisterInterfaces(encCfg.InterfaceRegistry)
+	banktypes.RegisterInterfaces(encCfg.InterfaceRegistry)
+	cdc := encCfg.Codec
+
+	authority := addrs[0]
+	other := addrs[1]
+	// amendment's signer is its Authority field (set to authority).
+	amendment := v1.NewMsgProposeConstitutionAmendment(authority, "@@ -1 +1 @@\n-\n+Test")
+	// send's signer is its FromAddress (set to other).
+	send := banktypes.NewMsgSend(other, authority, coinsPos)
+
+	pack := func(msg sdk.Msg) *types.Any {
+		a, err := types.NewAnyWithValue(msg)
+		require.NoError(t, err)
+		return a
+	}
+	// nest wraps leaf in `depth` authz.MsgExec layers, each with grantee == authority.
+	nest := func(depth int, leaf sdk.Msg) sdk.Msg {
+		cur := pack(leaf)
+		var exec *authz.MsgExec
+		for i := 0; i < depth; i++ {
+			exec = &authz.MsgExec{Grantee: authority.String(), Msgs: []*types.Any{cur}}
+			cur = pack(exec)
+		}
+		return exec
+	}
+
+	tests := []struct {
+		name    string
+		msgs    []sdk.Msg
+		wantHit bool
+		wantErr bool
+	}{
+		{"direct self-exec amendment", []sdk.Msg{nest(1, amendment)}, true, false},
+		{"nested self-exec (3 layers)", []sdk.Msg{nest(3, amendment)}, true, false},
+		{"self-exec at depth cap (8)", []sdk.Msg{nest(8, amendment)}, true, false},
+		{"depth beyond cap (9)", []sdk.Msg{nest(9, amendment)}, false, true},
+		{
+			"cross-account wrapped (inner signed by other)",
+			[]sdk.Msg{&authz.MsgExec{Grantee: authority.String(), Msgs: []*types.Any{pack(send)}}},
+			false, false,
+		},
+		{
+			"grantee not authority (chain broken)",
+			[]sdk.Msg{&authz.MsgExec{Grantee: other.String(), Msgs: []*types.Any{pack(amendment)}}},
+			false, false,
+		},
+		{"plain message, no MsgExec", []sdk.Msg{amendment}, false, false},
+		{
+			"mixed inner: one cross-account, one self-exec leaf",
+			[]sdk.Msg{&authz.MsgExec{Grantee: authority.String(), Msgs: []*types.Any{pack(send), pack(amendment)}}},
+			true, false,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			hit, err := v1.ContainsSelfExecAsAuthority(cdc, tc.msgs, authority)
+			if tc.wantErr {
+				require.Error(t, err)
+				require.ErrorContains(t, err, "authz nesting depth exceeded")
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tc.wantHit, hit)
 		})
 	}
 }

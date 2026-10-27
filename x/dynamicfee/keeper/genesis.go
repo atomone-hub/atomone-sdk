@@ -11,10 +11,6 @@ func (k *Keeper) InitGenesis(ctx sdk.Context, gs types.GenesisState) {
 		panic(err)
 	}
 
-	if gs.Params.Window != uint64(len(gs.State.Window)) {
-		panic("genesis state and parameters do not match for window")
-	}
-
 	// Initialize the dynamic fee pricing state and parameters.
 	if err := k.SetParams(ctx, gs.Params); err != nil {
 		panic(err)

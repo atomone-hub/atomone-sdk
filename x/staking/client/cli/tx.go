@@ -50,6 +50,7 @@ func NewTxCmd(valAddrCodec, ac address.Codec) *cobra.Command {
 		NewRedelegateCmd(valAddrCodec, ac),
 		NewUnbondCmd(valAddrCodec, ac),
 		NewCancelUnbondingDelegation(valAddrCodec, ac),
+		NewRotateConsPubKeyCmd(valAddrCodec),
 	)
 
 	return stakingTxCmd
@@ -631,4 +632,52 @@ func BuildCreateValidatorMsg(clientCtx client.Context, config TxCreateValidatorC
 	}
 
 	return txBldr, msg, nil
+}
+
+// NewRotateConsPubKeyCmd returns a CLI command handler for rotating a validator's consensus public key.
+func NewRotateConsPubKeyCmd(valAddrCodec address.Codec) *cobra.Command {
+	bech32PrefixValAddr := sdk.GetConfig().GetBech32ValidatorAddrPrefix()
+
+	cmd := &cobra.Command{
+		Use:   "rotate-cons-pubkey [validator-addr] [new-pubkey]",
+		Short: "Rotate the consensus public key of a validator",
+		Args:  cobra.ExactArgs(2),
+		Long: strings.TrimSpace(
+			fmt.Sprintf(`Rotate a validator's consensus public key.
+
+The new-pubkey must be provided as a JSON-encoded Any, e.g. {"@type":"/cosmos.crypto.ed25519.PubKey","key":"..."}.
+
+Example:
+$ %s tx staking rotate-cons-pubkey %s1gghjut3ccd8ay0zduzj64hwre2fxs9ldmqhffj '{"@type":"/cosmos.crypto.ed25519.PubKey","key":"oWg2ISpLF405Jcm2vXV+2v4fnjodh6aafuIdeoW+rUw="}' --from mykey
+`,
+				version.AppName, bech32PrefixValAddr,
+			),
+		),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			clientCtx, err := client.GetClientTxContext(cmd)
+			if err != nil {
+				return err
+			}
+
+			if _, err := valAddrCodec.StringToBytes(args[0]); err != nil {
+				return err
+			}
+
+			var newPubKey cryptotypes.PubKey
+			if err := clientCtx.Codec.UnmarshalInterfaceJSON([]byte(args[1]), &newPubKey); err != nil {
+				return errorsmod.Wrap(err, "invalid pubkey")
+			}
+
+			msg, err := types.NewMsgRotateConsPubKey(args[0], newPubKey)
+			if err != nil {
+				return err
+			}
+
+			return tx.GenerateOrBroadcastTxCLI(clientCtx, cmd.Flags(), msg)
+		},
+	}
+
+	flags.AddTxFlagsToCmd(cmd)
+
+	return cmd
 }

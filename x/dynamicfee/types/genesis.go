@@ -2,6 +2,7 @@ package types
 
 import (
 	"encoding/json"
+	"fmt"
 
 	"github.com/cosmos/cosmos-sdk/codec"
 )
@@ -23,7 +24,18 @@ func (gs *GenesisState) ValidateBasic() error {
 	if err := gs.Params.ValidateBasic(); err != nil {
 		return err
 	}
-	return gs.State.ValidateBasic()
+	if err := gs.State.ValidateBasic(); err != nil {
+		return err
+	}
+	// The sliding window in the state must have exactly one slot per block in
+	// the parameter window. InitGenesis relies on this invariant, so enforce it
+	// here too, otherwise a mismatched genesis passes `genesis validate` and
+	// then halts every node during InitChain.
+	if gs.Params.Window != uint64(len(gs.State.Window)) {
+		return fmt.Errorf("params.window (%d) does not match state.window length (%d)",
+			gs.Params.Window, len(gs.State.Window))
+	}
+	return nil
 }
 
 // GetGenesisStateFromAppState returns x/dynamicfee GenesisState given raw application

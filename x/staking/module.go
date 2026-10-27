@@ -196,6 +196,7 @@ func init() {
 		&modulev1.Module{},
 		appconfig.Provide(ProvideModule),
 		appconfig.Invoke(InvokeSetStakingHooks),
+		appconfig.Invoke(InvokeSetStakingDistributionKeeper),
 	)
 }
 
@@ -278,6 +279,17 @@ func InvokeSetStakingHooks(
 	}
 
 	keeper.SetHooks(multiHooks)
+	return nil
+}
+
+// InvokeSetStakingDistributionKeeper wires the distribution keeper into the staking keeper
+// to enable community pool funding during consensus key rotation. This is an invoker to
+// break the cyclic dependency between x/staking and x/distribution.
+func InvokeSetStakingDistributionKeeper(keeper *keeper.Keeper, dk types.DistributionKeeper) error {
+	if keeper == nil || dk == nil {
+		return nil
+	}
+	keeper.SetDistributionKeeper(dk)
 	return nil
 }
 

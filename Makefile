@@ -10,7 +10,7 @@ BINDIR ?= $(GOPATH)/bin
 BUILDDIR ?= $(CURDIR)/build
 SIMAPP = ./simapp
 MOCKS_DIR = $(CURDIR)/tests/mocks
-HTTPS_GIT := https://github.com/atomone-hub/cosmos-sdk.git
+HTTPS_GIT := https://github.com/atomone-hub/atomone-sdk.git
 DOCKER := $(shell which docker)
 PROJECT_NAME = $(shell git remote get-url origin | xargs basename -s .git)
 
@@ -401,7 +401,7 @@ proto-lint:
 	@$(protoImage) buf lint --error-format=json
 
 proto-check-breaking:
-	@$(protoImage) buf breaking --against $(HTTPS_GIT)#branch=release/v0.50.x
+	@$(protoImage) buf breaking --against $(HTTPS_GIT)#branch=release/v0.500.x
 
 CMT_URL              = https://raw.githubusercontent.com/cometbft/cometbft/v0.38.0/proto/tendermint
 

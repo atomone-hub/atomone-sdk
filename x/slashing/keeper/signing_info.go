@@ -9,9 +9,93 @@ import (
 	"cosmossdk.io/errors"
 	storetypes "cosmossdk.io/store/types"
 
+	cryptotypes "github.com/cosmos/cosmos-sdk/crypto/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/x/slashing/types"
 )
+
+// getPreviousConsKey checks if the key was rotated, returns the old consKey to
+// get the missed blocks because missed blocks are still pointing to the old key.
+func (k Keeper) getPreviousConsKey(ctx context.Context, addr sdk.ConsAddress) (sdk.ConsAddress, error) {
+	oldPk, err := k.sk.ValidatorIdentifier(ctx, addr)
+	if err != nil {
+		return nil, err
+	}
+
+	if oldPk != nil {
+		return oldPk, nil
+	}
+
+	return addr, nil
+}
+
+// currentConsAddr returns the validator's current consensus address for a
+// (possibly rotated) consensus address. Equivocation evidence can be keyed to
+// an old consensus address because CometBFT keeps a rotated key in the active
+// validator set for ValidatorUpdateDelay blocks. When no validator resolves, the
+// input address is returned unchanged.
+func (k Keeper) currentConsAddr(ctx context.Context, consAddr sdk.ConsAddress) sdk.ConsAddress {
+	validator, err := k.sk.ValidatorByConsAddr(ctx, consAddr)
+	if err != nil || validator == nil {
+		return consAddr
+	}
+
+	current, err := validator.GetConsAddr()
+	if err != nil || len(current) == 0 {
+		return consAddr
+	}
+
+	return sdk.ConsAddress(current)
+}
+
+// signingInfoAddr returns the consensus address under which the validator's
+// signing info is stored: the validator's current consensus address when it
+// resolves and holds a record, otherwise the given address.
+func (k Keeper) signingInfoAddr(ctx context.Context, consAddr sdk.ConsAddress) sdk.ConsAddress {
+	current := k.currentConsAddr(ctx, consAddr)
+	if k.hasValidatorSigningInfo(ctx, current) {
+		return current
+	}
+
+	return consAddr
+}
+
+// performConsensusPubKeyUpdate updates the cons address to its pub key relation.
+// It migrates signing info from the old pubkey to the new pubkey.
+//
+// The record under the old consensus address is deleted: the jail/tombstone
+// paths resolve a rotated consensus address to the validator's current key
+// (see signingInfoAddr), so old-key equivocation evidence finds the migrated
+// record without the old one. The old cons-address -> pubkey relation is kept
+// (see AfterConsensusPubKeyUpdate).
+func (k Keeper) performConsensusPubKeyUpdate(ctx context.Context, oldPubKey, newPubKey cryptotypes.PubKey) error {
+	// Connect new consensus address with PubKey.
+	if err := k.AddPubkey(ctx, newPubKey); err != nil {
+		return err
+	}
+
+	oldConsAddr := sdk.ConsAddress(oldPubKey.Address())
+	newConsAddr := sdk.ConsAddress(newPubKey.Address())
+
+	// Migrate ValidatorSigningInfo from oldPubKey to newPubKey.
+	signingInfo, err := k.GetValidatorSigningInfo(ctx, oldConsAddr)
+	if err != nil {
+		return types.ErrInvalidConsPubKey.Wrap("failed to get signing info for old public key")
+	}
+	signingInfo.Address = newConsAddr.String()
+
+	if err := k.SetValidatorSigningInfo(ctx, newConsAddr, signingInfo); err != nil {
+		return err
+	}
+
+	return k.deleteValidatorSigningInfo(ctx, oldConsAddr)
+}
+
+// deleteValidatorSigningInfo removes the validator signing info for a consensus address.
+func (k Keeper) deleteValidatorSigningInfo(ctx context.Context, consAddr sdk.ConsAddress) error {
+	store := k.storeService.OpenKVStore(ctx)
+	return store.Delete(types.ValidatorSigningInfoKey(consAddr))
+}
 
 // GetValidatorSigningInfo retruns the ValidatorSigningInfo for a specific validator
 // ConsAddress. If not found it returns ErrNoSigningInfoFound, but other errors
@@ -32,11 +116,20 @@ func (k Keeper) GetValidatorSigningInfo(ctx context.Context, address sdk.ConsAdd
 	return info, err
 }
 
+// hasValidatorSigningInfo is the raw store check, without consensus address
+// resolution.
+func (k Keeper) hasValidatorSigningInfo(ctx context.Context, consAddr sdk.ConsAddress) bool {
+	store := k.storeService.OpenKVStore(ctx)
+	bz, err := store.Get(types.ValidatorSigningInfoKey(consAddr))
+	return err == nil && bz != nil
+}
+
 // HasValidatorSigningInfo returns if a given validator has signing information
-// persisted.
+// persisted. The consensus address is resolved to the validator's current key
+// first, so that old-key equivocation evidence finds the migrated record
+// instead of reporting the validator as absent.
 func (k Keeper) HasValidatorSigningInfo(ctx context.Context, consAddr sdk.ConsAddress) bool {
-	_, err := k.GetValidatorSigningInfo(ctx, consAddr)
-	return err == nil
+	return k.hasValidatorSigningInfo(ctx, k.signingInfoAddr(ctx, consAddr))
 }
 
 // SetValidatorSigningInfo sets the validator signing info to a consensus address key
@@ -77,7 +170,11 @@ func (k Keeper) IterateValidatorSigningInfos(ctx context.Context,
 
 // JailUntil attempts to set a validator's JailedUntil attribute in its signing
 // info. It will panic if the signing info does not exist for the validator.
+// The consensus address is resolved to the validator's current key first:
+// double-sign jailing via an old consensus address must extend the jail time
+// that Unjail later reads on the current key.
 func (k Keeper) JailUntil(ctx context.Context, consAddr sdk.ConsAddress, jailTime time.Time) error {
+	consAddr = k.signingInfoAddr(ctx, consAddr)
 	signInfo, err := k.GetValidatorSigningInfo(ctx, consAddr)
 	if err != nil {
 		return errors.Wrap(err, "cannot jail validator that does not have any signing information")
@@ -88,8 +185,11 @@ func (k Keeper) JailUntil(ctx context.Context, consAddr sdk.ConsAddress, jailTim
 }
 
 // Tombstone attempts to tombstone a validator. It will panic if signing info for
-// the given validator does not exist.
+// the given validator does not exist. The consensus address is resolved to the
+// validator's current key first: tombstoning via an old consensus address must
+// block Unjail, which reads the tombstone on the current key.
 func (k Keeper) Tombstone(ctx context.Context, consAddr sdk.ConsAddress) error {
+	consAddr = k.signingInfoAddr(ctx, consAddr)
 	signInfo, err := k.GetValidatorSigningInfo(ctx, consAddr)
 	if err != nil {
 		return types.ErrNoSigningInfoFound.Wrap("cannot tombstone validator that does not have any signing information")
@@ -104,8 +204,11 @@ func (k Keeper) Tombstone(ctx context.Context, consAddr sdk.ConsAddress) error {
 }
 
 // IsTombstoned returns if a given validator by consensus address is tombstoned.
+// The consensus address is resolved to the validator's current key first, so
+// that old-key equivocation evidence is ignored once the validator has been
+// tombstoned through any of its keys.
 func (k Keeper) IsTombstoned(ctx context.Context, consAddr sdk.ConsAddress) bool {
-	signInfo, err := k.GetValidatorSigningInfo(ctx, consAddr)
+	signInfo, err := k.GetValidatorSigningInfo(ctx, k.signingInfoAddr(ctx, consAddr))
 	if err != nil {
 		return false
 	}
@@ -136,6 +239,13 @@ func (k Keeper) setMissedBlockBitmapChunk(ctx context.Context, addr sdk.ConsAddr
 // IndexOffset modulo SignedBlocksWindow. This index is used to fetch the chunk
 // in the bitmap and the relative bit in that chunk.
 func (k Keeper) GetMissedBlockBitmapValue(ctx context.Context, addr sdk.ConsAddress, index int64) (bool, error) {
+	// Check if the key was rotated; if so, use the returned consKey to get the missed blocks
+	// because missed blocks are still pointing to the old key.
+	addr, err := k.getPreviousConsKey(ctx, addr)
+	if err != nil {
+		return false, err
+	}
+
 	// get the chunk or "word" in the logical bitmap
 	chunkIndex := index / types.MissedBlockBitmapChunkSize
 
@@ -165,6 +275,13 @@ func (k Keeper) GetMissedBlockBitmapValue(ctx context.Context, addr sdk.ConsAddr
 // index is used to fetch the chunk in the bitmap and the relative bit in that
 // chunk.
 func (k Keeper) SetMissedBlockBitmapValue(ctx context.Context, addr sdk.ConsAddress, index int64, missed bool) error {
+	// Check if the key was rotated; if so, use the returned consKey to set the missed blocks
+	// because missed blocks are still pointing to the old key.
+	addr, err := k.getPreviousConsKey(ctx, addr)
+	if err != nil {
+		return err
+	}
+
 	// get the chunk or "word" in the logical bitmap
 	chunkIndex := index / types.MissedBlockBitmapChunkSize
 
@@ -199,6 +316,13 @@ func (k Keeper) SetMissedBlockBitmapValue(ctx context.Context, addr sdk.ConsAddr
 
 // DeleteMissedBlockBitmap removes a validator's missed block bitmap from state.
 func (k Keeper) DeleteMissedBlockBitmap(ctx context.Context, addr sdk.ConsAddress) error {
+	// Check if the key was rotated; if so, use the returned consKey to delete the missed blocks
+	// because missed blocks are still pointing to the old key.
+	addr, err := k.getPreviousConsKey(ctx, addr)
+	if err != nil {
+		return err
+	}
+
 	store := k.storeService.OpenKVStore(ctx)
 	prefix := types.ValidatorMissedBlockBitmapPrefixKey(addr)
 	iter, err := store.Iterator(prefix, storetypes.PrefixEndBytes(prefix))
@@ -223,6 +347,13 @@ func (k Keeper) DeleteMissedBlockBitmap(ctx context.Context, addr sdk.ConsAddres
 // Note: A callback will only be executed over all bitmap chunks that exist in
 // state.
 func (k Keeper) IterateMissedBlockBitmap(ctx context.Context, addr sdk.ConsAddress, cb func(index int64, missed bool) (stop bool)) error {
+	// Check if the key was rotated; if so, use the returned consKey to iterate the missed blocks
+	// because missed blocks are still pointing to the old key.
+	addr, err := k.getPreviousConsKey(ctx, addr)
+	if err != nil {
+		return err
+	}
+
 	store := k.storeService.OpenKVStore(ctx)
 	prefix := types.ValidatorMissedBlockBitmapPrefixKey(addr)
 	iter, err := store.Iterator(prefix, storetypes.PrefixEndBytes(prefix))

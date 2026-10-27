@@ -105,7 +105,7 @@ func createOldStateUnbonding(t *testing.T, creationHeight int64, valAddr sdk.Val
 	completionTime := time.Now()
 	ubdEntries := make([]types.UnbondingDelegationEntry, 0, 10)
 
-	for i := int64(0); i < 10; i++ {
+	for i := range int64(10) {
 		ubdEntry := types.UnbondingDelegationEntry{
 			CreationHeight: creationHeight,
 			Balance:        unbondBalance,

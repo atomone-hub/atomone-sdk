@@ -159,7 +159,7 @@ func TestEditGovernorDescriptionMerge(t *testing.T) {
 func TestValidateGovernorMinSelfDelegation(t *testing.T) {
 	tests := []struct {
 		name           string
-		setup          func(*fixture) v1.Governor
+		setup          func(*fixture) (v1.Governor, []sdk.ValAddress)
 		selfDelegation bool
 		valDelegations []stakingtypes.Delegation
 		expectedPanic  bool
@@ -167,54 +167,93 @@ func TestValidateGovernorMinSelfDelegation(t *testing.T) {
 	}{
 		{
 			name: "inactive governor",
-			setup: func(s *fixture) v1.Governor {
-				return s.inactiveGovernor
+			setup: func(s *fixture) (v1.Governor, []sdk.ValAddress) {
+				return s.inactiveGovernor, nil
 			},
 			expectedPanic: false,
 			expectedValid: false,
 		},
 		{
 			name: "active governor w/o self delegation w/o validator delegation",
-			setup: func(s *fixture) v1.Governor {
-				return s.activeGovernors[0]
+			setup: func(s *fixture) (v1.Governor, []sdk.ValAddress) {
+				return s.activeGovernors[0], nil
 			},
 			expectedPanic: true,
 			expectedValid: false,
 		},
 		{
 			name: "active governor w self delegation w/o validator delegation",
-			setup: func(s *fixture) v1.Governor {
+			setup: func(s *fixture) (v1.Governor, []sdk.ValAddress) {
 				govAddr := s.activeGovernors[0].GetAddress()
 				delAddr := sdk.AccAddress(govAddr)
 				err := s.keeper.DelegateToGovernor(s.ctx, delAddr, govAddr)
 				require.NoError(s.t, err)
-				return s.activeGovernors[0]
+				return s.activeGovernors[0], nil
 			},
 			expectedPanic: false,
 			expectedValid: false,
 		},
 		{
 			name: "active governor w self delegation w not enough validator delegation",
-			setup: func(s *fixture) v1.Governor {
+			setup: func(s *fixture) (v1.Governor, []sdk.ValAddress) {
 				govAddr := s.activeGovernors[0].GetAddress()
 				delAddr := sdk.AccAddress(govAddr)
 				err := s.keeper.DelegateToGovernor(s.ctx, delAddr, govAddr)
 				require.NoError(s.t, err)
 				s.delegate(delAddr, s.valAddrs[0], 1)
-				return s.activeGovernors[0]
+				return s.activeGovernors[0], nil
 			},
 			expectedPanic: false,
 			expectedValid: false,
 		},
 		{
 			name: "active governor w self delegation w enough validator delegation",
-			setup: func(s *fixture) v1.Governor {
+			setup: func(s *fixture) (v1.Governor, []sdk.ValAddress) {
 				govAddr := s.activeGovernors[0].GetAddress()
 				delAddr := sdk.AccAddress(govAddr)
 				err := s.keeper.DelegateToGovernor(s.ctx, delAddr, govAddr)
 				require.NoError(s.t, err)
 				s.delegate(delAddr, s.valAddrs[0], v1.DefaultMinGovernorSelfDelegation.Int64())
-				return s.activeGovernors[0]
+				return s.activeGovernors[0], nil
+			},
+			expectedPanic: false,
+			expectedValid: true,
+		},
+		{
+			name: "active governor meets threshold by sum across two validators, excluding one drops below",
+			setup: func(s *fixture) (v1.Governor, []sdk.ValAddress) {
+				govAddr := s.activeGovernors[0].GetAddress()
+				delAddr := sdk.AccAddress(govAddr)
+				require.NoError(s.t, s.keeper.DelegateToGovernor(s.ctx, delAddr, govAddr))
+				half := v1.DefaultMinGovernorSelfDelegation.QuoRaw(2).Int64()
+				s.delegate(delAddr, s.valAddrs[0], half)
+				s.delegate(delAddr, s.valAddrs[1], half)
+				return s.activeGovernors[0], []sdk.ValAddress{s.valAddrs[0]}
+			},
+			expectedPanic: false,
+			expectedValid: false,
+		},
+		{
+			name: "active governor meets threshold, excluding a validator they don't delegate to is a no-op",
+			setup: func(s *fixture) (v1.Governor, []sdk.ValAddress) {
+				govAddr := s.activeGovernors[0].GetAddress()
+				delAddr := sdk.AccAddress(govAddr)
+				require.NoError(s.t, s.keeper.DelegateToGovernor(s.ctx, delAddr, govAddr))
+				s.delegate(delAddr, s.valAddrs[0], v1.DefaultMinGovernorSelfDelegation.Int64())
+				return s.activeGovernors[0], []sdk.ValAddress{s.valAddrs[1]}
+			},
+			expectedPanic: false,
+			expectedValid: true,
+		},
+		{
+			name: "active governor meets threshold by remaining delegation alone, excluding the smaller one keeps active",
+			setup: func(s *fixture) (v1.Governor, []sdk.ValAddress) {
+				govAddr := s.activeGovernors[0].GetAddress()
+				delAddr := sdk.AccAddress(govAddr)
+				require.NoError(s.t, s.keeper.DelegateToGovernor(s.ctx, delAddr, govAddr))
+				s.delegate(delAddr, s.valAddrs[0], 1)
+				s.delegate(delAddr, s.valAddrs[1], v1.DefaultMinGovernorSelfDelegation.Int64())
+				return s.activeGovernors[0], []sdk.ValAddress{s.valAddrs[0]}
 			},
 			expectedPanic: false,
 			expectedValid: true,
@@ -230,14 +269,21 @@ func TestValidateGovernorMinSelfDelegation(t *testing.T) {
 				distributionKeeper: distrKeeper,
 			}
 			s := newFixture(t, ctx, 2, 2, 2, govKeeper, mocks)
-			governor := tt.setup(s)
+			governor, exclusions := tt.setup(s)
+
+			excludeSet := map[string]struct{}{}
+			for _, valAddr := range exclusions {
+				excludeSet[valAddr.String()] = struct{}{}
+			}
 
 			if tt.expectedPanic {
-				assert.Panics(t, func() { govKeeper.ValidateGovernorMinSelfDelegation(ctx, governor) })
+				assert.Panics(t, func() {
+					govKeeper.ValidateGovernorMinSelfDelegationWithExclusions(ctx, governor, excludeSet)
+				})
 			} else {
-				valid := govKeeper.ValidateGovernorMinSelfDelegation(ctx, governor)
+				valid := govKeeper.ValidateGovernorMinSelfDelegationWithExclusions(ctx, governor, excludeSet)
 
-				assert.Equal(t, tt.expectedValid, valid, "return of ValidateGovernorMinSelfDelegation")
+				assert.Equal(t, tt.expectedValid, valid, "return of ValidateGovernorMinSelfDelegationWithExclusions")
 			}
 		})
 	}

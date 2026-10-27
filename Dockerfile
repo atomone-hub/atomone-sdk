@@ -10,7 +10,7 @@
 # > docker run -it -p 26657:26657 -p 26656:26656 -v ~/.simappcli:/root/.simapp simapp simd keys add foo
 # > docker run -it -p 26657:26657 -p 26656:26656 -v ~/.simappcli:/root/.simapp simapp simd keys list
 #
-# This image is pushed to the GHCR as https://ghcr.io/cosmos/simapp
+# This image is pushed to the GHCR as https://ghcr.io/atomone-hub/simapp
 
 FROM golang:1.24-alpine AS build-env
 
@@ -23,9 +23,6 @@ WORKDIR /go/src/github.com/cosmos/cosmos-sdk
 
 # optimization: if go.sum didn't change, docker will use cached image
 COPY go.mod go.sum ./
-COPY collections/go.mod collections/go.sum ./collections/
-COPY store/go.mod store/go.sum ./store/
-COPY log/go.mod log/go.sum ./log/
 
 RUN go mod download
 

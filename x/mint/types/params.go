@@ -156,6 +156,11 @@ func validateGoalBonded(i interface{}) error {
 	return nil
 }
 
+// maxBlocksPerYear is the largest BlocksPerYear value that survives the int64
+// cast performed by the mint module's computations (Minter.NextInflationRate
+// and Minter.BlockProvision). It is math.MaxInt64 (2^63-1).
+const maxBlocksPerYear = uint64(1<<63 - 1)
+
 func validateBlocksPerYear(i interface{}) error {
 	v, ok := i.(uint64)
 	if !ok {
@@ -164,6 +169,17 @@ func validateBlocksPerYear(i interface{}) error {
 
 	if v == 0 {
 		return fmt.Errorf("blocks per year must be positive: %d", v)
+	}
+
+	// BlocksPerYear is cast to int64 when computing the inflation rate and the
+	// per-block provisions. A value greater than math.MaxInt64 silently flips
+	// negative in that cast, which inverts the sign of the computed provisions
+	// and makes sdk.NewCoin panic inside mint's BeginBlocker - on every block,
+	// permanently halting the chain (baseapp.beginBlock has no panic recovery).
+	// Reject such values up front so a governance MsgUpdateParams can never
+	// persist them.
+	if v > maxBlocksPerYear {
+		return fmt.Errorf("blocks per year must not be greater than %d: %d", maxBlocksPerYear, v)
 	}
 
 	return nil
