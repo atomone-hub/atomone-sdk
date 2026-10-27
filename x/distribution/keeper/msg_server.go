@@ -192,9 +192,22 @@ func (k msgServer) DepositValidatorRewardsPool(ctx context.Context, msg *types.M
 	// Allocate tokens from the distribution module to the validator, which are
 	// then distributed to the validator's delegators.
 	reward := sdk.NewDecCoinsFromCoins(msg.Amount...)
-	// msg.Amount is integer coins, so bondDust is always empty and can be ignored.
-	if _, err = k.AllocateTokensToValidator(ctx, validator, reward); err != nil {
+	bondRemainder, err := k.AllocateTokensToValidator(ctx, validator, reward)
+	if err != nil {
 		return nil, err
+	}
+	// msg.Amount is integer coins, so bondRemainder is only non-empty when the
+	// validator has no delegator shares; route it to the community pool, as F1
+	// does for rewards of validators without shares.
+	if !bondRemainder.IsZero() {
+		feePool, err := k.FeePool.Get(ctx)
+		if err != nil {
+			return nil, err
+		}
+		feePool.CommunityPool = feePool.CommunityPool.Add(bondRemainder...)
+		if err := k.FeePool.Set(ctx, feePool); err != nil {
+			return nil, err
+		}
 	}
 
 	// make sure the reward pool isn't already full.

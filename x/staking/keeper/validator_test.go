@@ -498,3 +498,20 @@ func (s *KeeperTestSuite) TestAddValidatorTokens_PowerIndexUpdated() {
 	// shares unchanged, only tokens increased
 	require.Equal(math.LegacyNewDecFromInt(initialTokens), updated.DelegatorShares)
 }
+
+func (s *KeeperTestSuite) TestAddValidatorTokens_RejectsValidatorWithoutShares() {
+	ctx, keeper := s.ctx, s.stakingKeeper
+	require := s.Require()
+
+	valPubKey := PKs[2]
+	valAddr := sdk.ValAddress(valPubKey.Address().Bytes())
+	validator := testutil.NewValidator(s.T(), valAddr, valPubKey)
+	require.NoError(keeper.SetValidator(ctx, validator))
+
+	err := keeper.AddValidatorTokens(ctx, valAddr, math.NewInt(100))
+	require.ErrorIs(err, stakingtypes.ErrInsufficientShares)
+
+	updated, err := keeper.GetValidator(ctx, valAddr)
+	require.NoError(err)
+	require.True(updated.Tokens.IsZero())
+}
