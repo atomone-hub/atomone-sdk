@@ -296,3 +296,7 @@ func (h Hooks) setGovernorInactive(ctx context.Context, sdkCtx sdk.Context, gove
 	}
 	return h.k.removeActiveGovernorIndexEntries(sdkCtx, governor.GetAddress())
 }
+
+func (h Hooks) BeforeConsensusPubKeyRotation(_ context.Context, _ sdk.ValAddress, _, _ cryptotypes.PubKey) error {
+	return nil
+}

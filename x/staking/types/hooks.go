@@ -118,6 +118,15 @@ func (h MultiStakingHooks) AfterUnbondingInitiated(ctx context.Context, id uint6
 	return nil
 }
 
+func (h MultiStakingHooks) BeforeConsensusPubKeyRotation(ctx context.Context, valAddr sdk.ValAddress, oldPk, newPk cryptotypes.PubKey) error {
+	for i := range h {
+		if err := h[i].BeforeConsensusPubKeyRotation(ctx, valAddr, oldPk, newPk); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (h MultiStakingHooks) AfterConsensusPubKeyUpdate(ctx context.Context, oldPk, newPk cryptotypes.PubKey, fee sdk.Coin) error {
 	for i := range h {
 		if err := h[i].AfterConsensusPubKeyUpdate(ctx, oldPk, newPk, fee); err != nil {
