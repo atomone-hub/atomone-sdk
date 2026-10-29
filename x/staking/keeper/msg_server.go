@@ -655,6 +655,16 @@ func (k msgServer) RotateConsPubKey(ctx context.Context, msg *types.MsgRotateCon
 		return nil, err
 	}
 
+	// Modules keying state by consensus address get to reject the new key here, before the fee
+	// is charged and the rotation recorded.
+	oldPk, err := validator.ConsPubKey()
+	if err != nil {
+		return nil, err
+	}
+	if err := k.Hooks().BeforeConsensusPubKeyRotation(ctx, valAddr, oldPk, pk); err != nil {
+		return nil, err
+	}
+
 	params, err := k.GetParams(ctx)
 	if err != nil {
 		return nil, err

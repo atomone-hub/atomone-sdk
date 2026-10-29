@@ -3,6 +3,7 @@ package keeper_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	"gotest.tools/v3/assert"
 
@@ -129,5 +130,49 @@ func TestRotateConsPubKey_StakingState(t *testing.T) {
 	collisionMsg, err := types.NewMsgRotateConsPubKey(valAddr.String(), val2Pk)
 	assert.NilError(t, err)
 	_, err = msgServer.RotateConsPubKey(ctx, collisionMsg)
+	assert.ErrorContains(t, err, "validator already exist for this pubkey")
+}
+
+func TestRotateConsPubKey_TwiceResolvesFirstKey(t *testing.T) {
+	t.Parallel()
+	f := initFixture(t)
+	ctx := f.sdkCtx
+	f.stakingKeeper.SetDistributionKeeper(noopDistributionKeeper{})
+	msgServer := keeper.NewMsgServerImpl(f.stakingKeeper)
+
+	_, valAddrs, _ := createValidators(t, f, []int64{100, 50, 0})
+	valAddr, val2Addr := valAddrs[0], valAddrs[1]
+	val, err := f.stakingKeeper.GetValidator(ctx, valAddr)
+	assert.NilError(t, err)
+	firstPubKey := val.ConsensusPubkey.GetCachedValue().(cryptotypes.PubKey)
+	firstConsAddr := sdk.ConsAddress(firstPubKey.Address())
+
+	msg, err := types.NewMsgRotateConsPubKey(valAddr.String(), PKs[10])
+	assert.NilError(t, err)
+	_, err = msgServer.RotateConsPubKey(ctx, msg)
+	assert.NilError(t, err)
+	applyValidatorSetUpdates(t, ctx, f.stakingKeeper, 2)
+
+	// One rotation is allowed per unbonding period. Let it pass so the
+	// matured rotation record is purged.
+	params, err := f.stakingKeeper.GetParams(ctx)
+	assert.NilError(t, err)
+	ctx = ctx.WithBlockHeight(ctx.BlockHeight() + 1).WithBlockTime(ctx.BlockTime().Add(params.UnbondingTime).Add(time.Second))
+	_, err = f.stakingKeeper.BlockValidatorUpdates(ctx)
+	assert.NilError(t, err)
+
+	msg, err = types.NewMsgRotateConsPubKey(valAddr.String(), PKs[11])
+	assert.NilError(t, err)
+	_, err = msgServer.RotateConsPubKey(ctx, msg)
+	assert.NilError(t, err)
+	applyValidatorSetUpdates(t, ctx, f.stakingKeeper, 2)
+
+	got, err := f.stakingKeeper.GetValidatorByConsAddr(ctx, firstConsAddr)
+	assert.NilError(t, err)
+	assert.Equal(t, valAddr.String(), got.GetOperator())
+
+	reuse, err := types.NewMsgRotateConsPubKey(val2Addr.String(), firstPubKey)
+	assert.NilError(t, err)
+	_, err = msgServer.RotateConsPubKey(ctx, reuse)
 	assert.ErrorContains(t, err, "validator already exist for this pubkey")
 }

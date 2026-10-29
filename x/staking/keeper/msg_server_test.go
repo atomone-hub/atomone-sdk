@@ -2,6 +2,7 @@ package keeper_test
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -1225,10 +1226,12 @@ func (s *KeeperTestSuite) TestMsgUpdateParamsUpdatesExistingValidatorCommissions
 // mockDistributionKeeper is a minimal DistributionKeeper implementation for tests
 // where the real distribution keeper is not wired up. FundCommunityPool is a no-op.
 type mockDistributionKeeper struct {
-	err error
+	err   error
+	calls int
 }
 
 func (m *mockDistributionKeeper) FundCommunityPool(ctx context.Context, amount sdk.Coins, sender sdk.AccAddress) error {
+	m.calls++
 	return m.err
 }
 
@@ -1366,6 +1369,63 @@ func (s *KeeperTestSuite) TestConsKeyRotationInSameBlock() {
 
 	_, err = msgServer.RotateConsPubKey(ctx, req)
 	s.Require().ErrorContains(err, "public key was already used")
+}
+
+// rotationVetoHooks is a StakingHooks that records what the pre-rotation hook
+// is called with and answers with err.
+type rotationVetoHooks struct {
+	stakingtypes.MultiStakingHooks
+	err     error
+	calls   int
+	valAddr sdk.ValAddress
+	oldPk   cryptotypes.PubKey
+	newPk   cryptotypes.PubKey
+}
+
+func (h *rotationVetoHooks) BeforeConsensusPubKeyRotation(_ context.Context, valAddr sdk.ValAddress, oldPk, newPk cryptotypes.PubKey) error {
+	h.calls++
+	h.valAddr, h.oldPk, h.newPk = valAddr, oldPk, newPk
+	return h.err
+}
+
+// TestConsKeyRotnBeforeHook: a module hooked into staking can reject a
+// consensus-key rotation from the message handler, before any fee is charged
+// or any rotation recorded, and sees the validator and both keys; when it
+// accepts, the rotation proceeds as usual.
+func (s *KeeperTestSuite) TestConsKeyRotnBeforeHook() {
+	stakingKeeper, ctx := s.stakingKeeper, s.ctx
+	distr := &mockDistributionKeeper{}
+	stakingKeeper.SetDistributionKeeper(distr)
+	hooks := &rotationVetoHooks{err: errors.New("consensus key already assigned elsewhere")}
+	stakingKeeper.SetHooks(hooks)
+
+	s.setValidators(2)
+	validators, err := stakingKeeper.GetAllValidators(ctx)
+	s.Require().NoError(err)
+	oldPk, ok := validators[0].ConsensusPubkey.GetCachedValue().(cryptotypes.PubKey)
+	s.Require().True(ok)
+
+	req, err := stakingtypes.NewMsgRotateConsPubKey(validators[0].GetOperator(), PKs[499])
+	s.Require().NoError(err)
+	_, err = s.msgServer.RotateConsPubKey(ctx, req)
+	s.Require().ErrorContains(err, "consensus key already assigned elsewhere")
+	s.Require().Equal(1, hooks.calls)
+	s.Require().Equal(validators[0].GetOperator(), hooks.valAddr.String())
+	s.Require().True(oldPk.Equals(hooks.oldPk))
+	s.Require().True(PKs[499].Equals(hooks.newPk))
+	s.Require().Equal(0, distr.calls, "a rejected rotation charges no fee")
+	history, err := stakingKeeper.GetBlockConsPubKeyRotationHistory(ctx)
+	s.Require().NoError(err)
+	s.Require().Empty(history, "a rejected rotation records nothing")
+
+	hooks.err = nil
+	_, err = s.msgServer.RotateConsPubKey(ctx, req)
+	s.Require().NoError(err)
+	s.Require().Equal(2, hooks.calls)
+	s.Require().Equal(1, distr.calls)
+	history, err = stakingKeeper.GetBlockConsPubKeyRotationHistory(ctx)
+	s.Require().NoError(err)
+	s.Require().Len(history, 1)
 }
 
 func (s *KeeperTestSuite) TestMsgCreateValidatorStoresCanonicalOperatorAddress() {

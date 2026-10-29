@@ -40,6 +40,8 @@ Ref: https://keepachangelog.com/en/1.0.0/
 
 ### Features
 
+* (x/staking) [#137](https://github.com/atomone-hub/cosmos-sdk/pull/137) Add a `BeforeConsensusPubKeyRotation` staking hook, called from the `MsgRotateConsPubKey` handler before any fee is charged or the rotation recorded, so a module keying state by consensus address can reject a rotation onto a key it considers taken.
+
 ### Improvements
 
 ### Bug Fixes
@@ -50,6 +52,8 @@ Ref: https://keepachangelog.com/en/1.0.0/
 * (x/gov) [#133](https://github.com/atomone-hub/atomone-sdk/pull/133) Tolerate stray gov module-account funds in InitGenesis and bound constitution-amendment inputs (DoS)
 * (x/bank) [#132](https://github.com/atomone-hub/atomone-sdk/pull/132) Linearize MsgMultiSend output validation (DoS)
 * (x/auth/vesting) [#131](https://github.com/atomone-hub/atomone-sdk/pull/131) Linearize and bound vesting schedule processing (DoS)
+* (x/evidence) [#138](https://github.com/atomone-hub/atomone-sdk/pull/138) Fork `cosmossdk.io/x/evidence` v0.1.1 and ignore equivocation evidence whose consensus address resolves to no validator, backporting cosmos/cosmos-sdk#26481 (CONSENSUS BREAKING BUGFIX)
+* (x/staking) [#138](https://github.com/atomone-hub/atomone-sdk/pull/138) Resolve rotated consensus addresses through the full rotation chain (CONSENSUS BREAKING BUGFIX)
 * (x/staking) [#139](https://github.com/atomone-hub/atomone-sdk/pull/139) Store the canonical operator address on validator creation (CONSENSUS BREAKING BUGFIX)
 * (x/gov) [#139](https://github.com/atomone-hub/atomone-sdk/pull/139) Key the governor tally by canonical validator addresses (CONSENSUS BREAKING BUGFIX)
 

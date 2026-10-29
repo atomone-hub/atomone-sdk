@@ -43,34 +43,37 @@ func (k Keeper) mustGetValidator(ctx context.Context, addr sdk.ValAddress) types
 	return validator
 }
 
-// GetValidatorByConsAddr gets a single validator by consensus address
-func (k Keeper) GetValidatorByConsAddr(ctx context.Context, consAddr sdk.ConsAddress) (validator types.Validator, err error) {
+// GetValidatorByConsAddr gets a single validator by consensus address. An
+// address the validator has rotated away from resolves by following the
+// old-to-new consensus address mapping until it reaches the validator's
+// current address. Re-adopting an earlier key can make that mapping cyclic,
+// so the walk stops at the first address it has already visited.
+func (k Keeper) GetValidatorByConsAddr(ctx context.Context, consAddr sdk.ConsAddress) (types.Validator, error) {
 	store := k.storeService.OpenKVStore(ctx)
-	opAddr, err := store.Get(types.GetValidatorByConsAddrKey(consAddr))
-	if err != nil {
-		return validator, err
-	}
-
-	if opAddr == nil {
-		// Validator not found with current consAddr; check if the key was rotated
-		// by looking up the old-to-new consensus address mapping.
-		newConsAddr, err := store.Get(types.GetOldToNewConsAddrMapKey(consAddr))
+	visited := make(map[string]struct{})
+	current := []byte(consAddr)
+	for {
+		opAddr, err := store.Get(types.GetValidatorByConsAddrKey(current))
 		if err != nil {
 			return types.Validator{}, err
 		}
-		if newConsAddr != nil {
-			opAddr, err = store.Get(types.GetValidatorByConsAddrKey(newConsAddr))
-			if err != nil {
-				return types.Validator{}, err
-			}
+		if opAddr != nil {
+			return k.GetValidator(ctx, opAddr)
 		}
+		visited[string(current)] = struct{}{}
 
-		if opAddr == nil {
+		next, err := store.Get(types.GetOldToNewConsAddrMapKey(current))
+		if err != nil {
+			return types.Validator{}, err
+		}
+		if next == nil {
 			return types.Validator{}, types.ErrNoValidatorFound
 		}
+		if _, seen := visited[string(next)]; seen {
+			return types.Validator{}, types.ErrNoValidatorFound
+		}
+		current = next
 	}
-
-	return k.GetValidator(ctx, opAddr)
 }
 
 func (k Keeper) mustGetValidatorByConsAddr(ctx context.Context, consAddr sdk.ConsAddress) types.Validator {
