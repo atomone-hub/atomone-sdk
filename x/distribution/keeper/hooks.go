@@ -235,3 +235,7 @@ func (h Hooks) AfterEpochEnd(ctx context.Context, epochIdentifier string, _ int6
 func (h Hooks) BeforeEpochStart(context.Context, string, int64) error {
 	return nil
 }
+
+func (h Hooks) BeforeConsensusPubKeyRotation(_ context.Context, _ sdk.ValAddress, _, _ cryptotypes.PubKey) error {
+	return nil
+}
