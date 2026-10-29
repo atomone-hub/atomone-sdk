@@ -11,6 +11,7 @@ import (
 	cryptotypes "github.com/cosmos/cosmos-sdk/crypto/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	banktestutil "github.com/cosmos/cosmos-sdk/x/bank/testutil"
+	"github.com/cosmos/cosmos-sdk/x/staking"
 	"github.com/cosmos/cosmos-sdk/x/staking/keeper"
 	"github.com/cosmos/cosmos-sdk/x/staking/types"
 )
@@ -45,6 +46,11 @@ func TestGenesisConsKeyRotationRoundTrip(t *testing.T) {
 	assert.Equal(t, 1, len(exported.RotationQueue))
 	assert.Equal(t, 1, len(exported.RotatedConsAddresses))
 	assert.Equal(t, 1, len(exported.ConsAddrIdentifiers))
+	// The fixture holds a validator with no delegator shares, which genesis
+	// validation rejects, so validate the rotation state on its own.
+	rotationState := *exported
+	rotationState.Validators = nil
+	assert.NilError(t, staking.ValidateGenesis(&rotationState))
 
 	// Import into a fresh chain. InitGenesis requires the module pools to hold
 	// exactly the exported bonded and not-bonded tokens.
