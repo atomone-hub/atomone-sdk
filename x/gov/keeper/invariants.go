@@ -72,7 +72,7 @@ func GovernorsDelegationsInvariant(keeper *Keeper, sk types.StakingKeeper) sdk.I
 			err = keeper.GovernanceDelegationsByGovernor.Walk(ctx, collections.NewPrefixedPairRange[types.GovernorAddress, sdk.AccAddress](governor.GetAddress()), func(_ collections.Pair[types.GovernorAddress, sdk.AccAddress], delegation v1.GovernanceDelegation) (stop bool, err error) {
 				delAddr := sdk.MustAccAddressFromBech32(delegation.DelegatorAddress)
 				err = sk.IterateDelegations(ctx, delAddr, func(_ int64, delegation stakingtypes.DelegationI) (stop bool) {
-					validatorAddr := delegation.GetValidatorAddr()
+					validatorAddr := canonicalValAddr(delegation.GetValidatorAddr())
 					shares := delegation.GetShares()
 					if _, ok := valShares[validatorAddr]; !ok {
 						valShares[validatorAddr] = math.LegacyZeroDec()

@@ -3,6 +3,7 @@ package keeper
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"cosmossdk.io/collections"
 	"cosmossdk.io/math"
@@ -109,33 +110,21 @@ func (keeper Keeper) HasReachedQuorum(ctx sdk.Context, proposal v1.Proposal) (bo
 // canonicalValAddr returns the canonical bech32 form of a validator operator
 // address. Governor validator shares are keyed by this form. A stored operator
 // address, and the validator address copied into its delegations, can be the
-// all-uppercase form, which bech32 also accepts.
-func canonicalValAddr(addr string) (string, error) {
-	valAddr, err := sdk.ValAddressFromBech32(addr)
-	if err != nil {
-		return "", err
-	}
-	return valAddr.String(), nil
+// all-uppercase form, which bech32 also accepts. Stored addresses were
+// validated when written, so lowercasing yields the canonical form.
+func canonicalValAddr(addr string) string {
+	return strings.ToLower(addr)
 }
 
 // getBondedValidatorsByAddress fetches all the bonded validators and returns
 // them in a map keyed by their canonical operator address.
 func (keeper Keeper) getBondedValidatorsByAddress(ctx context.Context) (map[string]stakingtypes.ValidatorI, error) {
 	vals := make(map[string]stakingtypes.ValidatorI)
-	var addrErr error
 	err := keeper.sk.IterateBondedValidatorsByPower(ctx, func(_ int64, validator stakingtypes.ValidatorI) (stop bool) {
-		key, err := canonicalValAddr(validator.GetOperator())
-		if err != nil {
-			addrErr = err
-			return true
-		}
-		vals[key] = validator
+		vals[canonicalValAddr(validator.GetOperator())] = validator
 		return false
 	})
-	if err != nil {
-		return nil, err
-	}
-	return vals, addrErr
+	return vals, err
 }
 
 // tallyVotes returns the total voting power and tally results of the votes
@@ -197,13 +186,8 @@ func (keeper Keeper) tallyVotes(
 		}
 
 		// iterate over all delegations from voter, deduct from any delegated-to validators
-		var delegationErr error
 		err = keeper.sk.IterateDelegations(ctx, voter, func(_ int64, delegation stakingtypes.DelegationI) (stop bool) {
-			valAddrStr, addrErr := canonicalValAddr(delegation.GetValidatorAddr())
-			if addrErr != nil {
-				delegationErr = addrErr
-				return true
-			}
+			valAddrStr := canonicalValAddr(delegation.GetValidatorAddr())
 			votingPower := math.LegacyZeroDec()
 
 			if val, ok := currValidators[valAddrStr]; ok {
@@ -229,9 +213,6 @@ func (keeper Keeper) tallyVotes(
 
 			return false
 		})
-		if err == nil {
-			err = delegationErr
-		}
 		if err != nil {
 			return true, err
 		}

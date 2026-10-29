@@ -5,6 +5,7 @@ import (
 	"context"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/hashicorp/go-metrics"
@@ -316,8 +317,8 @@ func (k msgServer) Delegate(ctx context.Context, msg *types.MsgDelegate) (*types
 	sdkCtx.EventManager().EmitEvents(sdk.Events{
 		sdk.NewEvent(
 			types.EventTypeDelegate,
-			sdk.NewAttribute(types.AttributeKeyValidator, msg.ValidatorAddress),
-			sdk.NewAttribute(types.AttributeKeyDelegator, msg.DelegatorAddress),
+			sdk.NewAttribute(types.AttributeKeyValidator, strings.ToLower(msg.ValidatorAddress)),
+			sdk.NewAttribute(types.AttributeKeyDelegator, strings.ToLower(msg.DelegatorAddress)),
 			sdk.NewAttribute(sdk.AttributeKeyAmount, msg.Amount.String()),
 			sdk.NewAttribute(types.AttributeKeyNewShares, newShares.String()),
 		),
@@ -390,8 +391,8 @@ func (k msgServer) BeginRedelegate(ctx context.Context, msg *types.MsgBeginRedel
 	sdkCtx.EventManager().EmitEvents(sdk.Events{
 		sdk.NewEvent(
 			types.EventTypeRedelegate,
-			sdk.NewAttribute(types.AttributeKeySrcValidator, msg.ValidatorSrcAddress),
-			sdk.NewAttribute(types.AttributeKeyDstValidator, msg.ValidatorDstAddress),
+			sdk.NewAttribute(types.AttributeKeySrcValidator, strings.ToLower(msg.ValidatorSrcAddress)),
+			sdk.NewAttribute(types.AttributeKeyDstValidator, strings.ToLower(msg.ValidatorDstAddress)),
 			sdk.NewAttribute(sdk.AttributeKeyAmount, msg.Amount.String()),
 			sdk.NewAttribute(types.AttributeKeyCompletionTime, completionTime.Format(time.RFC3339)),
 		),
@@ -461,8 +462,8 @@ func (k msgServer) Undelegate(ctx context.Context, msg *types.MsgUndelegate) (*t
 	sdkCtx.EventManager().EmitEvents(sdk.Events{
 		sdk.NewEvent(
 			types.EventTypeUnbond,
-			sdk.NewAttribute(types.AttributeKeyValidator, msg.ValidatorAddress),
-			sdk.NewAttribute(types.AttributeKeyDelegator, msg.DelegatorAddress),
+			sdk.NewAttribute(types.AttributeKeyValidator, strings.ToLower(msg.ValidatorAddress)),
+			sdk.NewAttribute(types.AttributeKeyDelegator, strings.ToLower(msg.DelegatorAddress)),
 			sdk.NewAttribute(sdk.AttributeKeyAmount, undelegatedCoin.String()),
 			sdk.NewAttribute(types.AttributeKeyCompletionTime, completionTime.Format(time.RFC3339)),
 		),
@@ -593,8 +594,8 @@ func (k msgServer) CancelUnbondingDelegation(ctx context.Context, msg *types.Msg
 		sdk.NewEvent(
 			types.EventTypeCancelUnbondingDelegation,
 			sdk.NewAttribute(sdk.AttributeKeyAmount, msg.Amount.String()),
-			sdk.NewAttribute(types.AttributeKeyValidator, msg.ValidatorAddress),
-			sdk.NewAttribute(types.AttributeKeyDelegator, msg.DelegatorAddress),
+			sdk.NewAttribute(types.AttributeKeyValidator, strings.ToLower(msg.ValidatorAddress)),
+			sdk.NewAttribute(types.AttributeKeyDelegator, strings.ToLower(msg.DelegatorAddress)),
 			sdk.NewAttribute(types.AttributeKeyCreationHeight, strconv.FormatInt(msg.CreationHeight, 10)),
 		),
 	)
