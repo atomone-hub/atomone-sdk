@@ -233,6 +233,8 @@ require (
 // )
 replace cosmossdk.io/x/upgrade => ../x/upgrade
 
+replace cosmossdk.io/x/evidence => ../x/evidence
+
 // Below are the long-lived replace of the SimApp
 replace (
 	// use cosmos fork of keyring
