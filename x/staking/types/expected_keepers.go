@@ -118,6 +118,10 @@ type StakingHooks interface {
 	BeforeValidatorSlashed(ctx context.Context, valAddr sdk.ValAddress, fraction math.LegacyDec) error
 	AfterUnbondingInitiated(ctx context.Context, id uint64) error
 	AfterConsensusPubKeyUpdate(ctx context.Context, oldPk, newPk cryptotypes.PubKey, fee sdk.Coin) error // Must be called when a validator's consensus key is rotated
+	// BeforeConsensusPubKeyRotation is called from the MsgRotateConsPubKey handler once staking's own
+	// checks have passed, before any fee is charged or the rotation recorded; an error rejects the
+	// rotation. The rotation is applied later, in EndBlock, where AfterConsensusPubKeyUpdate fires.
+	BeforeConsensusPubKeyRotation(ctx context.Context, valAddr sdk.ValAddress, oldPk, newPk cryptotypes.PubKey) error
 }
 
 // StakingHooksWrapper is a wrapper for modules to inject StakingHooks using depinject.
