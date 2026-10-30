@@ -6,6 +6,7 @@ import (
 
 	abci "github.com/cometbft/cometbft/abci/types"
 
+	addresscodec "cosmossdk.io/core/address"
 	"cosmossdk.io/math"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -41,7 +42,10 @@ func (k Keeper) InitGenesis(ctx context.Context, data *types.GenesisState) (res 
 		panic(err)
 	}
 
+	valCodec, accCodec := k.validatorAddressCodec, k.authKeeper.AddressCodec()
+
 	for _, validator := range data.Validators {
+		validator.OperatorAddress = canonicalAddress(valCodec, validator.OperatorAddress)
 		if err := k.SetValidator(ctx, validator); err != nil {
 			panic(err)
 		}
@@ -100,6 +104,8 @@ func (k Keeper) InitGenesis(ctx context.Context, data *types.GenesisState) (res 
 	}
 
 	for _, delegation := range data.Delegations {
+		delegation.DelegatorAddress = canonicalAddress(accCodec, delegation.DelegatorAddress)
+		delegation.ValidatorAddress = canonicalAddress(valCodec, delegation.ValidatorAddress)
 		delegatorAddress, err := k.authKeeper.AddressCodec().StringToBytes(delegation.DelegatorAddress)
 		if err != nil {
 			panic(fmt.Errorf("invalid delegator address: %w", err))
@@ -130,6 +136,8 @@ func (k Keeper) InitGenesis(ctx context.Context, data *types.GenesisState) (res 
 	}
 
 	for _, ubd := range data.UnbondingDelegations {
+		ubd.DelegatorAddress = canonicalAddress(accCodec, ubd.DelegatorAddress)
+		ubd.ValidatorAddress = canonicalAddress(valCodec, ubd.ValidatorAddress)
 		if err := k.SetUnbondingDelegation(ctx, ubd); err != nil {
 			panic(err)
 		}
@@ -155,6 +163,9 @@ func (k Keeper) InitGenesis(ctx context.Context, data *types.GenesisState) (res 
 	}
 
 	for _, red := range data.Redelegations {
+		red.DelegatorAddress = canonicalAddress(accCodec, red.DelegatorAddress)
+		red.ValidatorSrcAddress = canonicalAddress(valCodec, red.ValidatorSrcAddress)
+		red.ValidatorDstAddress = canonicalAddress(valCodec, red.ValidatorDstAddress)
 		if err := k.SetRedelegation(ctx, red); err != nil {
 			panic(err)
 		}
@@ -252,6 +263,20 @@ func (k Keeper) InitGenesis(ctx context.Context, data *types.GenesisState) (res 
 	}
 
 	return res
+}
+
+// canonicalAddress returns the canonical bech32 form of addr. Bech32 also
+// accepts the all-uppercase form, which a genesis file can carry.
+func canonicalAddress(cdc addresscodec.Codec, addr string) string {
+	bz, err := cdc.StringToBytes(addr)
+	if err != nil {
+		panic(err)
+	}
+	canonical, err := cdc.BytesToString(bz)
+	if err != nil {
+		panic(err)
+	}
+	return canonical
 }
 
 // ExportGenesis returns a GenesisState for a given context and keeper. The
