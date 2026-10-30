@@ -177,6 +177,26 @@ func TestTally(t *testing.T) {
 			},
 		},
 		{
+			name: "validator stored with an uppercase operator address: same tally as lowercase",
+			setup: func(s *fixture) {
+				s.delegate(s.delAddrs[0], s.valAddrs[0], 2)
+				s.delegate(s.delAddrs[0], s.valAddrs[1], 3)
+				s.vote(s.delAddrs[0], v1.VoteOption_VOTE_OPTION_NO)
+				err := s.keeper.DelegateToGovernor(s.ctx, s.delAddrs[0], s.govAddrs[0])
+				require.NoError(s.t, err)
+				s.governorVote(s.govAddrs[0], v1.VoteOption_VOTE_OPTION_YES)
+				s.upcaseValidatorAddress(0)
+			},
+			proposalMsgs: TestProposal,
+			expectedPass: false,
+			expectedBurn: false,
+			expectedTally: v1.TallyResult{
+				YesCount:     "3",
+				AbstainCount: "0",
+				NoCount:      "5",
+			},
+		},
+		{
 			// Same case as previous one but with reverted vote order
 			name: "one delegator votes no, one governor votes yes",
 			setup: func(s *fixture) {

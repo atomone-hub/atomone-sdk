@@ -2,6 +2,7 @@ package keeper_test
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	abci "github.com/cometbft/cometbft/abci/types"
@@ -237,4 +238,72 @@ func TestInitGenesisLargeValidatorSet(t *testing.T) {
 	// remove genesis validator
 	vals = vals[:100]
 	assert.DeepEqual(t, abcivals, vals)
+}
+
+// TestInitGenesisCanonicalAddresses imports a genesis whose address strings
+// use the all-uppercase bech32 form, and checks they are stored canonical.
+func TestInitGenesisCanonicalAddresses(t *testing.T) {
+	f, addrs := bootstrapGenesisTest(t, 3)
+	ctx := f.sdkCtx
+	params, err := f.stakingKeeper.GetParams(ctx)
+	assert.NilError(t, err)
+	valTokens := f.stakingKeeper.TokensFromConsensusPower(ctx, 1)
+	delAddr, srcValAddr, dstValAddr := addrs[0], sdk.ValAddress(addrs[1]), sdk.ValAddress(addrs[2])
+	upper := func(addr fmt.Stringer) string { return strings.ToUpper(addr.String()) }
+
+	var validators []types.Validator
+	for i, valAddr := range []sdk.ValAddress{srcValAddr, dstValAddr} {
+		pk, err := codectypes.NewAnyWithValue(PKs[i])
+		assert.NilError(t, err)
+		validators = append(validators, types.Validator{
+			OperatorAddress: upper(valAddr),
+			ConsensusPubkey: pk,
+			Status:          types.Bonded,
+			Tokens:          valTokens,
+			DelegatorShares: math.LegacyNewDecFromInt(valTokens),
+		})
+	}
+	delegations := []types.Delegation{{
+		DelegatorAddress: upper(delAddr),
+		ValidatorAddress: upper(srcValAddr),
+		Shares:           math.LegacyNewDecFromInt(valTokens),
+	}}
+	genesisState := types.NewGenesisState(params, validators, delegations)
+	genesisState.Exported = true
+	genesisState.UnbondingDelegations = []types.UnbondingDelegation{{
+		DelegatorAddress: upper(delAddr),
+		ValidatorAddress: upper(srcValAddr),
+		Entries:          []types.UnbondingDelegationEntry{types.NewUnbondingDelegationEntry(1, ctx.BlockTime(), valTokens, 0)},
+	}}
+	genesisState.Redelegations = []types.Redelegation{{
+		DelegatorAddress:    upper(delAddr),
+		ValidatorSrcAddress: upper(srcValAddr),
+		ValidatorDstAddress: upper(dstValAddr),
+		Entries:             []types.RedelegationEntry{types.NewRedelegationEntry(1, ctx.BlockTime(), valTokens, math.LegacyNewDecFromInt(valTokens), 0)},
+	}}
+
+	for pool, amount := range map[string]math.Int{types.BondedPoolName: valTokens.MulRaw(2), types.NotBondedPoolName: valTokens} {
+		assert.NilError(t, banktestutil.FundModuleAccount(ctx, f.bankKeeper, pool, sdk.NewCoins(sdk.NewCoin(params.BondDenom, amount))))
+	}
+
+	f.stakingKeeper.InitGenesis(ctx, genesisState)
+
+	for _, valAddr := range []sdk.ValAddress{srcValAddr, dstValAddr} {
+		val, err := f.stakingKeeper.GetValidator(ctx, valAddr)
+		assert.NilError(t, err)
+		assert.Equal(t, valAddr.String(), val.OperatorAddress)
+	}
+	del, err := f.stakingKeeper.GetDelegation(ctx, delAddr, srcValAddr)
+	assert.NilError(t, err)
+	assert.Equal(t, delAddr.String(), del.DelegatorAddress)
+	assert.Equal(t, srcValAddr.String(), del.ValidatorAddress)
+	ubd, err := f.stakingKeeper.GetUnbondingDelegation(ctx, delAddr, srcValAddr)
+	assert.NilError(t, err)
+	assert.Equal(t, delAddr.String(), ubd.DelegatorAddress)
+	assert.Equal(t, srcValAddr.String(), ubd.ValidatorAddress)
+	red, err := f.stakingKeeper.GetRedelegation(ctx, delAddr, srcValAddr, dstValAddr)
+	assert.NilError(t, err)
+	assert.Equal(t, delAddr.String(), red.DelegatorAddress)
+	assert.Equal(t, srcValAddr.String(), red.ValidatorSrcAddress)
+	assert.Equal(t, dstValAddr.String(), red.ValidatorDstAddress)
 }
