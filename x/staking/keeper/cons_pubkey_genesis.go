@@ -34,6 +34,10 @@ func (k Keeper) initConsKeyRotationGenesis(ctx context.Context, data *types.Gene
 		if err != nil {
 			return err
 		}
+		// Store the canonical form; bech32 also accepts all-uppercase.
+		if history.OperatorAddress, err = k.validatorAddressCodec.BytesToString(valAddr); err != nil {
+			return err
+		}
 		bz, err := k.cdc.Marshal(&history)
 		if err != nil {
 			return err
@@ -43,9 +47,20 @@ func (k Keeper) initConsKeyRotationGenesis(ctx context.Context, data *types.Gene
 		}
 	}
 
-	for i := range data.RotationQueue {
-		record := data.RotationQueue[i]
-		bz, err := k.cdc.Marshal(&record.ValAddrs)
+	for _, record := range data.RotationQueue {
+		var addrs types.ValAddrsOfRotatedConsKeys
+		for _, addr := range record.ValAddrs.Addresses {
+			valAddr, err := k.validatorAddressCodec.StringToBytes(addr)
+			if err != nil {
+				return err
+			}
+			canonical, err := k.validatorAddressCodec.BytesToString(valAddr)
+			if err != nil {
+				return err
+			}
+			addrs.Addresses = append(addrs.Addresses, canonical)
+		}
+		bz, err := k.cdc.Marshal(&addrs)
 		if err != nil {
 			return err
 		}

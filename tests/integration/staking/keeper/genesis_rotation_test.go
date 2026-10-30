@@ -2,6 +2,7 @@ package keeper_test
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"gotest.tools/v3/assert"
@@ -82,7 +83,16 @@ func TestGenesisConsKeyRotationRoundTrip(t *testing.T) {
 		}
 	}
 
-	f2.stakingKeeper.InitGenesis(ctx2, exported)
+	// Import the address strings in their all-uppercase bech32 form. The
+	// re-export below must still match the canonical export.
+	imported := *exported
+	imported.RotationHistory = []types.ConsPubKeyRotationHistory{exported.RotationHistory[0]}
+	imported.RotationHistory[0].OperatorAddress = strings.ToUpper(exported.RotationHistory[0].OperatorAddress)
+	imported.RotationQueue = []types.RotationQueueRecord{{
+		ValAddrs: types.ValAddrsOfRotatedConsKeys{Addresses: []string{strings.ToUpper(exported.RotationQueue[0].ValAddrs.Addresses[0])}},
+		Time:     exported.RotationQueue[0].Time,
+	}}
+	f2.stakingKeeper.InitGenesis(ctx2, &imported)
 
 	got, err := f2.stakingKeeper.GetValidatorByConsAddr(ctx2, oldConsAddr)
 	assert.NilError(t, err)
