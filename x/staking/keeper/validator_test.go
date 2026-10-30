@@ -440,3 +440,99 @@ func (s *KeeperTestSuite) TestUnbondingValidator() {
 	require.NoError(err)
 	require.Equal(stakingtypes.Unbonded, validator.Status)
 }
+
+func (s *KeeperTestSuite) TestAddValidatorTokens_NoSharesIssued() {
+	ctx, keeper := s.ctx, s.stakingKeeper
+	require := s.Require()
+
+	valPubKey := PKs[0]
+	valAddr := sdk.ValAddress(valPubKey.Address().Bytes())
+	initialTokens := keeper.TokensFromConsensusPower(ctx, 10)
+
+	validator := testutil.NewValidator(s.T(), valAddr, valPubKey)
+	validator, _, err := keeper.AddValidatorTokensAndShares(ctx, validator, initialTokens)
+	require.NoError(err)
+
+	sharesBefore := validator.DelegatorShares
+
+	rewardTokens := math.NewInt(100)
+	err = keeper.AddValidatorTokens(ctx, valAddr, rewardTokens)
+	require.NoError(err)
+
+	updated, err := keeper.GetValidator(ctx, valAddr)
+	require.NoError(err)
+
+	// tokens increased by reward amount
+	require.Equal(initialTokens.Add(rewardTokens), updated.Tokens)
+	// shares unchanged, exchange rate increased
+	require.Equal(sharesBefore, updated.DelegatorShares)
+	// per-share value is now > 1.0
+	require.True(updated.TokensFromShares(math.LegacyOneDec()).GT(math.LegacyOneDec()))
+}
+
+func (s *KeeperTestSuite) TestAddValidatorTokens_PowerIndexUpdated() {
+	ctx, keeper := s.ctx, s.stakingKeeper
+	require := s.Require()
+
+	valPubKey := PKs[1]
+	valAddr := sdk.ValAddress(valPubKey.Address().Bytes())
+	// start at exactly 1 power unit
+	initialTokens := keeper.TokensFromConsensusPower(ctx, 1)
+
+	validator := testutil.NewValidator(s.T(), valAddr, valPubKey)
+	_, _, err := keeper.AddValidatorTokensAndShares(ctx, validator, initialTokens)
+	require.NoError(err)
+
+	val, err := keeper.GetValidator(ctx, valAddr)
+	require.NoError(err)
+	// PotentialConsensusPower works for unbonded validators too
+	require.Equal(int64(1), val.PotentialConsensusPower(keeper.PowerReduction(ctx)))
+
+	// add tokens, potential power should increase to 2
+	err = keeper.AddValidatorTokens(ctx, valAddr, keeper.TokensFromConsensusPower(ctx, 1))
+	require.NoError(err)
+
+	updated, err := keeper.GetValidator(ctx, valAddr)
+	require.NoError(err)
+	require.Equal(int64(2), updated.PotentialConsensusPower(keeper.PowerReduction(ctx)))
+	// shares unchanged, only tokens increased
+	require.Equal(math.LegacyNewDecFromInt(initialTokens), updated.DelegatorShares)
+}
+
+func (s *KeeperTestSuite) TestAddValidatorTokens_RejectsValidatorWithoutShares() {
+	ctx, keeper := s.ctx, s.stakingKeeper
+	require := s.Require()
+
+	valPubKey := PKs[2]
+	valAddr := sdk.ValAddress(valPubKey.Address().Bytes())
+	validator := testutil.NewValidator(s.T(), valAddr, valPubKey)
+	require.NoError(keeper.SetValidator(ctx, validator))
+
+	err := keeper.AddValidatorTokens(ctx, valAddr, math.NewInt(100))
+	require.ErrorIs(err, stakingtypes.ErrInsufficientShares)
+
+	updated, err := keeper.GetValidator(ctx, valAddr)
+	require.NoError(err)
+	require.True(updated.Tokens.IsZero())
+}
+
+func (s *KeeperTestSuite) TestAddValidatorTokens_RejectsExchangeRateAboveOneTokenPerShareUnit() {
+	ctx, keeper := s.ctx, s.stakingKeeper
+	require := s.Require()
+
+	valPubKey := PKs[3]
+	valAddr := sdk.ValAddress(valPubKey.Address().Bytes())
+	validator := testutil.NewValidator(s.T(), valAddr, valPubKey)
+	// 1000 smallest share units backing 400 tokens: 600 more tokens fit, 601 do not.
+	validator.Tokens = math.NewInt(400)
+	validator.DelegatorShares = math.LegacyNewDecWithPrec(1000, math.LegacyPrecision)
+	require.NoError(keeper.SetValidator(ctx, validator))
+
+	err := keeper.AddValidatorTokens(ctx, valAddr, math.NewInt(601))
+	require.ErrorIs(err, stakingtypes.ErrInsufficientShares)
+
+	require.NoError(keeper.AddValidatorTokens(ctx, valAddr, math.NewInt(600)))
+	updated, err := keeper.GetValidator(ctx, valAddr)
+	require.NoError(err)
+	require.Equal(math.NewInt(1000), updated.Tokens)
+}

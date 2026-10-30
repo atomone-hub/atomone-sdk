@@ -6,6 +6,7 @@ import (
 	"github.com/cosmos/gogoproto/proto"
 	"github.com/stretchr/testify/suite"
 
+	"cosmossdk.io/math"
 	"cosmossdk.io/simapp"
 
 	sdktestutil "github.com/cosmos/cosmos-sdk/testutil"
@@ -13,6 +14,8 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	grpctypes "github.com/cosmos/cosmos-sdk/types/grpc"
 	"github.com/cosmos/cosmos-sdk/types/query"
+	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
+	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
 	"github.com/cosmos/cosmos-sdk/x/distribution/types"
 )
 
@@ -30,8 +33,25 @@ func (s *GRPCQueryTestSuite) SetupSuite() {
 	cfg.NumValidators = 1
 	s.cfg = cfg
 
-	var err error
-	s.network, err = network.New(s.T(), s.T().TempDir(), cfg)
+	// Seed fee_collector with non-bond denom so non-bond rewards appear in F1.
+	// These are swept (along with minted bond denom) on the first allocation at block 2.
+	genesisState := s.cfg.GenesisState
+	var bankData banktypes.GenesisState
+	s.Require().NoError(s.cfg.Codec.UnmarshalJSON(genesisState[banktypes.ModuleName], &bankData))
+
+	feeCollectorAddr := authtypes.NewModuleAddress(authtypes.FeeCollectorName)
+	photonCoins := sdk.NewCoins(sdk.NewCoin("photon", math.NewInt(1000)))
+	bankData.Balances = append(bankData.Balances, banktypes.Balance{
+		Address: feeCollectorAddr.String(),
+		Coins:   photonCoins,
+	})
+
+	bankDataBz, err := s.cfg.Codec.MarshalJSON(&bankData)
+	s.Require().NoError(err)
+	genesisState[banktypes.ModuleName] = bankDataBz
+	s.cfg.GenesisState = genesisState
+
+	s.network, err = network.New(s.T(), s.T().TempDir(), s.cfg)
 	s.Require().NoError(err)
 
 	s.Require().NoError(s.network.WaitForNextBlock())
@@ -116,7 +136,10 @@ func (s *GRPCQueryTestSuite) TestQueryOutstandingRewardsGRPC() {
 	val := s.network.Validators[0]
 	baseURL := val.APIAddress
 
-	rewards, err := sdk.ParseDecCoins("19.6stake")
+	// Bond denom delegator rewards are auto-staked. Outstanding = commission only: 9.8stake.
+	// Non-bond photon flows through F1 normally:
+	// 1000photon genesis fee_collector -> 980photon outstanding (490 commission + 490 delegator).
+	rewards, err := sdk.ParseDecCoins("980photon,9.8stake")
 	s.Require().NoError(err)
 
 	testCases := []struct {
@@ -170,7 +193,7 @@ func (s *GRPCQueryTestSuite) TestQueryValidatorCommissionGRPC() {
 	val := s.network.Validators[0]
 	baseURL := val.APIAddress
 
-	commission, err := sdk.ParseDecCoins("9.8stake")
+	commission, err := sdk.ParseDecCoins("490photon,9.8stake")
 	s.Require().NoError(err)
 
 	testCases := []struct {
@@ -283,7 +306,10 @@ func (s *GRPCQueryTestSuite) TestQueryDelegatorRewardsGRPC() {
 	val := s.network.Validators[0]
 	baseURL := val.APIAddress
 
-	rewards, err := sdk.ParseDecCoins("9.8stake")
+	// Bond denom delegator rewards are auto-staked; only non-bond photon is claimable.
+	// 1000photon genesis fee_collector -> 490photon delegator share after community tax
+	// and 50% commission split.
+	rewards, err := sdk.ParseDecCoins("490photon")
 	s.Require().NoError(err)
 
 	testCases := []struct {
@@ -463,7 +489,10 @@ func (s *GRPCQueryTestSuite) TestQueryValidatorCommunityPoolGRPC() {
 	val := s.network.Validators[0]
 	baseURL := val.APIAddress
 
-	communityPool, err := sdk.ParseDecCoins("0.4stake")
+	// Community pool receives: 2% community tax (0.4stake) + decimal truncation dust
+	// from auto-staking the delegator bond denom (9.8stake -> 9 tokens staked, 0.8stake dust)
+	// so in total 1.2stake. Plus the 2% community tax on 1000photon genesis fee = 20photon.
+	communityPool, err := sdk.ParseDecCoins("20photon,1.2stake")
 	s.Require().NoError(err)
 
 	testCases := []struct {
