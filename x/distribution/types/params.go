@@ -9,6 +9,13 @@ import (
 const (
 	// DefaultNakamotoBonusPeriodEpochIdentifier represents default nakamoto bonus period epoch identifier
 	DefaultNakamotoBonusPeriodEpochIdentifier = "week"
+
+	// DefaultCommissionAutoStakeEpochIdentifier is the default epoch identifier
+	// at which the bond denom portion of every bonded validator's accumulated
+	// commission is automatically routed through the staking Delegate path.
+	// "week" gives ~99.97% of the continuous-compounding result while bounding
+	// any escape route at validator dismissal to one epoch's commission.
+	DefaultCommissionAutoStakeEpochIdentifier = "week"
 )
 
 var (
@@ -29,6 +36,7 @@ func DefaultParams() Params {
 			MinimumCoefficient:    DefaultNakamotoBonusMinimumCoefficient,
 			MaximumCoefficient:    DefaultNakamotoBonusMaximumCoefficient,
 		},
+		CommissionAutoStakeEpochIdentifier: DefaultCommissionAutoStakeEpochIdentifier,
 	}
 }
 

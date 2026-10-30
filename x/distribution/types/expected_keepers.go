@@ -4,6 +4,7 @@ import (
 	context "context"
 
 	"cosmossdk.io/core/address"
+	"cosmossdk.io/math"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
@@ -55,6 +56,30 @@ type StakingKeeper interface {
 	GetAllDelegatorDelegations(ctx context.Context, delegator sdk.AccAddress) ([]stakingtypes.Delegation, error)
 
 	GetBondedValidatorsByPower(ctx context.Context) ([]stakingtypes.Validator, error)
+
+	// BondDenom returns the denomination used for staking bonds.
+	BondDenom(ctx context.Context) (string, error)
+
+	// AddValidatorTokens increases a bonded validator's token balance without
+	// issuing new delegator shares, raising the per-share exchange rate.
+	// The caller must transfer equivalent coins to the pool holding the
+	// validator's tokens before calling this.
+	AddValidatorTokens(ctx context.Context, valAddr sdk.ValAddress, tokensToAdd math.Int) error
+
+	// GetValidator returns the concrete Validator for the given operator
+	// address, as required by Delegate.
+	GetValidator(ctx context.Context, valAddr sdk.ValAddress) (stakingtypes.Validator, error)
+
+	// Delegate performs a delegation through the standard staking path,
+	// firing BeforeDelegationSharesModified and AfterDelegationModified
+	// hooks. Distribution uses this to auto-stake the bond denom portion
+	// of accumulated validator commission into the operator's
+	// self-delegation, both at MsgWithdrawValidatorCommission time and
+	// at the configured epoch boundary, and the v5 migration uses it to
+	// stake pending bond denom rewards into the delegation that earned them.
+	Delegate(ctx context.Context, delAddr sdk.AccAddress, bondAmt math.Int,
+		tokenSrc stakingtypes.BondStatus, validator stakingtypes.Validator,
+		subtractAccount bool) (math.LegacyDec, error)
 }
 
 // StakingHooks event hooks for staking validator object (noalias)
