@@ -54,6 +54,8 @@ Ref: https://keepachangelog.com/en/1.0.0/
 * (x/auth/vesting) [#131](https://github.com/atomone-hub/atomone-sdk/pull/131) Linearize and bound vesting schedule processing (DoS)
 * (x/evidence) [#138](https://github.com/atomone-hub/atomone-sdk/pull/138) Fork `cosmossdk.io/x/evidence` v0.1.1 and ignore equivocation evidence whose consensus address resolves to no validator, backporting cosmos/cosmos-sdk#26481 (CONSENSUS BREAKING BUGFIX)
 * (x/staking) [#138](https://github.com/atomone-hub/atomone-sdk/pull/138) Resolve rotated consensus addresses through the full rotation chain (CONSENSUS BREAKING BUGFIX)
+* (x/staking) [#139](https://github.com/atomone-hub/atomone-sdk/pull/139) Store canonical address strings on validator creation and genesis import (CONSENSUS BREAKING BUGFIX)
+* (x/gov) [#139](https://github.com/atomone-hub/atomone-sdk/pull/139) Key the governor tally and governor delegations invariant by canonical validator addresses (CONSENSUS BREAKING BUGFIX)
 
 ## [v0.500.6](https://github.com/atomone-hub/cosmos-sdk/releases/tag/v0.500.6) - 2026-10-15
 

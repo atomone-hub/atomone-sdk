@@ -3,6 +3,7 @@ package keeper_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -1425,4 +1426,48 @@ func (s *KeeperTestSuite) TestConsKeyRotnBeforeHook() {
 	history, err = stakingKeeper.GetBlockConsPubKeyRotationHistory(ctx)
 	s.Require().NoError(err)
 	s.Require().Len(history, 1)
+}
+
+func (s *KeeperTestSuite) TestMsgCreateValidatorStoresCanonicalOperatorAddress() {
+	ctx, msgServer, keeper := s.ctx, s.msgServer, s.stakingKeeper
+	require := s.Require()
+	s.execExpectCalls()
+
+	pk := ed25519.GenPrivKey().PubKey()
+	pubkey, err := codectypes.NewAnyWithValue(pk)
+	require.NoError(err)
+
+	newMsg := func(valAddr string) *stakingtypes.MsgCreateValidator {
+		return &stakingtypes.MsgCreateValidator{
+			Description: stakingtypes.Description{Moniker: "NewValidator"},
+			Commission: stakingtypes.CommissionRates{
+				Rate:          math.LegacyNewDecWithPrec(5, 1),
+				MaxRate:       math.LegacyNewDecWithPrec(5, 1),
+				MaxChangeRate: math.LegacyNewDec(0),
+			},
+			MinSelfDelegation: math.NewInt(1),
+			DelegatorAddress:  Addr.String(),
+			ValidatorAddress:  valAddr,
+			Pubkey:            pubkey,
+			Value:             sdk.NewInt64Coin("stake", 10000),
+		}
+	}
+
+	canonical := ValAddr.String()
+
+	// Bech32 forbids mixed case.
+	mixed := strings.ToUpper(canonical[:len(canonical)/2]) + canonical[len(canonical)/2:]
+	_, err = msgServer.CreateValidator(ctx, newMsg(mixed))
+	require.ErrorContains(err, "invalid validator address")
+
+	_, err = msgServer.CreateValidator(ctx, newMsg(strings.ToUpper(canonical)))
+	require.NoError(err)
+
+	val, err := keeper.GetValidator(ctx, ValAddr)
+	require.NoError(err)
+	require.Equal(canonical, val.GetOperator())
+
+	del, err := keeper.GetDelegation(ctx, sdk.AccAddress(ValAddr), ValAddr)
+	require.NoError(err)
+	require.Equal(canonical, del.GetValidatorAddr())
 }
