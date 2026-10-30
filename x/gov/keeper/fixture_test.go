@@ -2,6 +2,7 @@ package keeper_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -174,4 +175,19 @@ func (s *fixture) validatorVote(voter sdk.ValAddress, vote v1.VoteOption) {
 
 func (s *fixture) governorVote(voter types.GovernorAddress, vote v1.VoteOption) {
 	s.vote(sdk.AccAddress(voter), vote)
+}
+
+// upcaseValidatorAddress rewrites the operator address of validator valIdx,
+// and the validator address of every delegation to it, in all-uppercase
+// bech32. Chain state can hold this form for a validator created with an
+// uppercase address.
+func (s *fixture) upcaseValidatorAddress(valIdx int) {
+	canonical := s.valAddrs[valIdx].String()
+	upper := strings.ToUpper(canonical)
+	s.validators[valIdx].OperatorAddress = upper
+	for i := range s.delegations {
+		if s.delegations[i].ValidatorAddress == canonical {
+			s.delegations[i].ValidatorAddress = upper
+		}
+	}
 }
