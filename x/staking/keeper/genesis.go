@@ -231,6 +231,10 @@ func (k Keeper) InitGenesis(ctx context.Context, data *types.GenesisState) (res 
 		panic(fmt.Sprintf("not bonded pool balance is different from not bonded coins: %s <-> %s", notBondedBalance, notBondedCoins))
 	}
 
+	if err := k.initConsKeyRotationGenesis(ctx, data); err != nil {
+		panic(err)
+	}
+
 	// don't need to run CometBFT updates if we exported
 	if data.Exported {
 		for _, lv := range data.LastValidatorPowers {
@@ -337,7 +341,7 @@ func (k Keeper) ExportGenesis(ctx sdk.Context) *types.GenesisState {
 		panic(err)
 	}
 
-	return &types.GenesisState{
+	gs := &types.GenesisState{
 		Params:               params,
 		LastTotalPower:       totalPower,
 		LastValidatorPowers:  lastValidatorPowers,
@@ -347,4 +351,10 @@ func (k Keeper) ExportGenesis(ctx sdk.Context) *types.GenesisState {
 		Redelegations:        redelegations,
 		Exported:             true,
 	}
+
+	if err := k.exportConsKeyRotationGenesis(ctx, gs); err != nil {
+		panic(err)
+	}
+
+	return gs
 }

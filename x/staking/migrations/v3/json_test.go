@@ -36,6 +36,7 @@ func TestMigrateJSON(t *testing.T) {
 
 	// Make sure about new param MinCommissionRate.
 	expected := `{
+	"cons_addr_identifiers": [],
 	"delegations": [],
 	"exported": false,
 	"last_total_power": "0",
@@ -54,6 +55,10 @@ func TestMigrateJSON(t *testing.T) {
 		"unbonding_time": "1814400s"
 	},
 	"redelegations": [],
+	"rotated_cons_addresses": [],
+	"rotation_history": [],
+	"rotation_index_records": [],
+	"rotation_queue": [],
 	"unbonding_delegations": [],
 	"validators": []
 }`
