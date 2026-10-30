@@ -3,6 +3,7 @@ package keeper
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"cosmossdk.io/collections"
 	"cosmossdk.io/math"
@@ -106,12 +107,21 @@ func (keeper Keeper) HasReachedQuorum(ctx sdk.Context, proposal v1.Proposal) (bo
 	return percentVoting.GTE(quorum), nil
 }
 
-// getBondedValidatorsByAddress fetches all the bonded validators and return
-// them in map using their operator address as the key.
+// canonicalValAddr returns the canonical bech32 form of a validator operator
+// address. Governor validator shares are keyed by this form. A stored operator
+// address, and the validator address copied into its delegations, can be the
+// all-uppercase form, which bech32 also accepts. Stored addresses were
+// validated when written, so lowercasing yields the canonical form.
+func canonicalValAddr(addr string) string {
+	return strings.ToLower(addr)
+}
+
+// getBondedValidatorsByAddress fetches all the bonded validators and returns
+// them in a map keyed by their canonical operator address.
 func (keeper Keeper) getBondedValidatorsByAddress(ctx context.Context) (map[string]stakingtypes.ValidatorI, error) {
 	vals := make(map[string]stakingtypes.ValidatorI)
 	err := keeper.sk.IterateBondedValidatorsByPower(ctx, func(_ int64, validator stakingtypes.ValidatorI) (stop bool) {
-		vals[validator.GetOperator()] = validator
+		vals[canonicalValAddr(validator.GetOperator())] = validator
 		return false
 	})
 	return vals, err
@@ -177,16 +187,19 @@ func (keeper Keeper) tallyVotes(
 
 		// iterate over all delegations from voter, deduct from any delegated-to validators
 		err = keeper.sk.IterateDelegations(ctx, voter, func(_ int64, delegation stakingtypes.DelegationI) (stop bool) {
-			valAddrStr := delegation.GetValidatorAddr()
+			valAddrStr := canonicalValAddr(delegation.GetValidatorAddr())
 			votingPower := math.LegacyZeroDec()
 
 			if val, ok := currValidators[valAddrStr]; ok {
 				// delegation shares * bonded / total shares
 				votingPower = votingPower.Add(delegation.GetShares().MulInt(val.GetBondedTokens()).Quo(val.GetDelegatorShares()))
 
-				// remove the delegation shares from the governor
+				// remove the delegation shares from the governor. A governor
+				// with no shares on this validator has nothing to deduct.
 				if hasGovernor {
-					governor.ValSharesDeductions[valAddrStr] = governor.ValSharesDeductions[valAddrStr].Add(delegation.GetShares())
+					if deduction, ok := governor.ValSharesDeductions[valAddrStr]; ok {
+						governor.ValSharesDeductions[valAddrStr] = deduction.Add(delegation.GetShares())
+					}
 				}
 			}
 
