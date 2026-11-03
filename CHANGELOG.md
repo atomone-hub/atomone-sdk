@@ -46,6 +46,7 @@ Ref: https://keepachangelog.com/en/1.0.0/
 
 ### Bug Fixes
 
+* (x/gov) [#144](https://github.com/atomone-hub/atomone-sdk/pull/144) Register `MsgUpdateGovernorStatus` in the LegacyAmino codec and register `MsgProposeLaw` and `MsgProposeConstitutionAmendment` under the `amino.name` of their proto definitions, the one the nodes use for the `SIGN_MODE_LEGACY_AMINO_JSON` sign bytes
 * (x/gov) [#130](https://github.com/atomone-hub/atomone-sdk/pull/130) Cap deposit throttler floors to prevent an EndBlocker Int overflow (halt via a passed params-update proposal)
 * (x/consensus) [#135](https://github.com/atomone-hub/atomone-sdk/pull/135) Reject `Block.MaxGas = 0` in `UpdateParams` (mempool tx lockout via a passed proposal)
 * (x/slashing) [#134](https://github.com/atomone-hub/atomone-sdk/pull/134) Do not inherit stale slashing state (tombstone, missed-block bitmap) on consensus-key re-adoption
