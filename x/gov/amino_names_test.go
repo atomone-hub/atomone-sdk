@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/cosmos/gogoproto/proto"
 	"github.com/stretchr/testify/require"
 	protov2 "google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
@@ -15,8 +16,6 @@ import (
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/x/gov"
-
-	"github.com/cosmos/gogoproto/proto"
 )
 
 // maxAminoNameLength is the length limit of the amino names, as enforced by legacy.RegisterAminoMsg.
