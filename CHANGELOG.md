@@ -56,6 +56,7 @@ Ref: https://keepachangelog.com/en/1.0.0/
 * (x/staking) [#138](https://github.com/atomone-hub/atomone-sdk/pull/138) Resolve rotated consensus addresses through the full rotation chain (CONSENSUS BREAKING BUGFIX)
 * (x/staking) [#139](https://github.com/atomone-hub/atomone-sdk/pull/139) Store canonical address strings on validator creation and genesis import (CONSENSUS BREAKING BUGFIX)
 * (x/gov) [#139](https://github.com/atomone-hub/atomone-sdk/pull/139) Key the governor tally and governor delegations invariant by canonical validator addresses (CONSENSUS BREAKING BUGFIX)
+* (x/staking) [#140](https://github.com/atomone-hub/atomone-sdk/pull/140) Export and import consensus key rotation state in genesis
 * (x/gov) [#143](https://github.com/atomone-hub/atomone-sdk/pull/143) Do not deactivate a governor whose stake is redelegated: the min self-delegation was checked between the unbond from the source validator and the delegation to the destination one. Redelegations now mark the context passed to the staking hooks (`stakingtypes.WithRedelegationSource`) so the check is deferred to the destination delegation (CONSENSUS BREAKING BUGFIX)
 
 ## [v0.500.6](https://github.com/atomone-hub/cosmos-sdk/releases/tag/v0.500.6) - 2026-10-15
