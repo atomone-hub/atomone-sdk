@@ -2,6 +2,7 @@ package keeper_test
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -89,7 +90,7 @@ func newFixture(t *testing.T, ctx sdk.Context, numVals, numDelegators,
 				return nil
 			}).AnyTimes()
 	mocks.stakingKeeper.EXPECT().
-		IterateDelegations(ctx, gomock.Any(), gomock.Any()).
+		IterateDelegations(gomock.Any(), gomock.Any(), gomock.Any()).
 		DoAndReturn(
 			func(ctx context.Context, voter sdk.AccAddress, fn func(index int64, d stakingtypes.DelegationI) bool) error {
 				for i, d := range s.delegations {
@@ -99,7 +100,7 @@ func newFixture(t *testing.T, ctx sdk.Context, numVals, numDelegators,
 				}
 				return nil
 			}).AnyTimes()
-	mocks.stakingKeeper.EXPECT().GetValidator(ctx, gomock.Any()).DoAndReturn(
+	mocks.stakingKeeper.EXPECT().GetValidator(gomock.Any(), gomock.Any()).DoAndReturn(
 		func(ctx context.Context, addr sdk.ValAddress) (stakingtypes.Validator, error) {
 			for i := 0; i < len(valAddrs); i++ {
 				if valAddrs[i].String() == addr.String() {
@@ -108,7 +109,7 @@ func newFixture(t *testing.T, ctx sdk.Context, numVals, numDelegators,
 			}
 			return stakingtypes.Validator{}, stakingtypes.ErrNoValidatorFound
 		}).AnyTimes()
-	mocks.stakingKeeper.EXPECT().GetDelegation(ctx, gomock.Any(), gomock.Any()).DoAndReturn(
+	mocks.stakingKeeper.EXPECT().GetDelegation(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
 		func(_ context.Context, del sdk.AccAddress, val sdk.ValAddress) (stakingtypes.Delegation, error) {
 			for _, d := range s.delegations {
 				if d.DelegatorAddress == del.String() && d.ValidatorAddress == val.String() {
@@ -161,6 +162,14 @@ func (s *fixture) delegate(delegator sdk.AccAddress, validator sdk.ValAddress, m
 		}
 	}
 	s.delegations = append(s.delegations, delegation)
+}
+
+// removeDelegation drops the delegation of delegator to validator from the
+// tracked delegations, like the staking store does once the delegation is removed.
+func (s *fixture) removeDelegation(delegator sdk.AccAddress, validator sdk.ValAddress) {
+	s.delegations = slices.DeleteFunc(s.delegations, func(d stakingtypes.Delegation) bool {
+		return d.DelegatorAddress == delegator.String() && d.ValidatorAddress == validator.String()
+	})
 }
 
 // vote calls govKeeper.Vote()
