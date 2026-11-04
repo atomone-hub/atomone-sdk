@@ -7,6 +7,10 @@ import (
 
 // InitGenesis new mint genesis
 func (keeper Keeper) InitGenesis(ctx sdk.Context, ak types.AccountKeeper, data *types.GenesisState) {
+	if err := types.ValidateGenesis(*data); err != nil {
+		panic(err)
+	}
+
 	// previous_block_time only has meaning against the clock of the chain that
 	// recorded it, so a chain starting from a genesis has no reference point:
 	// its first block records one and mints nothing.
