@@ -2,6 +2,7 @@ package keeper_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/mock/gomock"
@@ -87,4 +88,24 @@ func (s *GenesisTestSuite) TestImportExportGenesis() {
 
 	genesisState2 := s.keeper.ExportGenesis(s.sdkCtx)
 	s.Require().Equal(genesisState, genesisState2)
+
+	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	minter.PreviousBlockTime = &t0
+	s.Require().NoError(s.keeper.Minter.Set(s.sdkCtx, minter))
+
+	exported := s.keeper.ExportGenesis(s.sdkCtx)
+	s.Require().Nil(exported.Minter.PreviousBlockTime)
+	s.Require().Equal(genesisState.Minter, exported.Minter)
+}
+
+func (s *GenesisTestSuite) TestInitGenesisClearsPreviousBlockTime() {
+	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	genesisState := types.DefaultGenesisState()
+	genesisState.Minter.PreviousBlockTime = &t0
+
+	s.keeper.InitGenesis(s.sdkCtx, s.accountKeeper, genesisState)
+
+	minter, err := s.keeper.Minter.Get(s.sdkCtx)
+	s.Require().NoError(err)
+	s.Require().Nil(minter.PreviousBlockTime)
 }
