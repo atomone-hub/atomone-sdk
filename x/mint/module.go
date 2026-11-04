@@ -92,14 +92,12 @@ type AppModule struct {
 
 	// legacySubspace is used solely for migration of x/params managed parameters
 	legacySubspace exported.Subspace
-
-	// inflationCalculator is used to calculate the inflation rate during BeginBlock.
-	// If inflationCalculator is nil, the default inflation calculation logic is used.
-	inflationCalculator types.InflationCalculationFn
 }
 
-// NewAppModule creates a new AppModule object. If the InflationCalculationFn
-// argument is nil, then the SDK's default inflation function will be used.
+// NewAppModule creates a new AppModule object. The InflationCalculationFn
+// argument is unused and must be nil; it is kept so that callers written for
+// the Cosmos SDK signature, such as the ibc-go testing app, keep compiling. A
+// custom minting logic is set with the keeper's WithMintFn option.
 func NewAppModule(
 	cdc codec.Codec,
 	keeper keeper.Keeper,
@@ -107,16 +105,15 @@ func NewAppModule(
 	ic types.InflationCalculationFn,
 	ss exported.Subspace,
 ) AppModule {
-	if ic == nil {
-		ic = types.DefaultInflationCalculationFn
+	if ic != nil {
+		panic("x/mint: the InflationCalculationFn argument of NewAppModule must be nil; set a custom minting function with mintkeeper.WithMintFn(mintkeeper.DefaultMintFn(fn))")
 	}
 
 	return AppModule{
-		AppModuleBasic:      AppModuleBasic{cdc: cdc},
-		keeper:              keeper,
-		authKeeper:          ak,
-		inflationCalculator: ic,
-		legacySubspace:      ss,
+		AppModuleBasic: AppModuleBasic{cdc: cdc},
+		keeper:         keeper,
+		authKeeper:     ak,
+		legacySubspace: ss,
 	}
 }
 
@@ -160,7 +157,7 @@ func (AppModule) ConsensusVersion() uint64 { return ConsensusVersion }
 
 // BeginBlock returns the begin blocker for the mint module.
 func (am AppModule) BeginBlock(ctx context.Context) error {
-	return BeginBlocker(ctx, am.keeper, am.inflationCalculator)
+	return BeginBlocker(ctx, am.keeper)
 }
 
 // AppModuleSimulation functions
@@ -198,11 +195,11 @@ func init() {
 type ModuleInputs struct {
 	depinject.In
 
-	ModuleKey              depinject.OwnModuleKey
-	Config                 *modulev1.Module
-	StoreService           store.KVStoreService
-	Cdc                    codec.Codec
-	InflationCalculationFn types.InflationCalculationFn `optional:"true"`
+	ModuleKey    depinject.OwnModuleKey
+	Config       *modulev1.Module
+	StoreService store.KVStoreService
+	Cdc          codec.Codec
+	MintFn       keeper.MintFn `optional:"true"`
 
 	// LegacySubspace is used solely for migration of x/params managed parameters
 	LegacySubspace exported.Subspace `optional:"true"`
@@ -231,6 +228,11 @@ func ProvideModule(in ModuleInputs) ModuleOutputs {
 		authority = authtypes.NewModuleAddressOrBech32Address(in.Config.Authority)
 	}
 
+	var opts []keeper.InitOption
+	if in.MintFn != nil {
+		opts = append(opts, keeper.WithMintFn(in.MintFn))
+	}
+
 	k := keeper.NewKeeper(
 		in.Cdc,
 		in.StoreService,
@@ -239,10 +241,10 @@ func ProvideModule(in ModuleInputs) ModuleOutputs {
 		in.BankKeeper,
 		feeCollectorName,
 		authority.String(),
+		opts...,
 	)
 
-	// when no inflation calculation function is provided it will use the default types.DefaultInflationCalculationFn
-	m := NewAppModule(in.Cdc, k, in.AccountKeeper, in.InflationCalculationFn, in.LegacySubspace)
+	m := NewAppModule(in.Cdc, k, in.AccountKeeper, nil, in.LegacySubspace)
 
 	return ModuleOutputs{MintKeeper: k, Module: m}
 }
