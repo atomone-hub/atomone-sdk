@@ -12,6 +12,8 @@ breaking:
   ignore_only:
     FILE_SAME_GO_PACKAGE:
       - cosmos/app/v1alpha1/query.proto
+    FIELD_NO_DELETE:
+      - cosmos/mint/v1beta1/mint.proto
 lint:
   use:
     - DEFAULT

@@ -3,6 +3,7 @@ package simulation_test
 import (
 	"math/rand"
 	"testing"
+	"time"
 
 	cmtproto "github.com/cometbft/cometbft/proto/tendermint/types"
 	"gotest.tools/v3/assert"
@@ -39,10 +40,10 @@ func TestProposalMsgs(t *testing.T) {
 	assert.Assert(t, ok)
 
 	assert.Equal(t, sdk.AccAddress(address.Module("gov")).String(), msgUpdateParams.Authority)
-	assert.Equal(t, uint64(122877), msgUpdateParams.Params.BlocksPerYear)
-	assert.DeepEqual(t, sdkmath.LegacyNewDecWithPrec(95, 2), msgUpdateParams.Params.GoalBonded)
-	assert.DeepEqual(t, sdkmath.LegacyNewDecWithPrec(94, 2), msgUpdateParams.Params.InflationMax)
-	assert.DeepEqual(t, sdkmath.LegacyNewDecWithPrec(23, 2), msgUpdateParams.Params.InflationMin)
-	assert.DeepEqual(t, sdkmath.LegacyNewDecWithPrec(89, 2), msgUpdateParams.Params.InflationRateChange)
-	assert.Equal(t, "XhhuTSkuxK", msgUpdateParams.Params.MintDenom)
+	assert.DeepEqual(t, sdkmath.LegacyNewDecWithPrec(18, 2), msgUpdateParams.Params.GoalBonded)
+	assert.DeepEqual(t, sdkmath.LegacyNewDecWithPrec(50, 2), msgUpdateParams.Params.InflationMax)
+	assert.DeepEqual(t, sdkmath.LegacyNewDecWithPrec(12, 2), msgUpdateParams.Params.InflationMin)
+	assert.DeepEqual(t, sdkmath.LegacyNewDecWithPrec(60, 2), msgUpdateParams.Params.InflationRateChange)
+	assert.Equal(t, "xKGLwQvuyN", msgUpdateParams.Params.MintDenom)
+	assert.Equal(t, time.Second, msgUpdateParams.Params.MaxBlockElapsed)
 }

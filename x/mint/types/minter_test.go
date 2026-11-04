@@ -90,9 +90,10 @@ func TestBlockProvision(t *testing.T) {
 		expAmount int64
 	}{
 		{"zero", 0, 0},
+		{"negative", -time.Second, 0},
 		{"5.8 seconds", 5800 * time.Millisecond, 5_800_000},
 		{"one minute", time.Minute, 60_000_000},
-		{"max block elapsed", MaxBlockElapsed, 8_000_000},
+		{"default max block elapsed", DefaultMaxBlockElapsed, 8_000_000},
 		{"one day", day, 86_400_000_000},
 		{"one year", year, 31_557_600_000_000},
 	}
