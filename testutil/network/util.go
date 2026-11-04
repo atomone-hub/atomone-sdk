@@ -19,15 +19,18 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"cosmossdk.io/log"
+	"cosmossdk.io/math"
 
 	"github.com/cosmos/cosmos-sdk/server"
 	"github.com/cosmos/cosmos-sdk/server/api"
 	servergrpc "github.com/cosmos/cosmos-sdk/server/grpc"
 	servercmtlog "github.com/cosmos/cosmos-sdk/server/log"
+	sdk "github.com/cosmos/cosmos-sdk/types"
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
 	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
 	"github.com/cosmos/cosmos-sdk/x/genutil"
 	genutiltypes "github.com/cosmos/cosmos-sdk/x/genutil/types"
+	minttypes "github.com/cosmos/cosmos-sdk/x/mint/types"
 )
 
 func startInProcess(cfg Config, val *Validator) error {
@@ -233,4 +236,30 @@ func FreeTCPAddr() (addr, port string, closeFn func() error, err error) {
 	port = fmt.Sprintf("%d", portI)
 	addr = fmt.Sprintf("tcp://0.0.0.0:%s", port)
 	return
+}
+
+// MintedAt returns the amount minted by the x/mint module in the block at the
+// given height, read from the block's mint event. It is zero for a block that
+// emitted no mint event.
+func (n *Network) MintedAt(height int64) (math.Int, error) {
+	res, err := n.Validators[0].RPCClient.BlockResults(context.Background(), &height)
+	if err != nil {
+		return math.Int{}, err
+	}
+	for _, event := range res.FinalizeBlockEvents {
+		if event.Type != minttypes.EventTypeMint {
+			continue
+		}
+		for _, attr := range event.Attributes {
+			if attr.Key != sdk.AttributeKeyAmount {
+				continue
+			}
+			amount, ok := math.NewIntFromString(attr.Value)
+			if !ok {
+				return math.Int{}, fmt.Errorf("invalid mint amount %q at height %d", attr.Value, height)
+			}
+			return amount, nil
+		}
+	}
+	return math.ZeroInt(), nil
 }

@@ -6,6 +6,7 @@ import (
 	"github.com/cosmos/gogoproto/proto"
 	"github.com/stretchr/testify/suite"
 
+	"cosmossdk.io/math"
 	"cosmossdk.io/simapp"
 
 	sdktestutil "github.com/cosmos/cosmos-sdk/testutil"
@@ -35,6 +36,23 @@ func (s *GRPCQueryTestSuite) SetupSuite() {
 	s.Require().NoError(err)
 
 	s.Require().NoError(s.network.WaitForNextBlock())
+}
+
+// allocatedShare returns the given share of the tokens the distribution module
+// has allocated by height 2 as the bond denom. No fees are paid before the
+// queries at that height, so the allocation is everything x/mint minted in the
+// first two blocks.
+func (s *GRPCQueryTestSuite) allocatedShare(share string) sdk.DecCoins {
+	_, err := s.network.WaitForHeight(2)
+	s.Require().NoError(err)
+	allocated := math.ZeroInt()
+	for height := int64(1); height <= 2; height++ {
+		minted, err := s.network.MintedAt(height)
+		s.Require().NoError(err)
+		allocated = allocated.Add(minted)
+	}
+	amount := math.LegacyNewDecFromInt(allocated).Mul(math.LegacyMustNewDecFromStr(share))
+	return sdk.DecCoins{sdk.NewDecCoinFromDec(s.cfg.BondDenom, amount)}
 }
 
 // TearDownSuite cleans up the curret test network after _each_ test.
@@ -116,8 +134,8 @@ func (s *GRPCQueryTestSuite) TestQueryOutstandingRewardsGRPC() {
 	val := s.network.Validators[0]
 	baseURL := val.APIAddress
 
-	rewards, err := sdk.ParseDecCoins("19.6stake")
-	s.Require().NoError(err)
+	// The validator's share after the 2% community tax.
+	rewards := s.allocatedShare("0.98")
 
 	testCases := []struct {
 		name     string
@@ -170,8 +188,8 @@ func (s *GRPCQueryTestSuite) TestQueryValidatorCommissionGRPC() {
 	val := s.network.Validators[0]
 	baseURL := val.APIAddress
 
-	commission, err := sdk.ParseDecCoins("9.8stake")
-	s.Require().NoError(err)
+	// Half of the validator's share, at its 50% commission rate.
+	commission := s.allocatedShare("0.49")
 
 	testCases := []struct {
 		name     string
@@ -283,8 +301,8 @@ func (s *GRPCQueryTestSuite) TestQueryDelegatorRewardsGRPC() {
 	val := s.network.Validators[0]
 	baseURL := val.APIAddress
 
-	rewards, err := sdk.ParseDecCoins("9.8stake")
-	s.Require().NoError(err)
+	// The validator's share less its 50% commission.
+	rewards := s.allocatedShare("0.49")
 
 	testCases := []struct {
 		name     string
@@ -463,8 +481,8 @@ func (s *GRPCQueryTestSuite) TestQueryValidatorCommunityPoolGRPC() {
 	val := s.network.Validators[0]
 	baseURL := val.APIAddress
 
-	communityPool, err := sdk.ParseDecCoins("0.4stake")
-	s.Require().NoError(err)
+	// The 2% community tax.
+	communityPool := s.allocatedShare("0.02")
 
 	testCases := []struct {
 		name     string

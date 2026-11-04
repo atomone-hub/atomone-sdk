@@ -18,6 +18,21 @@ func (s *E2ETestSuite) TestTotalSupplyGRPCHandler() {
 	val := s.network.Validators[0]
 	baseURL := val.APIAddress
 
+	// No transaction precedes the queried heights, so the supply of the bond
+	// denom at a height is the staking tokens plus what x/mint has minted up
+	// to that block.
+	_, err := s.network.WaitForHeight(2)
+	s.Require().NoError(err)
+	mintedUpTo := func(height int64) math.Int {
+		sum := math.ZeroInt()
+		for h := int64(1); h <= height; h++ {
+			minted, err := s.network.MintedAt(h)
+			s.Require().NoError(err)
+			sum = sum.Add(minted)
+		}
+		return sum
+	}
+
 	testCases := []struct {
 		name     string
 		url      string
@@ -35,7 +50,7 @@ func (s *E2ETestSuite) TestTotalSupplyGRPCHandler() {
 			&types.QueryTotalSupplyResponse{
 				Supply: sdk.NewCoins(
 					sdk.NewCoin(fmt.Sprintf("%stoken", val.Moniker), s.cfg.AccountTokens),
-					sdk.NewCoin(s.cfg.BondDenom, s.cfg.StakingTokens.Add(math.NewInt(10))),
+					sdk.NewCoin(s.cfg.BondDenom, s.cfg.StakingTokens.Add(mintedUpTo(1))),
 				),
 				Pagination: &query.PageResponse{
 					Total: 2,
@@ -50,7 +65,7 @@ func (s *E2ETestSuite) TestTotalSupplyGRPCHandler() {
 			},
 			&types.QuerySupplyOfResponse{},
 			&types.QuerySupplyOfResponse{
-				Amount: sdk.NewCoin(s.cfg.BondDenom, s.cfg.StakingTokens.Add(math.NewInt(10))),
+				Amount: sdk.NewCoin(s.cfg.BondDenom, s.cfg.StakingTokens.Add(mintedUpTo(1))),
 			},
 		},
 		{
@@ -61,7 +76,7 @@ func (s *E2ETestSuite) TestTotalSupplyGRPCHandler() {
 			},
 			&types.QuerySupplyOfResponse{},
 			&types.QuerySupplyOfResponse{
-				Amount: sdk.NewCoin(s.cfg.BondDenom, s.cfg.StakingTokens.Add(math.NewInt(20))),
+				Amount: sdk.NewCoin(s.cfg.BondDenom, s.cfg.StakingTokens.Add(mintedUpTo(2))),
 			},
 		},
 		{
@@ -72,7 +87,7 @@ func (s *E2ETestSuite) TestTotalSupplyGRPCHandler() {
 			},
 			&types.QuerySupplyOfResponse{},
 			&types.QuerySupplyOfResponse{
-				Amount: sdk.NewCoin(s.cfg.BondDenom, s.cfg.StakingTokens.Add(math.NewInt(10))),
+				Amount: sdk.NewCoin(s.cfg.BondDenom, s.cfg.StakingTokens.Add(mintedUpTo(1))),
 			},
 		},
 		{
