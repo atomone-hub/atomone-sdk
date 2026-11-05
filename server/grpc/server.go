@@ -6,6 +6,7 @@ import (
 	"net"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/keepalive"
 
 	"cosmossdk.io/log"
 
@@ -32,10 +33,34 @@ func NewGRPCServer(clientCtx client.Context, app types.Application, cfg config.G
 		maxRecvMsgSize = config.DefaultGRPCMaxRecvMsgSize
 	}
 
+	maxConcurrentStreams := cfg.MaxConcurrentStreams
+	if maxConcurrentStreams == 0 {
+		maxConcurrentStreams = config.DefaultGRPCMaxConcurrentStreams
+	}
+
+	keepaliveTime := cfg.KeepaliveTime
+	if keepaliveTime == 0 {
+		keepaliveTime = config.DefaultGRPCKeepaliveTime
+	}
+
+	keepaliveTimeout := cfg.KeepaliveTimeout
+	if keepaliveTimeout == 0 {
+		keepaliveTimeout = config.DefaultGRPCKeepaliveTimeout
+	}
+
 	grpcSrv := grpc.NewServer(
 		grpc.ForceServerCodec(codec.NewProtoCodec(clientCtx.InterfaceRegistry).GRPCCodec()),
 		grpc.MaxSendMsgSize(maxSendMsgSize),
 		grpc.MaxRecvMsgSize(maxRecvMsgSize),
+		// A client that stops reading responses leaves its streams blocked on
+		// HTTP/2 flow control, where they stay counted against this limit.
+		grpc.MaxConcurrentStreams(maxConcurrentStreams),
+		// Such a client also never acknowledges keepalive pings, so the
+		// connection is closed and its streams released after the timeout.
+		grpc.KeepaliveParams(keepalive.ServerParameters{
+			Time:    keepaliveTime,
+			Timeout: keepaliveTimeout,
+		}),
 	)
 
 	app.RegisterGRPCServer(grpcSrv)

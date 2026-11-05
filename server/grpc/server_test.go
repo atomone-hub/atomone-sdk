@@ -3,12 +3,14 @@ package grpc_test
 import (
 	"context"
 	"fmt"
+	"net"
 	"testing"
 	"time"
 
 	"github.com/jhump/protoreflect/grpcreflect"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
+	"golang.org/x/net/http2"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 
@@ -16,6 +18,7 @@ import (
 	reflectionv1 "github.com/cosmos/cosmos-sdk/client/grpc/reflection"
 	clienttx "github.com/cosmos/cosmos-sdk/client/tx"
 	"github.com/cosmos/cosmos-sdk/codec"
+	"github.com/cosmos/cosmos-sdk/server/config"
 	reflectionv2 "github.com/cosmos/cosmos-sdk/server/grpc/reflection/v2alpha1"
 	"github.com/cosmos/cosmos-sdk/testutil/network"
 	"github.com/cosmos/cosmos-sdk/testutil/testdata"
@@ -71,6 +74,28 @@ func (s *IntegrationTestSuite) TestGRPCServer_TestService() {
 	testRes, err := testClient.Echo(context.Background(), &testdata.EchoRequest{Message: "hello"})
 	s.Require().NoError(err)
 	s.Require().Equal("hello", testRes.Message)
+}
+
+func (s *IntegrationTestSuite) TestGRPCServer_AdvertisesMaxConcurrentStreams() {
+	conn, err := net.DialTimeout("tcp", s.network.Validators[0].AppConfig.GRPC.Address, 5*time.Second)
+	s.Require().NoError(err)
+	defer conn.Close()
+	s.Require().NoError(conn.SetDeadline(time.Now().Add(5 * time.Second)))
+
+	_, err = conn.Write([]byte(http2.ClientPreface))
+	s.Require().NoError(err)
+	framer := http2.NewFramer(conn, conn)
+	s.Require().NoError(framer.WriteSettings())
+
+	frame, err := framer.ReadFrame()
+	s.Require().NoError(err)
+	settings, ok := frame.(*http2.SettingsFrame)
+	s.Require().True(ok, "first server frame is %T, want SETTINGS", frame)
+	s.Require().False(settings.IsAck())
+
+	maxStreams, ok := settings.Value(http2.SettingMaxConcurrentStreams)
+	s.Require().True(ok, "server does not advertise SETTINGS_MAX_CONCURRENT_STREAMS")
+	s.Require().Equal(uint32(config.DefaultGRPCMaxConcurrentStreams), maxStreams)
 }
 
 func (s *IntegrationTestSuite) TestGRPCServer_BankBalance() {

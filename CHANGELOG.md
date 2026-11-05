@@ -44,6 +44,8 @@ Ref: https://keepachangelog.com/en/1.0.0/
 
 ### Improvements
 
+* (server) [#145](https://github.com/atomone-hub/atomone-sdk/pull/145) Bound gRPC concurrent streams per connection and enable server keepalive
+
 ### Bug Fixes
 
 * (x/gov) [#130](https://github.com/atomone-hub/atomone-sdk/pull/130) Cap deposit throttler floors to prevent an EndBlocker Int overflow (halt via a passed params-update proposal)
