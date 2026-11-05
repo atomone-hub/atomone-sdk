@@ -961,10 +961,11 @@ func TestMsgDepositValidatorRewardsPool(t *testing.T) {
 	require.NoError(t, err)
 
 	testCases := []struct {
-		name      string
-		msg       *distrtypes.MsgDepositValidatorRewardsPool
-		expErr    bool
-		expErrMsg string
+		name           string
+		msg            *distrtypes.MsgDepositValidatorRewardsPool
+		expErr         bool
+		expErrMsg      string
+		expOutstanding sdk.DecCoins
 	}{
 		{
 			name: "happy path (staking token)",
@@ -973,6 +974,9 @@ func TestMsgDepositValidatorRewardsPool(t *testing.T) {
 				ValidatorAddress: valAddr1.String(),
 				Amount:           sdk.NewCoins(sdk.NewCoin(bondDenom, math.NewInt(100))),
 			},
+			// Bond denom: delegator's 50% (50 stake) is auto-staked to bonded pool;
+			// only commission (50 stake) remains in outstanding rewards.
+			expOutstanding: sdk.DecCoins{{Denom: bondDenom, Amount: math.LegacyNewDec(50)}},
 		},
 		{
 			name: "happy path (non-staking token)",
@@ -981,6 +985,8 @@ func TestMsgDepositValidatorRewardsPool(t *testing.T) {
 				ValidatorAddress: valAddr1.String(),
 				Amount:           amt,
 			},
+			// Non-bond denom: full amount (commission + delegator share) flows through F1.
+			expOutstanding: sdk.DecCoins{{Denom: "foo", Amount: math.LegacyNewDec(500)}},
 		},
 		{
 			name: "invalid validator",
@@ -1018,11 +1024,10 @@ func TestMsgDepositValidatorRewardsPool(t *testing.T) {
 
 				// check validator outstanding rewards
 				outstandingRewards, _ := f.distrKeeper.GetValidatorOutstandingRewards(f.sdkCtx, val)
-				for _, c := range tc.msg.Amount {
+				for _, c := range tc.expOutstanding {
 					x := outstandingRewards.Rewards.AmountOf(c.Denom)
-					assert.DeepEqual(t, x, math.LegacyNewDecFromInt(c.Amount))
+					assert.DeepEqual(t, x, c.Amount)
 				}
-
 			}
 		})
 	}
