@@ -10,6 +10,9 @@ on:
 
 jobs:
   push:
+    # Pushes to the cosmos BSR module, which we can't publish to. To enable it,
+    # rename the module in proto/buf.yaml and add a BUF_TOKEN secret.
+    if: github.repository == 'cosmos/cosmos-sdk'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
