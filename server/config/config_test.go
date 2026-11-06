@@ -117,6 +117,22 @@ func TestReadConfig(t *testing.T) {
 	require.Equal(t, *cfg, otherCfg)
 }
 
+func TestGRPCConfigMissingKeysUseDefaults(t *testing.T) {
+	appConfigFile := filepath.Join(t.TempDir(), "app.toml")
+	legacy := "[grpc]\nenable = true\naddress = \"localhost:9090\"\n"
+	require.NoError(t, os.WriteFile(appConfigFile, []byte(legacy), 0o600))
+
+	v := viper.New()
+	v.SetConfigFile(appConfigFile)
+	require.NoError(t, v.ReadInConfig())
+	cfg, err := GetConfig(v)
+	require.NoError(t, err)
+
+	require.Equal(t, uint32(DefaultGRPCMaxConcurrentStreams), cfg.GRPC.MaxConcurrentStreams)
+	require.Equal(t, DefaultGRPCKeepaliveTime, cfg.GRPC.KeepaliveTime)
+	require.Equal(t, DefaultGRPCKeepaliveTimeout, cfg.GRPC.KeepaliveTimeout)
+}
+
 func TestIndexEventsWriteRead(t *testing.T) {
 	expected := []string{"key3", "key4"}
 
