@@ -47,11 +47,11 @@ func TestRandomizedGenState(t *testing.T) {
 	dec2, _ := math.LegacyNewDecFromStr("0.200000000000000000")
 	dec3, _ := math.LegacyNewDecFromStr("0.070000000000000000")
 
-	require.Equal(t, uint64(6311520), mintGenesis.Params.BlocksPerYear)
 	require.Equal(t, dec1, mintGenesis.Params.GoalBonded)
 	require.Equal(t, dec2, mintGenesis.Params.InflationMax)
 	require.Equal(t, dec3, mintGenesis.Params.InflationMin)
 	require.Equal(t, "stake", mintGenesis.Params.MintDenom)
+	require.Equal(t, time.Second, mintGenesis.Params.MaxBlockElapsed)
 	require.Equal(t, "0stake", mintGenesis.Minter.BlockProvision(mintGenesis.Params, 5*time.Second).String())
 	require.Equal(t, "0.170000000000000000", mintGenesis.Minter.NextAnnualProvisions(mintGenesis.Params, math.OneInt()).String())
 	require.Equal(t, "0.169999926644441494", mintGenesis.Minter.NextInflationRate(mintGenesis.Params, math.LegacyOneDec(), 5*time.Second).String())

@@ -14,12 +14,6 @@ const (
 	// nanoseconds. Annual provisions and the annual inflation-rate change are
 	// spread over this duration.
 	NanosecondsPerYear int64 = 31_557_600_000_000_000
-
-	// MaxBlockElapsed caps the time a single block can account for when
-	// minting. It bounds what a block whose timestamp is far ahead of the
-	// previous one can mint, whether after a halt or because the proposer set
-	// the time ahead of the wall clock.
-	MaxBlockElapsed = 8 * time.Second
 )
 
 // NewMinter returns a new Minter object with the given inflation and annual
@@ -91,8 +85,12 @@ func (m Minter) NextAnnualProvisions(_ Params, totalSupply math.Int) math.Legacy
 }
 
 // BlockProvision returns the provisions for a block, the share of the annual
-// provisions corresponding to the time elapsed since the previous block.
+// provisions corresponding to the time elapsed since the previous block. A
+// negative elapsed time yields a zero coin.
 func (m Minter) BlockProvision(params Params, elapsed time.Duration) sdk.Coin {
+	if elapsed < 0 {
+		return sdk.NewCoin(params.MintDenom, math.ZeroInt())
+	}
 	provisionAmt := m.AnnualProvisions.MulInt64(elapsed.Nanoseconds()).QuoInt64(NanosecondsPerYear)
 	return sdk.NewCoin(params.MintDenom, provisionAmt.TruncateInt())
 }
