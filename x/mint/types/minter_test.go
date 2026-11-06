@@ -3,6 +3,7 @@ package types
 import (
 	"math/rand"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -11,81 +12,118 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 )
 
-func TestNextInflation(t *testing.T) {
-	minter := DefaultInitialMinter()
+func TestNextInflationRate(t *testing.T) {
 	params := DefaultParams()
-	blocksPerYr := math.LegacyNewDec(int64(params.BlocksPerYear))
+	year := time.Duration(NanosecondsPerYear)
+	day := 24 * time.Hour
 
 	// Governing Mechanism:
-	//    inflationRateChangePerYear = (1- BondedRatio/ GoalBonded) * MaxInflationRateChange
+	//    inflationRateChangePerYear = (1 - BondedRatio/GoalBonded) * InflationRateChange
+	//    step = inflationRateChangePerYear * elapsed / NanosecondsPerYear
 
 	tests := []struct {
-		bondedRatio, setInflation, expChange math.LegacyDec
+		name         string
+		bondedRatio  math.LegacyDec
+		elapsed      time.Duration
+		expInflation math.LegacyDec
 	}{
-		// with 0% bonded atom supply the inflation should increase by InflationRateChange
-		{math.LegacyZeroDec(), math.LegacyNewDecWithPrec(7, 2), params.InflationRateChange.Quo(blocksPerYr)},
-
-		// 100% bonded, starting at 20% inflation and being reduced
-		// (1 - (1/0.67))*(0.13/8667)
 		{
-			math.LegacyOneDec(), math.LegacyNewDecWithPrec(20, 2),
-			math.LegacyOneDec().Sub(math.LegacyOneDec().Quo(params.GoalBonded)).Mul(params.InflationRateChange).Quo(blocksPerYr),
+			name:         "half the goal for a year",
+			bondedRatio:  math.LegacyNewDecWithPrec(335, 3),
+			elapsed:      year,
+			expInflation: math.LegacyNewDecWithPrec(165, 3),
 		},
-
-		// 50% bonded, starting at 10% inflation and being increased
 		{
-			math.LegacyNewDecWithPrec(5, 1), math.LegacyNewDecWithPrec(10, 2),
-			math.LegacyOneDec().Sub(math.LegacyNewDecWithPrec(5, 1).Quo(params.GoalBonded)).Mul(params.InflationRateChange).Quo(blocksPerYr),
+			name:         "half the goal for zero elapsed",
+			bondedRatio:  math.LegacyNewDecWithPrec(335, 3),
+			elapsed:      0,
+			expInflation: math.LegacyNewDecWithPrec(10, 2),
 		},
-
-		// test 7% minimum stop (testing with 100% bonded)
-		{math.LegacyOneDec(), math.LegacyNewDecWithPrec(7, 2), math.LegacyZeroDec()},
-		{math.LegacyOneDec(), math.LegacyNewDecWithPrec(700000001, 10), math.LegacyNewDecWithPrec(-1, 10)},
-
-		// test 20% maximum stop (testing with 0% bonded)
-		{math.LegacyZeroDec(), math.LegacyNewDecWithPrec(20, 2), math.LegacyZeroDec()},
-		{math.LegacyZeroDec(), math.LegacyNewDecWithPrec(1999999999, 10), math.LegacyNewDecWithPrec(1, 10)},
-
-		// perfect balance shouldn't change inflation
-		{math.LegacyNewDecWithPrec(67, 2), math.LegacyNewDecWithPrec(15, 2), math.LegacyZeroDec()},
+		{
+			name:        "half the goal for a day",
+			bondedRatio: math.LegacyNewDecWithPrec(335, 3),
+			elapsed:     day,
+			expInflation: math.LegacyNewDecWithPrec(10, 2).Add(
+				math.LegacyNewDecWithPrec(65, 3).MulInt64(day.Nanoseconds()).QuoInt64(NanosecondsPerYear),
+			),
+		},
+		{
+			name:         "nothing bonded for a year clamps to max",
+			bondedRatio:  math.LegacyZeroDec(),
+			elapsed:      year,
+			expInflation: params.InflationMax,
+		},
+		{
+			name:         "twice the goal for a year clamps to min",
+			bondedRatio:  math.LegacyNewDecWithPrec(134, 2),
+			elapsed:      year,
+			expInflation: params.InflationMin,
+		},
+		{
+			name:         "at goal for a year",
+			bondedRatio:  math.LegacyNewDecWithPrec(67, 2),
+			elapsed:      year,
+			expInflation: math.LegacyNewDecWithPrec(10, 2),
+		},
 	}
-	for i, tc := range tests {
-		minter.Inflation = tc.setInflation
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			minter := InitialMinter(math.LegacyNewDecWithPrec(10, 2))
 
-		inflation := minter.NextInflationRate(params, tc.bondedRatio)
-		diffInflation := inflation.Sub(tc.setInflation)
+			inflation := minter.NextInflationRate(params, tc.bondedRatio, tc.elapsed)
 
-		require.True(t, diffInflation.Equal(tc.expChange),
-			"Test Index: %v\nDiff:  %v\nExpected: %v\n", i, diffInflation, tc.expChange)
+			require.True(t, inflation.Equal(tc.expInflation), "expected %s, got %s", tc.expInflation, inflation)
+		})
 	}
 }
 
 func TestBlockProvision(t *testing.T) {
-	minter := InitialMinter(math.LegacyNewDecWithPrec(1, 1))
 	params := DefaultParams()
-
-	secondsPerYear := int64(60 * 60 * 8766)
+	minter := InitialMinter(math.LegacyNewDecWithPrec(10, 2))
+	minter.AnnualProvisions = math.LegacyNewDec(31_557_600_000_000)
+	year := time.Duration(NanosecondsPerYear)
+	day := 24 * time.Hour
 
 	tests := []struct {
-		annualProvisions int64
-		expProvisions    int64
+		name      string
+		elapsed   time.Duration
+		expAmount int64
 	}{
-		{secondsPerYear / 5, 1},
-		{secondsPerYear/5 + 1, 1},
-		{(secondsPerYear / 5) * 2, 2},
-		{(secondsPerYear / 5) / 2, 0},
+		{"zero", 0, 0},
+		{"5.8 seconds", 5800 * time.Millisecond, 5_800_000},
+		{"one minute", time.Minute, 60_000_000},
+		{"max block elapsed", MaxBlockElapsed, 8_000_000},
+		{"one day", day, 86_400_000_000},
+		{"one year", year, 31_557_600_000_000},
 	}
-	for i, tc := range tests {
-		minter.AnnualProvisions = math.LegacyNewDec(tc.annualProvisions)
-		provisions := minter.BlockProvision(params)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			provision := minter.BlockProvision(params, tc.elapsed)
 
-		expProvisions := sdk.NewCoin(params.MintDenom,
-			math.NewInt(tc.expProvisions))
-
-		require.True(t, expProvisions.IsEqual(provisions),
-			"test: %v\n\tExp: %v\n\tGot: %v\n",
-			i, tc.expProvisions, provisions)
+			require.Equal(t, sdk.NewCoin(params.MintDenom, math.NewInt(tc.expAmount)), provision)
+		})
 	}
+}
+
+func TestBlockProvisionSumsToAnnualProvisions(t *testing.T) {
+	params := DefaultParams()
+	minter := InitialMinter(math.LegacyNewDecWithPrec(10, 2))
+	minter.AnnualProvisions = math.LegacyNewDec(31_557_600_000_000)
+	r := rand.New(rand.NewSource(1))
+
+	const minElapsed, maxElapsed = int64(4 * time.Second), int64(8 * time.Second)
+	sum := math.ZeroInt()
+	totalElapsedNs := int64(0)
+	for totalElapsedNs < NanosecondsPerYear {
+		elapsed := minElapsed + r.Int63n(maxElapsed-minElapsed+1)
+		totalElapsedNs += elapsed
+		sum = sum.Add(minter.BlockProvision(params, time.Duration(elapsed)).Amount)
+	}
+
+	expected := minter.AnnualProvisions.MulInt64(totalElapsedNs).QuoInt64(NanosecondsPerYear)
+	diff := math.LegacyNewDecFromInt(sum).Sub(expected).Abs()
+	require.True(t, diff.LTE(expected.QuoInt64(10_000)),
+		"sum %s differs from expected %s by %s", sum, expected, diff)
 }
 
 // Benchmarking :)
@@ -105,7 +143,7 @@ func BenchmarkBlockProvision(b *testing.B) {
 
 	// run the BlockProvision function b.N times
 	for n := 0; n < b.N; n++ {
-		minter.BlockProvision(params)
+		minter.BlockProvision(params, 6*time.Second)
 	}
 }
 
@@ -119,7 +157,7 @@ func BenchmarkNextInflation(b *testing.B) {
 
 	// run the NextInflationRate function b.N times
 	for n := 0; n < b.N; n++ {
-		minter.NextInflationRate(params, bondedRatio)
+		minter.NextInflationRate(params, bondedRatio, 6*time.Second)
 	}
 }
 

@@ -27,6 +27,7 @@ import (
 	simtestutil "github.com/cosmos/cosmos-sdk/testutil/sims"
 	simtypes "github.com/cosmos/cosmos-sdk/types/simulation"
 	authzkeeper "github.com/cosmos/cosmos-sdk/x/authz/keeper"
+	minttypes "github.com/cosmos/cosmos-sdk/x/mint/types"
 	"github.com/cosmos/cosmos-sdk/x/simulation"
 	simcli "github.com/cosmos/cosmos-sdk/x/simulation/client/cli"
 	slashingtypes "github.com/cosmos/cosmos-sdk/x/slashing/types"
@@ -199,6 +200,7 @@ func TestAppImportExport(t *testing.T) {
 		authzkeeper.StoreKey:   {authzkeeper.GrantQueuePrefix},
 		feegrant.StoreKey:      {feegrant.FeeAllowanceQueueKeyPrefix},
 		slashingtypes.StoreKey: {slashingtypes.ValidatorMissedBlockBitmapKeyPrefix},
+		minttypes.StoreKey:     {minttypes.MinterKey.Bytes()}, // previous_block_time is cleared on export
 	}
 
 	storeKeys := app.GetStoreKeys()
