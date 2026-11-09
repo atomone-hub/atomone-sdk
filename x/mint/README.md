@@ -86,12 +86,17 @@ minting by wrapping a function that matches `InflationCalculationFn`'s signature
 with `mintkeeper.DefaultMintFn`:
 
 ```go
-type InflationCalculationFn func(ctx sdk.Context, minter Minter, params Params, bondedRatio math.LegacyDec) math.LegacyDec
+type InflationCalculationFn func(ctx context.Context, minter Minter, params Params, bondedRatio math.LegacyDec) math.LegacyDec
 
 mintkeeper.NewKeeper(..., mintkeeper.WithMintFn(mintkeeper.DefaultMintFn(customInflationFn)))
 ```
 
-The `ic` argument of `NewAppModule` must be nil.
+The same function can be given as the `ic` argument of `NewAppModule`, or
+supplied as an `InflationCalculationFn` to depinject; both install
+`mintkeeper.DefaultMintFn(ic)`. A custom mint function is set in one place
+only: `NewAppModule` panics when given a non-nil `ic` for a keeper built with
+`WithMintFn`, and depinject panics when both a `MintFn` and an
+`InflationCalculationFn` are supplied.
 
 #### NextInflationRate
 

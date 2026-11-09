@@ -32,15 +32,23 @@ type Keeper struct {
 
 	// mintFn is a function that encompasses all minting logic run in the x/mint begin blocker.
 	mintFn MintFn
+	// customMintFn records that mintFn was set with WithMintFn.
+	customMintFn bool
 }
 
 // InitOption is a functional option applied to the Keeper by NewKeeper.
 type InitOption func(*Keeper)
 
-// WithMintFn sets a custom minting function for the x/mint keeper.
+// WithMintFn sets a custom minting function for the x/mint keeper. It panics
+// on a nil function.
 func WithMintFn(mintFn MintFn) InitOption {
+	if mintFn == nil {
+		panic("x/mint: WithMintFn requires a non-nil mint function")
+	}
+
 	return func(k *Keeper) {
 		k.mintFn = mintFn
+		k.customMintFn = true
 	}
 }
 
@@ -87,6 +95,11 @@ func NewKeeper(
 	}
 
 	return k
+}
+
+// HasCustomMintFn reports whether the mint function was set with WithMintFn.
+func (k Keeper) HasCustomMintFn() bool {
+	return k.customMintFn
 }
 
 // GetAuthority returns the x/mint module's authority.

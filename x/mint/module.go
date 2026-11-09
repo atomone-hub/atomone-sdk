@@ -94,24 +94,28 @@ type AppModule struct {
 	legacySubspace exported.Subspace
 }
 
-// NewAppModule creates a new AppModule object. The InflationCalculationFn
-// argument is unused and must be nil; it is kept so that callers written for
-// the Cosmos SDK signature, such as the ibc-go testing app, keep compiling. A
-// custom minting logic is set with the keeper's WithMintFn option.
+// NewAppModule creates a new AppModule object. A nil ic keeps the mint
+// function of the keeper. A non-nil ic installs DefaultMintFn(ic) as the mint
+// function of the module's copy of the keeper, the one that runs in
+// BeginBlock; it must be nil when the keeper was built with WithMintFn, as a
+// custom mint function is set in one place only.
 func NewAppModule(
 	cdc codec.Codec,
-	keeper keeper.Keeper,
+	k keeper.Keeper,
 	ak types.AccountKeeper,
 	ic types.InflationCalculationFn,
 	ss exported.Subspace,
 ) AppModule {
 	if ic != nil {
-		panic("x/mint: the InflationCalculationFn argument of NewAppModule must be nil; set a custom minting function with mintkeeper.WithMintFn(mintkeeper.DefaultMintFn(fn))")
+		if k.HasCustomMintFn() {
+			panic("x/mint: NewAppModule received an InflationCalculationFn but the keeper already has a mint function set with WithMintFn; set only one of them")
+		}
+		keeper.WithMintFn(keeper.DefaultMintFn(ic))(&k)
 	}
 
 	return AppModule{
 		AppModuleBasic: AppModuleBasic{cdc: cdc},
-		keeper:         keeper,
+		keeper:         k,
 		authKeeper:     ak,
 		legacySubspace: ss,
 	}
@@ -199,7 +203,10 @@ type ModuleInputs struct {
 	Config       *modulev1.Module
 	StoreService store.KVStoreService
 	Cdc          codec.Codec
-	MintFn       keeper.MintFn `optional:"true"`
+	// MintFn replaces the whole minting logic; InflationCalculationFn replaces
+	// the inflation rate logic of the default one. At most one may be supplied.
+	MintFn                 keeper.MintFn                `optional:"true"`
+	InflationCalculationFn types.InflationCalculationFn `optional:"true"`
 
 	// LegacySubspace is used solely for migration of x/params managed parameters
 	LegacySubspace exported.Subspace `optional:"true"`
@@ -228,9 +235,16 @@ func ProvideModule(in ModuleInputs) ModuleOutputs {
 		authority = authtypes.NewModuleAddressOrBech32Address(in.Config.Authority)
 	}
 
+	if in.MintFn != nil && in.InflationCalculationFn != nil {
+		panic("x/mint: MintFn and InflationCalculationFn cannot both be supplied; set only one of them")
+	}
+
 	var opts []keeper.InitOption
-	if in.MintFn != nil {
+	switch {
+	case in.MintFn != nil:
 		opts = append(opts, keeper.WithMintFn(in.MintFn))
+	case in.InflationCalculationFn != nil:
+		opts = append(opts, keeper.WithMintFn(keeper.DefaultMintFn(in.InflationCalculationFn)))
 	}
 
 	k := keeper.NewKeeper(

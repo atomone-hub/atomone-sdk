@@ -151,7 +151,9 @@ func NewSimApp(
 				//
 
 				// For providing a custom minting function for x/mint add here your
-				// custom function that implements the mintkeeper.MintFn type.
+				// custom function that implements the mintkeeper.MintFn type, or a
+				// minttypes.InflationCalculationFn to replace the inflation rate
+				// logic only.
 			),
 		)
 	)

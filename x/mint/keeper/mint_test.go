@@ -46,6 +46,14 @@ func (s *IntegrationTestSuite) TestWithMintFnOverridesDefault() {
 
 	s.Require().NoError(k.MintFn(testCtx.Ctx))
 	s.Require().True(called)
+	s.Require().True(k.HasCustomMintFn())
+	s.Require().False(s.mintKeeper.HasCustomMintFn())
+}
+
+func (s *IntegrationTestSuite) TestWithMintFnRejectsNil() {
+	s.Require().PanicsWithValue("x/mint: WithMintFn requires a non-nil mint function", func() {
+		keeper.WithMintFn(nil)
+	})
 }
 
 func (s *IntegrationTestSuite) TestDefaultMintFnMintsBlockProvision() {
