@@ -39,7 +39,7 @@ func (k Keeper) initializeDelegation(ctx context.Context, val sdk.ValAddress, de
 	// It is stored in the DelegatorStartingInfo `Stake` field.
 	shares := delegation.GetShares()
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
-	return k.SetDelegatorStartingInfo(ctx, val, del, types.NewDelegatorStartingInfo(previousPeriod, shares, uint64(sdkCtx.BlockHeight())))
+	return k.SetDelegatorStartingInfo(ctx, val, del, types.NewDelegatorStartingInfo(previousPeriod, shares, uint64(sdkCtx.BlockHeight()))) // #nosec G115 -- block height is never negative
 }
 
 // calculateDelegationRewardsBetween returns the rewards accrued by a delegation
