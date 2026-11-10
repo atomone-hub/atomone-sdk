@@ -17,10 +17,11 @@ func RegisterLegacyAminoCodec(cdc *codec.LegacyAmino) {
 	legacy.RegisterAminoMsg(cdc, &MsgVoteWeighted{}, "cosmos-sdk/v1/MsgVoteWeighted")
 	legacy.RegisterAminoMsg(cdc, &MsgExecLegacyContent{}, "cosmos-sdk/v1/MsgExecLegacyContent")
 	legacy.RegisterAminoMsg(cdc, &MsgUpdateParams{}, "cosmos-sdk/x/gov/v1/MsgUpdateParams")
-	legacy.RegisterAminoMsg(cdc, &MsgProposeConstitutionAmendment{}, "cosmos-sdk/v1/MsgProposeAmendment")
-	legacy.RegisterAminoMsg(cdc, &MsgProposeLaw{}, "cosmos-sdk/v1/MsgProposeLaw")
+	legacy.RegisterAminoMsg(cdc, &MsgProposeConstitutionAmendment{}, "cosmos-sdk/x/gov/v1/MsgProposeAmendment")
+	legacy.RegisterAminoMsg(cdc, &MsgProposeLaw{}, "cosmos-sdk/x/gov/v1/MsgProposeLaw")
 	legacy.RegisterAminoMsg(cdc, &MsgCreateGovernor{}, "cosmos-sdk/v1/MsgCreateGovernor")
 	legacy.RegisterAminoMsg(cdc, &MsgEditGovernor{}, "cosmos-sdk/v1/MsgEditGovernor")
+	legacy.RegisterAminoMsg(cdc, &MsgUpdateGovernorStatus{}, "cosmos-sdk/v1/MsgUpdateGovernorStatus")
 	legacy.RegisterAminoMsg(cdc, &MsgDelegateGovernor{}, "cosmos-sdk/v1/MsgDelegateGovernor")
 	legacy.RegisterAminoMsg(cdc, &MsgUndelegateGovernor{}, "cosmos-sdk/v1/MsgUndelegateGovernor")
 }
@@ -38,6 +39,7 @@ func RegisterInterfaces(registry codectypes.InterfaceRegistry) {
 		&MsgProposeLaw{},
 		&MsgCreateGovernor{},
 		&MsgEditGovernor{},
+		&MsgUpdateGovernorStatus{},
 		&MsgDelegateGovernor{},
 		&MsgUndelegateGovernor{},
 	)
