@@ -7,6 +7,7 @@ import "gogoproto/gogo.proto";
 import "cosmos/staking/v1beta1/staking.proto";
 import "cosmos_proto/cosmos.proto";
 import "amino/amino.proto";
+import "google/protobuf/timestamp.proto";
 
 // GenesisState defines the staking module's genesis state.
 message GenesisState {
@@ -40,6 +41,26 @@ message GenesisState {
 
   // exported defines a bool to identify whether the chain dealing with exported or initialized genesis.
   bool exported = 8;
+
+  // rotation_index_records limit each validator to one consensus key rotation
+  // per unbonding period. Each record expires at its time.
+  repeated RotationIndexRecord rotation_index_records = 9 [(gogoproto.nullable) = false, (amino.dont_omitempty) = true];
+
+  // rotation_history holds every consensus key rotation, by validator and height.
+  repeated ConsPubKeyRotationHistory rotation_history = 10
+      [(gogoproto.nullable) = false, (amino.dont_omitempty) = true];
+
+  // rotation_queue holds, for each expiry time, the validators whose rotation
+  // index records expire at that time.
+  repeated RotationQueueRecord rotation_queue = 11 [(gogoproto.nullable) = false, (amino.dont_omitempty) = true];
+
+  // rotated_cons_addresses maps each consensus address a validator rotated
+  // away from to the address it rotated to.
+  repeated RotatedConsAddress rotated_cons_addresses = 12 [(gogoproto.nullable) = false, (amino.dont_omitempty) = true];
+
+  // cons_addr_identifiers maps each consensus address a validator rotated to
+  // to the validator's initial consensus address.
+  repeated ConsAddrIdentifier cons_addr_identifiers = 13 [(gogoproto.nullable) = false, (amino.dont_omitempty) = true];
 }
 
 // LastValidatorPower required for validator set update logic.
@@ -52,4 +73,44 @@ message LastValidatorPower {
 
   // power defines the power of the validator.
   int64 power = 2;
+}
+
+// RotationIndexRecord limits a validator to one consensus key rotation until time.
+message RotationIndexRecord {
+  option (gogoproto.equal)           = false;
+  option (gogoproto.goproto_getters) = false;
+
+  // address is the validator operator address bytes.
+  bytes address = 1;
+  // time is when the record expires.
+  google.protobuf.Timestamp time = 2 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
+}
+
+// RotationQueueRecord lists the validators whose rotation index records expire at time.
+message RotationQueueRecord {
+  option (gogoproto.equal)           = false;
+  option (gogoproto.goproto_getters) = false;
+
+  ValAddrsOfRotatedConsKeys val_addrs = 1 [(gogoproto.nullable) = false, (amino.dont_omitempty) = true];
+  google.protobuf.Timestamp time      = 2 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
+}
+
+// RotatedConsAddress maps a consensus address a validator rotated away from to
+// the address it rotated to.
+message RotatedConsAddress {
+  option (gogoproto.equal)           = false;
+  option (gogoproto.goproto_getters) = false;
+
+  bytes old_address = 1;
+  bytes new_address = 2;
+}
+
+// ConsAddrIdentifier maps a consensus address a validator rotated to to the
+// validator's initial consensus address.
+message ConsAddrIdentifier {
+  option (gogoproto.equal)           = false;
+  option (gogoproto.goproto_getters) = false;
+
+  bytes cons_address         = 1;
+  bytes initial_cons_address = 2;
 }

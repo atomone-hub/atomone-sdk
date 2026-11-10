@@ -10,15 +10,19 @@ import (
 	_ "github.com/cosmos/cosmos-sdk/types/tx/amino"
 	_ "github.com/cosmos/gogoproto/gogoproto"
 	proto "github.com/cosmos/gogoproto/proto"
+	github_com_cosmos_gogoproto_types "github.com/cosmos/gogoproto/types"
+	_ "google.golang.org/protobuf/types/known/timestamppb"
 	io "io"
 	math "math"
 	math_bits "math/bits"
+	time "time"
 )
 
 // Reference imports to suppress errors if they are not otherwise used.
 var _ = proto.Marshal
 var _ = fmt.Errorf
 var _ = math.Inf
+var _ = time.Kitchen
 
 // This is a compile-time assertion to ensure that this generated file
 // is compatible with the proto package it is being compiled against.
@@ -46,6 +50,20 @@ type GenesisState struct {
 	Redelegations []Redelegation `protobuf:"bytes,7,rep,name=redelegations,proto3" json:"redelegations"`
 	// exported defines a bool to identify whether the chain dealing with exported or initialized genesis.
 	Exported bool `protobuf:"varint,8,opt,name=exported,proto3" json:"exported,omitempty"`
+	// rotation_index_records limit each validator to one consensus key rotation
+	// per unbonding period. Each record expires at its time.
+	RotationIndexRecords []RotationIndexRecord `protobuf:"bytes,9,rep,name=rotation_index_records,json=rotationIndexRecords,proto3" json:"rotation_index_records"`
+	// rotation_history holds every consensus key rotation, by validator and height.
+	RotationHistory []ConsPubKeyRotationHistory `protobuf:"bytes,10,rep,name=rotation_history,json=rotationHistory,proto3" json:"rotation_history"`
+	// rotation_queue holds, for each expiry time, the validators whose rotation
+	// index records expire at that time.
+	RotationQueue []RotationQueueRecord `protobuf:"bytes,11,rep,name=rotation_queue,json=rotationQueue,proto3" json:"rotation_queue"`
+	// rotated_cons_addresses maps each consensus address a validator rotated
+	// away from to the address it rotated to.
+	RotatedConsAddresses []RotatedConsAddress `protobuf:"bytes,12,rep,name=rotated_cons_addresses,json=rotatedConsAddresses,proto3" json:"rotated_cons_addresses"`
+	// cons_addr_identifiers maps each consensus address a validator rotated to
+	// to the validator's initial consensus address.
+	ConsAddrIdentifiers []ConsAddrIdentifier `protobuf:"bytes,13,rep,name=cons_addr_identifiers,json=consAddrIdentifiers,proto3" json:"cons_addr_identifiers"`
 }
 
 func (m *GenesisState) Reset()         { *m = GenesisState{} }
@@ -130,6 +148,41 @@ func (m *GenesisState) GetExported() bool {
 	return false
 }
 
+func (m *GenesisState) GetRotationIndexRecords() []RotationIndexRecord {
+	if m != nil {
+		return m.RotationIndexRecords
+	}
+	return nil
+}
+
+func (m *GenesisState) GetRotationHistory() []ConsPubKeyRotationHistory {
+	if m != nil {
+		return m.RotationHistory
+	}
+	return nil
+}
+
+func (m *GenesisState) GetRotationQueue() []RotationQueueRecord {
+	if m != nil {
+		return m.RotationQueue
+	}
+	return nil
+}
+
+func (m *GenesisState) GetRotatedConsAddresses() []RotatedConsAddress {
+	if m != nil {
+		return m.RotatedConsAddresses
+	}
+	return nil
+}
+
+func (m *GenesisState) GetConsAddrIdentifiers() []ConsAddrIdentifier {
+	if m != nil {
+		return m.ConsAddrIdentifiers
+	}
+	return nil
+}
+
 // LastValidatorPower required for validator set update logic.
 type LastValidatorPower struct {
 	// address is the address of the validator.
@@ -171,9 +224,173 @@ func (m *LastValidatorPower) XXX_DiscardUnknown() {
 
 var xxx_messageInfo_LastValidatorPower proto.InternalMessageInfo
 
+// RotationIndexRecord limits a validator to one consensus key rotation until time.
+type RotationIndexRecord struct {
+	// address is the validator operator address bytes.
+	Address []byte `protobuf:"bytes,1,opt,name=address,proto3" json:"address,omitempty"`
+	// time is when the record expires.
+	Time time.Time `protobuf:"bytes,2,opt,name=time,proto3,stdtime" json:"time"`
+}
+
+func (m *RotationIndexRecord) Reset()         { *m = RotationIndexRecord{} }
+func (m *RotationIndexRecord) String() string { return proto.CompactTextString(m) }
+func (*RotationIndexRecord) ProtoMessage()    {}
+func (*RotationIndexRecord) Descriptor() ([]byte, []int) {
+	return fileDescriptor_9b3dec8894f2831b, []int{2}
+}
+func (m *RotationIndexRecord) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *RotationIndexRecord) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_RotationIndexRecord.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *RotationIndexRecord) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_RotationIndexRecord.Merge(m, src)
+}
+func (m *RotationIndexRecord) XXX_Size() int {
+	return m.Size()
+}
+func (m *RotationIndexRecord) XXX_DiscardUnknown() {
+	xxx_messageInfo_RotationIndexRecord.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_RotationIndexRecord proto.InternalMessageInfo
+
+// RotationQueueRecord lists the validators whose rotation index records expire at time.
+type RotationQueueRecord struct {
+	ValAddrs ValAddrsOfRotatedConsKeys `protobuf:"bytes,1,opt,name=val_addrs,json=valAddrs,proto3" json:"val_addrs"`
+	Time     time.Time                 `protobuf:"bytes,2,opt,name=time,proto3,stdtime" json:"time"`
+}
+
+func (m *RotationQueueRecord) Reset()         { *m = RotationQueueRecord{} }
+func (m *RotationQueueRecord) String() string { return proto.CompactTextString(m) }
+func (*RotationQueueRecord) ProtoMessage()    {}
+func (*RotationQueueRecord) Descriptor() ([]byte, []int) {
+	return fileDescriptor_9b3dec8894f2831b, []int{3}
+}
+func (m *RotationQueueRecord) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *RotationQueueRecord) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_RotationQueueRecord.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *RotationQueueRecord) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_RotationQueueRecord.Merge(m, src)
+}
+func (m *RotationQueueRecord) XXX_Size() int {
+	return m.Size()
+}
+func (m *RotationQueueRecord) XXX_DiscardUnknown() {
+	xxx_messageInfo_RotationQueueRecord.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_RotationQueueRecord proto.InternalMessageInfo
+
+// RotatedConsAddress maps a consensus address a validator rotated away from to
+// the address it rotated to.
+type RotatedConsAddress struct {
+	OldAddress []byte `protobuf:"bytes,1,opt,name=old_address,json=oldAddress,proto3" json:"old_address,omitempty"`
+	NewAddress []byte `protobuf:"bytes,2,opt,name=new_address,json=newAddress,proto3" json:"new_address,omitempty"`
+}
+
+func (m *RotatedConsAddress) Reset()         { *m = RotatedConsAddress{} }
+func (m *RotatedConsAddress) String() string { return proto.CompactTextString(m) }
+func (*RotatedConsAddress) ProtoMessage()    {}
+func (*RotatedConsAddress) Descriptor() ([]byte, []int) {
+	return fileDescriptor_9b3dec8894f2831b, []int{4}
+}
+func (m *RotatedConsAddress) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *RotatedConsAddress) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_RotatedConsAddress.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *RotatedConsAddress) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_RotatedConsAddress.Merge(m, src)
+}
+func (m *RotatedConsAddress) XXX_Size() int {
+	return m.Size()
+}
+func (m *RotatedConsAddress) XXX_DiscardUnknown() {
+	xxx_messageInfo_RotatedConsAddress.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_RotatedConsAddress proto.InternalMessageInfo
+
+// ConsAddrIdentifier maps a consensus address a validator rotated to to the
+// validator's initial consensus address.
+type ConsAddrIdentifier struct {
+	ConsAddress        []byte `protobuf:"bytes,1,opt,name=cons_address,json=consAddress,proto3" json:"cons_address,omitempty"`
+	InitialConsAddress []byte `protobuf:"bytes,2,opt,name=initial_cons_address,json=initialConsAddress,proto3" json:"initial_cons_address,omitempty"`
+}
+
+func (m *ConsAddrIdentifier) Reset()         { *m = ConsAddrIdentifier{} }
+func (m *ConsAddrIdentifier) String() string { return proto.CompactTextString(m) }
+func (*ConsAddrIdentifier) ProtoMessage()    {}
+func (*ConsAddrIdentifier) Descriptor() ([]byte, []int) {
+	return fileDescriptor_9b3dec8894f2831b, []int{5}
+}
+func (m *ConsAddrIdentifier) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *ConsAddrIdentifier) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_ConsAddrIdentifier.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *ConsAddrIdentifier) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_ConsAddrIdentifier.Merge(m, src)
+}
+func (m *ConsAddrIdentifier) XXX_Size() int {
+	return m.Size()
+}
+func (m *ConsAddrIdentifier) XXX_DiscardUnknown() {
+	xxx_messageInfo_ConsAddrIdentifier.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_ConsAddrIdentifier proto.InternalMessageInfo
+
 func init() {
 	proto.RegisterType((*GenesisState)(nil), "cosmos.staking.v1beta1.GenesisState")
 	proto.RegisterType((*LastValidatorPower)(nil), "cosmos.staking.v1beta1.LastValidatorPower")
+	proto.RegisterType((*RotationIndexRecord)(nil), "cosmos.staking.v1beta1.RotationIndexRecord")
+	proto.RegisterType((*RotationQueueRecord)(nil), "cosmos.staking.v1beta1.RotationQueueRecord")
+	proto.RegisterType((*RotatedConsAddress)(nil), "cosmos.staking.v1beta1.RotatedConsAddress")
+	proto.RegisterType((*ConsAddrIdentifier)(nil), "cosmos.staking.v1beta1.ConsAddrIdentifier")
 }
 
 func init() {
@@ -181,40 +398,60 @@ func init() {
 }
 
 var fileDescriptor_9b3dec8894f2831b = []byte{
-	// 513 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x74, 0x93, 0x31, 0x6f, 0xd3, 0x40,
-	0x18, 0x86, 0x6d, 0x4a, 0xd2, 0xf4, 0x52, 0x10, 0x1c, 0x09, 0x32, 0x19, 0x9c, 0x10, 0x75, 0x88,
-	0x0a, 0xb1, 0x69, 0xd8, 0xd8, 0x1a, 0x21, 0x50, 0xa5, 0x4a, 0x54, 0x2e, 0x65, 0xe8, 0x12, 0x5d,
-	0xea, 0x93, 0x73, 0x8a, 0x7d, 0x67, 0xf9, 0xbe, 0x94, 0xf2, 0x0f, 0x18, 0xd9, 0x58, 0x3b, 0x32,
-	0x32, 0xf4, 0x47, 0x74, 0xac, 0x3a, 0x21, 0x86, 0x0a, 0x25, 0x03, 0xfc, 0x0c, 0xe4, 0x3b, 0xc7,
-	0x18, 0xa5, 0x5e, 0x92, 0x38, 0xdf, 0xf3, 0x3e, 0xef, 0x27, 0xf9, 0x0e, 0x6d, 0x9d, 0x08, 0x19,
-	0x09, 0xe9, 0x4a, 0x20, 0x53, 0xc6, 0x03, 0xf7, 0x74, 0x67, 0x4c, 0x81, 0xec, 0xb8, 0x01, 0xe5,
-	0x54, 0x32, 0xe9, 0xc4, 0x89, 0x00, 0x81, 0x1f, 0x6b, 0xca, 0xc9, 0x28, 0x27, 0xa3, 0x5a, 0x8d,
-	0x40, 0x04, 0x42, 0x21, 0x6e, 0xfa, 0x4b, 0xd3, 0xad, 0x32, 0xe7, 0x32, 0xad, 0xa9, 0x27, 0x9a,
-	0x1a, 0xe9, 0x78, 0x56, 0xa0, 0x47, 0x0f, 0x49, 0xc4, 0xb8, 0x70, 0xd5, 0xa7, 0xfe, 0xab, 0xfb,
-	0xb5, 0x82, 0x36, 0xdf, 0xea, 0x9d, 0x0e, 0x81, 0x00, 0xc5, 0xbb, 0xa8, 0x1a, 0x93, 0x84, 0x44,
-	0xd2, 0x32, 0x3b, 0x66, 0xaf, 0x3e, 0xb0, 0x9d, 0xdb, 0x77, 0x74, 0x0e, 0x14, 0x35, 0xdc, 0xb8,
-	0xbc, 0x69, 0x1b, 0xdf, 0x7e, 0x7f, 0xdf, 0x36, 0xbd, 0x2c, 0x88, 0x8f, 0xd1, 0x83, 0x90, 0x48,
-	0x18, 0x81, 0x00, 0x12, 0x8e, 0x62, 0xf1, 0x91, 0x26, 0xd6, 0x9d, 0x8e, 0xd9, 0xdb, 0x1c, 0xbe,
-	0x48, 0xe1, 0x9f, 0x37, 0xed, 0xa6, 0x76, 0x4a, 0x7f, 0xea, 0x30, 0xe1, 0x46, 0x04, 0x26, 0xce,
-	0x1e, 0x87, 0xeb, 0x8b, 0x3e, 0xca, 0xca, 0xf6, 0x38, 0x68, 0xe7, 0xfd, 0xd4, 0xf4, 0x3e, 0x15,
-	0x1d, 0xa4, 0x1e, 0xcc, 0x50, 0x53, 0xb9, 0x4f, 0x49, 0xc8, 0x7c, 0x02, 0x22, 0xd1, 0x7e, 0x69,
-	0xad, 0x75, 0xd6, 0x7a, 0xf5, 0xc1, 0x76, 0xd9, 0xb6, 0xfb, 0x44, 0xc2, 0x87, 0x65, 0x46, 0xa9,
-	0x8a, 0x9b, 0x3f, 0x0a, 0x57, 0xc6, 0x12, 0xef, 0x23, 0x94, 0xb7, 0x48, 0xeb, 0xae, 0xf2, 0x3f,
-	0x2d, 0xf3, 0xe7, 0xe1, 0xa2, 0xb6, 0x90, 0xc7, 0xef, 0x50, 0xdd, 0xa7, 0x21, 0x0d, 0x08, 0x30,
-	0xc1, 0xa5, 0x55, 0x51, 0xba, 0x6e, 0x99, 0xee, 0x75, 0x8e, 0x16, 0x7d, 0x45, 0x03, 0x9e, 0xa2,
-	0xe6, 0x8c, 0x8f, 0x05, 0xf7, 0x19, 0x0f, 0x46, 0x45, 0x75, 0x55, 0xa9, 0x9f, 0x95, 0xa9, 0x8f,
-	0x96, 0xa1, 0xdb, 0x3b, 0x1a, 0xb3, 0xd5, 0xb9, 0xc4, 0x47, 0xe8, 0x5e, 0x42, 0x8b, 0x25, 0xeb,
-	0xaa, 0x64, 0xab, 0xac, 0xc4, 0x2b, 0xc0, 0x45, 0xfb, 0xff, 0x16, 0xdc, 0x42, 0x35, 0x7a, 0x16,
-	0x8b, 0x04, 0xa8, 0x6f, 0xd5, 0x3a, 0x66, 0xaf, 0xe6, 0xe5, 0xcf, 0xdd, 0x09, 0xc2, 0xab, 0x2f,
-	0x0d, 0x0f, 0xd0, 0x3a, 0xf1, 0xfd, 0x84, 0x4a, 0x7d, 0x3e, 0x37, 0x86, 0xd6, 0xf5, 0x45, 0xbf,
-	0x91, 0x6d, 0xb1, 0xab, 0x27, 0x87, 0x90, 0x30, 0x1e, 0x78, 0x4b, 0x10, 0x37, 0x50, 0xe5, 0xdf,
-	0x21, 0x5c, 0xf3, 0xf4, 0xc3, 0xab, 0xda, 0xe7, 0xf3, 0xb6, 0xf1, 0xe7, 0xbc, 0x6d, 0x0c, 0xdf,
-	0x5c, 0xce, 0x6d, 0xf3, 0x6a, 0x6e, 0x9b, 0xbf, 0xe6, 0xb6, 0xf9, 0x65, 0x61, 0x1b, 0x57, 0x0b,
-	0xdb, 0xf8, 0xb1, 0xb0, 0x8d, 0xe3, 0xe7, 0x01, 0x83, 0xc9, 0x6c, 0xec, 0x9c, 0x88, 0x28, 0xbb,
-	0x49, 0xd9, 0x57, 0x5f, 0xfa, 0x53, 0xf7, 0x2c, 0xbf, 0x89, 0xf0, 0x29, 0xa6, 0x72, 0x5c, 0x55,
-	0x57, 0xea, 0xe5, 0xdf, 0x00, 0x00, 0x00, 0xff, 0xff, 0x57, 0x29, 0x7a, 0x5e, 0xfc, 0x03, 0x00,
-	0x00,
+	// 838 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xac, 0x55, 0x4f, 0x6f, 0x1b, 0x45,
+	0x14, 0xf7, 0x36, 0x6d, 0x6a, 0x8f, 0x9d, 0x52, 0xa6, 0x4e, 0xb5, 0xf8, 0x60, 0xbb, 0x56, 0x0f,
+	0x56, 0x21, 0xbb, 0xb5, 0xb9, 0x20, 0x6e, 0x35, 0x08, 0xb0, 0x5a, 0xa9, 0x61, 0xdb, 0x22, 0x51,
+	0x09, 0x2d, 0x63, 0xef, 0x64, 0x3d, 0xf2, 0x7a, 0xc6, 0xec, 0x8c, 0x9d, 0xf8, 0x1b, 0x70, 0xec,
+	0x47, 0xe8, 0x05, 0x89, 0x23, 0x87, 0x7c, 0x88, 0x1c, 0xa3, 0x9c, 0x10, 0x87, 0x80, 0x92, 0x03,
+	0x7c, 0x0c, 0xb4, 0x33, 0xb3, 0xeb, 0x59, 0x6d, 0x6c, 0x71, 0xe0, 0x62, 0x7b, 0xfd, 0x7e, 0x7f,
+	0xde, 0x7b, 0x33, 0xef, 0x2d, 0x78, 0x3c, 0x66, 0x7c, 0xc6, 0xb8, 0xcb, 0x05, 0x9a, 0x12, 0x1a,
+	0xba, 0xcb, 0xde, 0x08, 0x0b, 0xd4, 0x73, 0x43, 0x4c, 0x31, 0x27, 0xdc, 0x99, 0xc7, 0x4c, 0x30,
+	0xf8, 0x50, 0xa1, 0x1c, 0x8d, 0x72, 0x34, 0xaa, 0x51, 0x0f, 0x59, 0xc8, 0x24, 0xc4, 0x4d, 0x7e,
+	0x29, 0x74, 0x63, 0x93, 0x66, 0xca, 0x56, 0xa8, 0x8f, 0x14, 0xca, 0x57, 0x74, 0x6d, 0xa0, 0x42,
+	0x1f, 0xa2, 0x19, 0xa1, 0xcc, 0x95, 0x9f, 0xfa, 0xaf, 0x56, 0xc8, 0x58, 0x18, 0x61, 0x57, 0x3e,
+	0x8d, 0x16, 0x47, 0xae, 0x20, 0x33, 0xcc, 0x05, 0x9a, 0xcd, 0x15, 0xa0, 0xf3, 0x4b, 0x05, 0xd4,
+	0xbe, 0x56, 0x49, 0xbf, 0x12, 0x48, 0x60, 0xf8, 0x0c, 0xec, 0xce, 0x51, 0x8c, 0x66, 0xdc, 0xb6,
+	0xda, 0x56, 0xb7, 0xda, 0x6f, 0x3a, 0x37, 0x17, 0xe1, 0x1c, 0x4a, 0xd4, 0xa0, 0x72, 0x76, 0xd9,
+	0x2a, 0xfd, 0xfa, 0xf7, 0x6f, 0x4f, 0x2c, 0x4f, 0x13, 0xe1, 0x5b, 0x70, 0x3f, 0x42, 0x5c, 0xf8,
+	0x82, 0x09, 0x14, 0xf9, 0x73, 0x76, 0x8c, 0x63, 0xfb, 0x56, 0xdb, 0xea, 0xd6, 0x06, 0x4f, 0x13,
+	0xf0, 0x1f, 0x97, 0xad, 0x7d, 0xa5, 0xc9, 0x83, 0xa9, 0x43, 0x98, 0x3b, 0x43, 0x62, 0xe2, 0x0c,
+	0xa9, 0xb8, 0x38, 0x3d, 0x00, 0xda, 0x6c, 0x48, 0x85, 0xd2, 0xbc, 0x97, 0x28, 0xbd, 0x4e, 0x84,
+	0x0e, 0x13, 0x1d, 0x48, 0xc0, 0xbe, 0xd4, 0x5e, 0xa2, 0x88, 0x04, 0x48, 0xb0, 0x58, 0xe9, 0x73,
+	0x7b, 0xa7, 0xbd, 0xd3, 0xad, 0xf6, 0x9f, 0x6c, 0xca, 0xf6, 0x05, 0xe2, 0xe2, 0xbb, 0x94, 0x23,
+	0xa5, 0xcc, 0xcc, 0x1f, 0x44, 0x85, 0x30, 0x87, 0x2f, 0x00, 0xc8, 0x5c, 0xb8, 0x7d, 0x5b, 0xea,
+	0x3f, 0xda, 0xa4, 0x9f, 0x91, 0x4d, 0x59, 0x83, 0x0f, 0x5f, 0x82, 0x6a, 0x80, 0x23, 0x1c, 0x22,
+	0x41, 0x18, 0xe5, 0xf6, 0x1d, 0x29, 0xd7, 0xd9, 0x24, 0xf7, 0x65, 0x06, 0x35, 0xf5, 0x4c, 0x05,
+	0x38, 0x05, 0xfb, 0x0b, 0x3a, 0x62, 0x34, 0x20, 0x34, 0xf4, 0x4d, 0xe9, 0x5d, 0x29, 0xfd, 0xf1,
+	0x26, 0xe9, 0x37, 0x29, 0xe9, 0x66, 0x8f, 0xfa, 0xa2, 0x18, 0xe7, 0xf0, 0x0d, 0xd8, 0x8b, 0xb1,
+	0x69, 0x72, 0x57, 0x9a, 0x3c, 0xde, 0x64, 0xe2, 0x19, 0x60, 0x53, 0x3d, 0xaf, 0x02, 0x1b, 0xa0,
+	0x8c, 0x4f, 0xe6, 0x2c, 0x16, 0x38, 0xb0, 0xcb, 0x6d, 0xab, 0x5b, 0xf6, 0xb2, 0x67, 0x18, 0x81,
+	0x87, 0x31, 0x13, 0x12, 0xe8, 0x13, 0x1a, 0xe0, 0x13, 0x3f, 0xc6, 0x63, 0x16, 0x07, 0xdc, 0xae,
+	0x6c, 0x2f, 0xd0, 0xd3, 0xac, 0x61, 0x42, 0xf2, 0x24, 0x27, 0x57, 0x60, 0x5c, 0x8c, 0x73, 0x18,
+	0x82, 0xfb, 0x99, 0xdb, 0x84, 0x70, 0xc1, 0xe2, 0x95, 0x0d, 0xa4, 0x4f, 0x6f, 0x93, 0xcf, 0x17,
+	0x8c, 0xf2, 0xc3, 0xc5, 0xe8, 0x39, 0x5e, 0xa5, 0x8e, 0xdf, 0x28, 0xa2, 0xe9, 0xf6, 0x41, 0x9c,
+	0x8f, 0xc1, 0x1f, 0xc0, 0xbd, 0xcc, 0xe8, 0xa7, 0x05, 0x5e, 0x60, 0xbb, 0xfa, 0xdf, 0xca, 0xf9,
+	0x36, 0x01, 0x17, 0xcb, 0xd9, 0x8b, 0xcd, 0x38, 0x9c, 0xea, 0xae, 0xe1, 0xc0, 0x1f, 0x33, 0xca,
+	0x7d, 0x14, 0x04, 0x31, 0xe6, 0x1c, 0x73, 0xbb, 0xb6, 0x7d, 0x40, 0x3c, 0xc5, 0x4a, 0x8a, 0x7a,
+	0xa6, 0x38, 0xc5, 0xa6, 0xe5, 0xc2, 0x98, 0x27, 0xc3, 0x98, 0x99, 0xf8, 0x24, 0xc0, 0x54, 0x90,
+	0x23, 0x92, 0x0c, 0xe3, 0xde, 0x76, 0xaf, 0x54, 0x65, 0x98, 0x51, 0x72, 0xc3, 0x38, 0x2e, 0x84,
+	0x79, 0x67, 0x02, 0x60, 0x71, 0x84, 0x61, 0x1f, 0xdc, 0xd5, 0x05, 0xca, 0x6d, 0x55, 0x19, 0xd8,
+	0x17, 0xa7, 0x07, 0x75, 0xed, 0xaa, 0xf3, 0x7c, 0x25, 0x62, 0x42, 0x43, 0x2f, 0x05, 0xc2, 0x3a,
+	0xb8, 0xb3, 0x5e, 0x49, 0x3b, 0x9e, 0x7a, 0xf8, 0xbc, 0xfc, 0xf3, 0xfb, 0x56, 0xe9, 0x9f, 0xf7,
+	0xad, 0x52, 0x87, 0x83, 0x07, 0x37, 0xdc, 0x20, 0x68, 0xe7, 0xad, 0x6a, 0x6b, 0xc1, 0xcf, 0xc0,
+	0xed, 0x64, 0xab, 0x4a, 0xbd, 0x6a, 0xbf, 0xe1, 0xa8, 0x95, 0xeb, 0xa4, 0x2b, 0xd7, 0x79, 0x9d,
+	0xae, 0xdc, 0x41, 0x39, 0x29, 0xf2, 0xdd, 0x9f, 0x2d, 0xcb, 0x93, 0x0c, 0xc3, 0xf4, 0xd4, 0x5a,
+	0xbb, 0x1a, 0x07, 0x0d, 0xbf, 0x07, 0x95, 0x25, 0x8a, 0x64, 0x83, 0xd3, 0x85, 0xdc, 0xdb, 0xb2,
+	0x82, 0x92, 0x92, 0xf9, 0xcb, 0x23, 0xe3, 0x2c, 0x9f, 0xe3, 0x55, 0xee, 0x20, 0xcb, 0x4b, 0x8d,
+	0xfa, 0x5f, 0xd2, 0xfe, 0x11, 0xc0, 0xe2, 0xbd, 0x81, 0x2d, 0x50, 0x65, 0x51, 0xe0, 0xe7, 0xdb,
+	0x05, 0x58, 0x14, 0x18, 0x00, 0x8a, 0x8f, 0x33, 0xc0, 0x2d, 0x05, 0xa0, 0xf8, 0x58, 0x03, 0x72,
+	0xa7, 0x01, 0x8b, 0xb7, 0x05, 0x3e, 0x02, 0x35, 0xf3, 0x76, 0x6b, 0x8b, 0xea, 0xd8, 0x48, 0xe2,
+	0x29, 0xa8, 0x13, 0x4a, 0x04, 0x41, 0x51, 0x6e, 0x10, 0xb4, 0x19, 0xd4, 0x31, 0x23, 0xed, 0xb5,
+	0xe9, 0xe0, 0xab, 0xb3, 0xab, 0xa6, 0x75, 0x7e, 0xd5, 0xb4, 0xfe, 0xba, 0x6a, 0x5a, 0xef, 0xae,
+	0x9b, 0xa5, 0xf3, 0xeb, 0x66, 0xe9, 0xf7, 0xeb, 0x66, 0xe9, 0xed, 0x27, 0x21, 0x11, 0x93, 0xc5,
+	0xc8, 0x19, 0xb3, 0x99, 0x7e, 0xf7, 0xea, 0xaf, 0x03, 0x1e, 0x4c, 0xdd, 0x93, 0xec, 0xdd, 0x2d,
+	0x56, 0x73, 0xcc, 0x47, 0xbb, 0xb2, 0x99, 0x9f, 0xfe, 0x1b, 0x00, 0x00, 0xff, 0xff, 0x83, 0x1d,
+	0x02, 0x81, 0x2e, 0x08, 0x00, 0x00,
 }
 
 func (m *GenesisState) Marshal() (dAtA []byte, err error) {
@@ -237,6 +474,76 @@ func (m *GenesisState) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
+	if len(m.ConsAddrIdentifiers) > 0 {
+		for iNdEx := len(m.ConsAddrIdentifiers) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.ConsAddrIdentifiers[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintGenesis(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0x6a
+		}
+	}
+	if len(m.RotatedConsAddresses) > 0 {
+		for iNdEx := len(m.RotatedConsAddresses) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.RotatedConsAddresses[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintGenesis(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0x62
+		}
+	}
+	if len(m.RotationQueue) > 0 {
+		for iNdEx := len(m.RotationQueue) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.RotationQueue[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintGenesis(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0x5a
+		}
+	}
+	if len(m.RotationHistory) > 0 {
+		for iNdEx := len(m.RotationHistory) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.RotationHistory[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintGenesis(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0x52
+		}
+	}
+	if len(m.RotationIndexRecords) > 0 {
+		for iNdEx := len(m.RotationIndexRecords) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.RotationIndexRecords[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintGenesis(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0x4a
+		}
+	}
 	if m.Exported {
 		i--
 		if m.Exported {
@@ -375,6 +682,159 @@ func (m *LastValidatorPower) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
+func (m *RotationIndexRecord) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *RotationIndexRecord) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *RotationIndexRecord) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	n2, err2 := github_com_cosmos_gogoproto_types.StdTimeMarshalTo(m.Time, dAtA[i-github_com_cosmos_gogoproto_types.SizeOfStdTime(m.Time):])
+	if err2 != nil {
+		return 0, err2
+	}
+	i -= n2
+	i = encodeVarintGenesis(dAtA, i, uint64(n2))
+	i--
+	dAtA[i] = 0x12
+	if len(m.Address) > 0 {
+		i -= len(m.Address)
+		copy(dAtA[i:], m.Address)
+		i = encodeVarintGenesis(dAtA, i, uint64(len(m.Address)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *RotationQueueRecord) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *RotationQueueRecord) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *RotationQueueRecord) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	n3, err3 := github_com_cosmos_gogoproto_types.StdTimeMarshalTo(m.Time, dAtA[i-github_com_cosmos_gogoproto_types.SizeOfStdTime(m.Time):])
+	if err3 != nil {
+		return 0, err3
+	}
+	i -= n3
+	i = encodeVarintGenesis(dAtA, i, uint64(n3))
+	i--
+	dAtA[i] = 0x12
+	{
+		size, err := m.ValAddrs.MarshalToSizedBuffer(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = encodeVarintGenesis(dAtA, i, uint64(size))
+	}
+	i--
+	dAtA[i] = 0xa
+	return len(dAtA) - i, nil
+}
+
+func (m *RotatedConsAddress) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *RotatedConsAddress) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *RotatedConsAddress) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if len(m.NewAddress) > 0 {
+		i -= len(m.NewAddress)
+		copy(dAtA[i:], m.NewAddress)
+		i = encodeVarintGenesis(dAtA, i, uint64(len(m.NewAddress)))
+		i--
+		dAtA[i] = 0x12
+	}
+	if len(m.OldAddress) > 0 {
+		i -= len(m.OldAddress)
+		copy(dAtA[i:], m.OldAddress)
+		i = encodeVarintGenesis(dAtA, i, uint64(len(m.OldAddress)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *ConsAddrIdentifier) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *ConsAddrIdentifier) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *ConsAddrIdentifier) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if len(m.InitialConsAddress) > 0 {
+		i -= len(m.InitialConsAddress)
+		copy(dAtA[i:], m.InitialConsAddress)
+		i = encodeVarintGenesis(dAtA, i, uint64(len(m.InitialConsAddress)))
+		i--
+		dAtA[i] = 0x12
+	}
+	if len(m.ConsAddress) > 0 {
+		i -= len(m.ConsAddress)
+		copy(dAtA[i:], m.ConsAddress)
+		i = encodeVarintGenesis(dAtA, i, uint64(len(m.ConsAddress)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
 func encodeVarintGenesis(dAtA []byte, offset int, v uint64) int {
 	offset -= sovGenesis(v)
 	base := offset
@@ -429,6 +889,36 @@ func (m *GenesisState) Size() (n int) {
 	if m.Exported {
 		n += 2
 	}
+	if len(m.RotationIndexRecords) > 0 {
+		for _, e := range m.RotationIndexRecords {
+			l = e.Size()
+			n += 1 + l + sovGenesis(uint64(l))
+		}
+	}
+	if len(m.RotationHistory) > 0 {
+		for _, e := range m.RotationHistory {
+			l = e.Size()
+			n += 1 + l + sovGenesis(uint64(l))
+		}
+	}
+	if len(m.RotationQueue) > 0 {
+		for _, e := range m.RotationQueue {
+			l = e.Size()
+			n += 1 + l + sovGenesis(uint64(l))
+		}
+	}
+	if len(m.RotatedConsAddresses) > 0 {
+		for _, e := range m.RotatedConsAddresses {
+			l = e.Size()
+			n += 1 + l + sovGenesis(uint64(l))
+		}
+	}
+	if len(m.ConsAddrIdentifiers) > 0 {
+		for _, e := range m.ConsAddrIdentifiers {
+			l = e.Size()
+			n += 1 + l + sovGenesis(uint64(l))
+		}
+	}
 	return n
 }
 
@@ -444,6 +934,68 @@ func (m *LastValidatorPower) Size() (n int) {
 	}
 	if m.Power != 0 {
 		n += 1 + sovGenesis(uint64(m.Power))
+	}
+	return n
+}
+
+func (m *RotationIndexRecord) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.Address)
+	if l > 0 {
+		n += 1 + l + sovGenesis(uint64(l))
+	}
+	l = github_com_cosmos_gogoproto_types.SizeOfStdTime(m.Time)
+	n += 1 + l + sovGenesis(uint64(l))
+	return n
+}
+
+func (m *RotationQueueRecord) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = m.ValAddrs.Size()
+	n += 1 + l + sovGenesis(uint64(l))
+	l = github_com_cosmos_gogoproto_types.SizeOfStdTime(m.Time)
+	n += 1 + l + sovGenesis(uint64(l))
+	return n
+}
+
+func (m *RotatedConsAddress) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.OldAddress)
+	if l > 0 {
+		n += 1 + l + sovGenesis(uint64(l))
+	}
+	l = len(m.NewAddress)
+	if l > 0 {
+		n += 1 + l + sovGenesis(uint64(l))
+	}
+	return n
+}
+
+func (m *ConsAddrIdentifier) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.ConsAddress)
+	if l > 0 {
+		n += 1 + l + sovGenesis(uint64(l))
+	}
+	l = len(m.InitialConsAddress)
+	if l > 0 {
+		n += 1 + l + sovGenesis(uint64(l))
 	}
 	return n
 }
@@ -739,6 +1291,176 @@ func (m *GenesisState) Unmarshal(dAtA []byte) error {
 				}
 			}
 			m.Exported = bool(v != 0)
+		case 9:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field RotationIndexRecords", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowGenesis
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthGenesis
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthGenesis
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.RotationIndexRecords = append(m.RotationIndexRecords, RotationIndexRecord{})
+			if err := m.RotationIndexRecords[len(m.RotationIndexRecords)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 10:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field RotationHistory", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowGenesis
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthGenesis
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthGenesis
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.RotationHistory = append(m.RotationHistory, ConsPubKeyRotationHistory{})
+			if err := m.RotationHistory[len(m.RotationHistory)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 11:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field RotationQueue", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowGenesis
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthGenesis
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthGenesis
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.RotationQueue = append(m.RotationQueue, RotationQueueRecord{})
+			if err := m.RotationQueue[len(m.RotationQueue)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 12:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field RotatedConsAddresses", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowGenesis
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthGenesis
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthGenesis
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.RotatedConsAddresses = append(m.RotatedConsAddresses, RotatedConsAddress{})
+			if err := m.RotatedConsAddresses[len(m.RotatedConsAddresses)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 13:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ConsAddrIdentifiers", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowGenesis
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthGenesis
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthGenesis
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.ConsAddrIdentifiers = append(m.ConsAddrIdentifiers, ConsAddrIdentifier{})
+			if err := m.ConsAddrIdentifiers[len(m.ConsAddrIdentifiers)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := skipGenesis(dAtA[iNdEx:])
@@ -840,6 +1562,475 @@ func (m *LastValidatorPower) Unmarshal(dAtA []byte) error {
 					break
 				}
 			}
+		default:
+			iNdEx = preIndex
+			skippy, err := skipGenesis(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return ErrInvalidLengthGenesis
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *RotationIndexRecord) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowGenesis
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: RotationIndexRecord: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: RotationIndexRecord: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Address", wireType)
+			}
+			var byteLen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowGenesis
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				byteLen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if byteLen < 0 {
+				return ErrInvalidLengthGenesis
+			}
+			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return ErrInvalidLengthGenesis
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Address = append(m.Address[:0], dAtA[iNdEx:postIndex]...)
+			if m.Address == nil {
+				m.Address = []byte{}
+			}
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Time", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowGenesis
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthGenesis
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthGenesis
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if err := github_com_cosmos_gogoproto_types.StdTimeUnmarshal(&m.Time, dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipGenesis(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return ErrInvalidLengthGenesis
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *RotationQueueRecord) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowGenesis
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: RotationQueueRecord: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: RotationQueueRecord: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ValAddrs", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowGenesis
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthGenesis
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthGenesis
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if err := m.ValAddrs.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Time", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowGenesis
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthGenesis
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthGenesis
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if err := github_com_cosmos_gogoproto_types.StdTimeUnmarshal(&m.Time, dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipGenesis(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return ErrInvalidLengthGenesis
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *RotatedConsAddress) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowGenesis
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: RotatedConsAddress: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: RotatedConsAddress: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field OldAddress", wireType)
+			}
+			var byteLen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowGenesis
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				byteLen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if byteLen < 0 {
+				return ErrInvalidLengthGenesis
+			}
+			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return ErrInvalidLengthGenesis
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.OldAddress = append(m.OldAddress[:0], dAtA[iNdEx:postIndex]...)
+			if m.OldAddress == nil {
+				m.OldAddress = []byte{}
+			}
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field NewAddress", wireType)
+			}
+			var byteLen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowGenesis
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				byteLen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if byteLen < 0 {
+				return ErrInvalidLengthGenesis
+			}
+			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return ErrInvalidLengthGenesis
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.NewAddress = append(m.NewAddress[:0], dAtA[iNdEx:postIndex]...)
+			if m.NewAddress == nil {
+				m.NewAddress = []byte{}
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipGenesis(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return ErrInvalidLengthGenesis
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *ConsAddrIdentifier) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowGenesis
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: ConsAddrIdentifier: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: ConsAddrIdentifier: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ConsAddress", wireType)
+			}
+			var byteLen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowGenesis
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				byteLen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if byteLen < 0 {
+				return ErrInvalidLengthGenesis
+			}
+			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return ErrInvalidLengthGenesis
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.ConsAddress = append(m.ConsAddress[:0], dAtA[iNdEx:postIndex]...)
+			if m.ConsAddress == nil {
+				m.ConsAddress = []byte{}
+			}
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field InitialConsAddress", wireType)
+			}
+			var byteLen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowGenesis
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				byteLen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if byteLen < 0 {
+				return ErrInvalidLengthGenesis
+			}
+			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return ErrInvalidLengthGenesis
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.InitialConsAddress = append(m.InitialConsAddress[:0], dAtA[iNdEx:postIndex]...)
+			if m.InitialConsAddress == nil {
+				m.InitialConsAddress = []byte{}
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := skipGenesis(dAtA[iNdEx:])
