@@ -52,17 +52,17 @@ func (k Keeper) calculateDelegationRewardsBetween(ctx context.Context, val staki
 ) (sdk.DecCoins, error) {
 	// sanity check
 	if startingPeriod > endingPeriod {
-		panic("startingPeriod cannot be greater than endingPeriod")
+		return sdk.DecCoins{}, fmt.Errorf("startingPeriod %d cannot be greater than endingPeriod %d", startingPeriod, endingPeriod)
 	}
 
 	// sanity check
 	if shares.IsNegative() {
-		panic("shares should not be negative")
+		return sdk.DecCoins{}, fmt.Errorf("shares should not be negative: %s", shares)
 	}
 
 	valBz, err := k.stakingKeeper.ValidatorAddressCodec().StringToBytes(val.GetOperator())
 	if err != nil {
-		panic(err)
+		return sdk.DecCoins{}, err
 	}
 
 	// rewards = (ratio_at_ending - ratio_at_starting) × delegator_shares
@@ -78,7 +78,7 @@ func (k Keeper) calculateDelegationRewardsBetween(ctx context.Context, val staki
 
 	difference := ending.CumulativeRewardRatio.Sub(starting.CumulativeRewardRatio)
 	if difference.IsAnyNegative() {
-		panic("negative rewards should not be possible")
+		return sdk.DecCoins{}, fmt.Errorf("negative rewards should not be possible: %s", difference)
 	}
 	// note: necessary to truncate so we don't allow withdrawing more rewards than owed
 	rewards := difference.MulDecTruncate(shares)
@@ -124,10 +124,8 @@ func (k Keeper) CalculateDelegationRewards(ctx context.Context, val stakingtypes
 	if startingShares.GT(currentShares) {
 		// If startingShares exceeds current shares, the delegator's shares
 		// shrank without BeforeDelegationSharesModified firing — a bug.
-		panic(fmt.Sprintf("stored starting shares for delegator %s exceed current shares"+
-			"\n\tstored:\t%s"+
-			"\n\tcurrent:\t%s",
-			del.GetDelegatorAddr(), startingShares, currentShares))
+		return sdk.DecCoins{}, fmt.Errorf("stored starting shares for delegator %s exceed current shares: stored %s, current %s",
+			del.GetDelegatorAddr(), startingShares, currentShares)
 	}
 
 	// calculate rewards for final period

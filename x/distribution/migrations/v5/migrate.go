@@ -59,6 +59,7 @@ package v5
 
 import (
 	"context"
+	"slices"
 	"sort"
 
 	"cosmossdk.io/collections"
@@ -505,28 +506,24 @@ func bumpRefCount(ctx context.Context, dk Migrator, valAddr sdk.ValAddress, peri
 // orphanKeys returns the validator addresses present in any F1 store but
 // absent from staking, sorted lexicographically for deterministic processing.
 func orphanKeys(snap *stateSnapshot, live map[string]struct{}) []string {
-	candidates := map[string]struct{}{}
+	var out []string
 	for k := range snap.delegations {
 		if _, ok := live[k]; !ok {
-			candidates[k] = struct{}{}
+			out = append(out, k)
 		}
 	}
 	for k := range snap.commissions {
 		if _, ok := live[k]; !ok {
-			candidates[k] = struct{}{}
+			out = append(out, k)
 		}
 	}
 	for k := range snap.periods {
 		if _, ok := live[k]; !ok {
-			candidates[k] = struct{}{}
+			out = append(out, k)
 		}
 	}
-	out := make([]string, 0, len(candidates))
-	for k := range candidates {
-		out = append(out, k)
-	}
 	sort.Strings(out)
-	return out
+	return slices.Compact(out)
 }
 
 // initNewParams writes defaults for fields newly added to Params in v5.
