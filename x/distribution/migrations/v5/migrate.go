@@ -363,7 +363,7 @@ func processValidator(
 		if err := bumpRefCount(ctx, dk, valAddr, 0); err != nil {
 			return err
 		}
-		height := uint64(sdk.UnwrapSDKContext(ctx).BlockHeight())
+		height := uint64(sdk.UnwrapSDKContext(ctx).BlockHeight()) // #nosec G115 -- block height is never negative
 		if err := dk.SetDelegatorStartingInfo(ctx, valAddr, d.delAddr, dstrtypes.NewDelegatorStartingInfo(0, del.GetShares(), height)); err != nil {
 			return err
 		}

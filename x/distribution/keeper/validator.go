@@ -175,5 +175,7 @@ func (k Keeper) updateValidatorSlashFraction(ctx context.Context, valAddr sdk.Va
 	}
 
 	slashEvent := types.NewValidatorSlashEvent(newPeriod, fraction)
-	return k.SetValidatorSlashEvent(ctx, valAddr, uint64(sdkCtx.BlockHeight()), newPeriod, slashEvent)
+	height := uint64(sdkCtx.BlockHeight())
+
+	return k.SetValidatorSlashEvent(ctx, valAddr, height, newPeriod, slashEvent)
 }

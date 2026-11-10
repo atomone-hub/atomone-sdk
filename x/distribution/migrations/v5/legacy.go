@@ -44,7 +44,7 @@ func legacyCalculateDelegationRewards(
 ) (sdk.DecCoins, error) {
 	rewards := sdk.DecCoins{}
 
-	endingHeight := uint64(sdk.UnwrapSDKContext(ctx).BlockHeight())
+	endingHeight := uint64(sdk.UnwrapSDKContext(ctx).BlockHeight()) // #nosec G115 -- block height is never negative
 	if endingHeight > startingHeight {
 		var iterErr error
 		iterateLegacySlashEvents(ctx, storeService, cdc, valAddr, startingHeight, endingHeight,
