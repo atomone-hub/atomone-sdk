@@ -59,7 +59,7 @@ Ref: https://keepachangelog.com/en/1.0.0/
 * (x/gov) [#139](https://github.com/atomone-hub/atomone-sdk/pull/139) Key the governor tally and governor delegations invariant by canonical validator addresses (CONSENSUS BREAKING BUGFIX)
 * (x/staking) [#140](https://github.com/atomone-hub/atomone-sdk/pull/140) Export and import consensus key rotation state in genesis
 * (x/gov) [#143](https://github.com/atomone-hub/atomone-sdk/pull/143) Do not deactivate a governor whose stake is redelegated: the min self-delegation was checked between the unbond from the source validator and the delegation to the destination one. Redelegations now mark the context passed to the staking hooks (`stakingtypes.WithRedelegationSource`) so the check is deferred to the destination delegation (CONSENSUS BREAKING BUGFIX)
-* (x/gov) [#154](https://github.com/atomone-hub/atomone-sdk/pull/154) Let a governor deactivated because a validator holding its self-delegation was jailed, slashed or left the active set become active again without waiting for `GovernorStatusChangePeriod`, recorded in the new `Governor.deactivated_by_validator` field, and emit `governor_change_status` when the staking hooks deactivate a governor (CONSENSUS BREAKING BUGFIX)
+* (x/gov) [#154](https://github.com/atomone-hub/atomone-sdk/pull/154) Do not make a governor deactivated by a validator event wait `GovernorStatusChangePeriod` to reactivate (CONSENSUS BREAKING BUGFIX)
 
 ## [v0.500.6](https://github.com/atomone-hub/cosmos-sdk/releases/tag/v0.500.6) - 2026-10-15
 
