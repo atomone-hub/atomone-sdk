@@ -44,6 +44,8 @@ Ref: https://keepachangelog.com/en/1.0.0/
 
 ### Improvements
 
+* (deps) [#158](https://github.com/atomone-hub/atomone-sdk/pull/158) Bump Go to 1.26.11 and the dependencies flagged by `govulncheck`, and migrate to golangci-lint v2
+
 ### Bug Fixes
 
 * (x/gov) [#144](https://github.com/atomone-hub/atomone-sdk/pull/144) Register `MsgUpdateGovernorStatus` in the LegacyAmino codec and register `MsgProposeLaw` and `MsgProposeConstitutionAmendment` under the `amino.name` of their proto definitions, the one the nodes use for the `SIGN_MODE_LEGACY_AMINO_JSON` sign bytes
