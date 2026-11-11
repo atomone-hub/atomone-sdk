@@ -5,7 +5,7 @@
 // Package armor implements OpenPGP ASCII Armor, see RFC 4880. OpenPGP Armor is
 // very similar to PEM except that it has an additional CRC checksum.
 //
-// It is a copy of golang.org/x/crypto/openpgp/armor at v0.41.0, kept here
+// It is derived from golang.org/x/crypto/openpgp/armor at v0.41.0, kept here
 // because the golang.org/x/crypto/openpgp tree is deprecated (GO-2026-5932).
 package armor
 
@@ -48,9 +48,11 @@ func (s StructuralError) Error() string {
 
 var ArmorCorrupt error = StructuralError("armor invalid")
 
-const crc24Init = 0xb704ce
-const crc24Poly = 0x1864cfb
-const crc24Mask = 0xffffff
+const (
+	crc24Init = 0xb704ce
+	crc24Poly = 0x1864cfb
+	crc24Mask = 0xffffff
+)
 
 // crc24 calculates the OpenPGP checksum as specified in RFC 4880, section 6.1
 func crc24(crc uint32, d []byte) uint32 {
@@ -66,9 +68,11 @@ func crc24(crc uint32, d []byte) uint32 {
 	return crc
 }
 
-var armorStart = []byte("-----BEGIN ")
-var armorEnd = []byte("-----END ")
-var armorEndOfLine = []byte("-----")
+var (
+	armorStart     = []byte("-----BEGIN ")
+	armorEnd       = []byte("-----END ")
+	armorEndOfLine = []byte("-----")
+)
 
 // lineReader wraps a line based reader. It watches for the end of an armor
 // block and records the expected CRC value.
@@ -88,12 +92,12 @@ func (l *lineReader) Read(p []byte) (n int, err error) {
 	if len(l.buf) > 0 {
 		n = copy(p, l.buf)
 		l.buf = l.buf[n:]
-		return
+		return n, err
 	}
 
 	line, isPrefix, err := l.in.ReadLine()
 	if err != nil {
-		return
+		return n, err
 	}
 	if isPrefix {
 		return 0, ArmorCorrupt
@@ -110,7 +114,7 @@ func (l *lineReader) Read(p []byte) (n int, err error) {
 		var m int
 		m, err = base64.StdEncoding.Decode(expectedBytes[0:], line[1:])
 		if m != 3 || err != nil {
-			return
+			return n, err
 		}
 		l.crc = uint32(expectedBytes[0])<<16 |
 			uint32(expectedBytes[1])<<8 |
@@ -118,7 +122,7 @@ func (l *lineReader) Read(p []byte) (n int, err error) {
 
 		line, _, err = l.in.ReadLine()
 		if err != nil && err != io.EOF {
-			return
+			return n, err
 		}
 		if !bytes.HasPrefix(line, armorEnd) {
 			return 0, ArmorCorrupt
@@ -143,7 +147,7 @@ func (l *lineReader) Read(p []byte) (n int, err error) {
 		copy(l.buf, line[n:])
 	}
 
-	return
+	return n, err
 }
 
 // openpgpReader passes Read calls to the underlying base64 decoder, but keeps
@@ -163,7 +167,7 @@ func (r *openpgpReader) Read(p []byte) (n int, err error) {
 		return 0, ArmorCorrupt
 	}
 
-	return
+	return n, err
 }
 
 // Decode reads a PGP armored block from the given Reader. It will ignore
@@ -183,7 +187,7 @@ TryNextBlock:
 		ignoreThis := ignoreNext
 		line, ignoreNext, err = r.ReadLine()
 		if err != nil {
-			return
+			return p, err
 		}
 		if ignoreNext || ignoreThis {
 			continue
@@ -206,7 +210,7 @@ TryNextBlock:
 		line, nextIsContinuation, err = r.ReadLine()
 		if err != nil {
 			p = nil
-			return
+			return p, err
 		}
 		if isContinuation {
 			p.Header[lastKey] += string(line)
@@ -231,5 +235,5 @@ TryNextBlock:
 	p.oReader.b64Reader = base64.NewDecoder(base64.StdEncoding, &p.lReader)
 	p.Body = &p.oReader
 
-	return
+	return p, err
 }

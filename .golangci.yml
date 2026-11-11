@@ -26,8 +26,6 @@ linters:
     - unused
 
 issues:
-  exclude-dirs:
-    - crypto/internal/armor # copy of golang.org/x/crypto/openpgp/armor, kept verbatim
   exclude-files:
     - ".*\\.pb\\.go$"
     - ".*\\.pb\\.gw\\.go$"
