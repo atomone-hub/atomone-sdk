@@ -7,6 +7,8 @@ package armor
 import (
 	"encoding/base64"
 	"io"
+	"maps"
+	"slices"
 )
 
 var (
@@ -143,8 +145,8 @@ func Encode(out io.Writer, blockType string, headers map[string]string) (w io.Wr
 		return w, err
 	}
 
-	for k, v := range headers {
-		err = writeSlices(out, []byte(k), armorHeaderSep, []byte(v), newline)
+	for _, k := range slices.Sorted(maps.Keys(headers)) {
+		err = writeSlices(out, []byte(k), armorHeaderSep, []byte(headers[k]), newline)
 		if err != nil {
 			return w, err
 		}

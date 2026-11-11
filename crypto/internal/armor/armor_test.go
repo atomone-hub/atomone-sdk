@@ -93,3 +93,22 @@ okWuf3+xA9ksp1npSY/mDvgHijmjvtpRDe6iUeqfCn8N9u9CBg8geANgaG8+QA4=
 -----END PGP SIGNATURE-----`
 
 const longValueExpected = "0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz"
+
+func TestEncodeSortsHeaders(t *testing.T) {
+	headers := map[string]string{"type": "secp256k1", "kdf": "bcrypt", "salt": "00", "version": "0.0.1"}
+	want := "-----BEGIN TEST-----\nkdf: bcrypt\nsalt: 00\ntype: secp256k1\nversion: 0.0.1\n\n"
+
+	for i := 0; i < 20; i++ {
+		var buf bytes.Buffer
+		w, err := Encode(&buf, "TEST", headers)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := buf.String(); got != want {
+			t.Fatalf("got headers %q, want %q", got, want)
+		}
+		if err := w.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
