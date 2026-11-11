@@ -44,6 +44,8 @@ Ref: https://keepachangelog.com/en/1.0.0/
 
 ### Improvements
 
+* (crypto) [#157](https://github.com/atomone-hub/atomone-sdk/pull/157) Replace the deprecated `golang.org/x/crypto/openpgp/armor` with an internal copy (GO-2026-5932)
+
 ### Bug Fixes
 
 * (x/gov) [#144](https://github.com/atomone-hub/atomone-sdk/pull/144) Register `MsgUpdateGovernorStatus` in the LegacyAmino codec and register `MsgProposeLaw` and `MsgProposeConstitutionAmendment` under the `amino.name` of their proto definitions, the one the nodes use for the `SIGN_MODE_LEGACY_AMINO_JSON` sign bytes
