@@ -118,6 +118,6 @@ func (sk *PrivKey) Unmarshal(bz []byte, curve elliptic.Curve, expectedSize int) 
 
 	sk.Curve = curve
 	sk.D = new(big.Int).SetBytes(bz)
-	sk.X, sk.Y = curve.ScalarBaseMult(bz)
+	sk.X, sk.Y = curve.ScalarBaseMult(bz) //nolint:staticcheck // the key type exposes raw coordinates; moving to crypto/ecdh is a separate change
 	return nil
 }

@@ -99,6 +99,7 @@ func (coin Coin) IsLTE(other Coin) bool {
 }
 
 // IsEqual returns true if the two sets of Coins have the same value
+//
 // Deprecated: Use Coin.Equal instead.
 func (coin Coin) IsEqual(other Coin) bool {
 	return coin.Equal(other)

@@ -307,7 +307,7 @@ func TestGRPCQueryParams(t *testing.T) {
 		}
 
 		params := banktypes.Params{
-			SendEnabled:        []*banktypes.SendEnabled{&enabledStatus},
+			SendEnabled:        []*banktypes.SendEnabled{&enabledStatus}, //nolint:staticcheck // exercises the deprecated API on purpose
 			DefaultSendEnabled: rapid.Bool().Draw(rt, "send"),
 		}
 
@@ -323,7 +323,7 @@ func TestGRPCQueryParams(t *testing.T) {
 	}
 
 	params := banktypes.Params{
-		SendEnabled:        []*banktypes.SendEnabled{&enabledStatus},
+		SendEnabled:        []*banktypes.SendEnabled{&enabledStatus}, //nolint:staticcheck // exercises the deprecated API on purpose
 		DefaultSendEnabled: false,
 	}
 
