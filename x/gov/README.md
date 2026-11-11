@@ -1056,6 +1056,24 @@ Governors can set their status to inactive or active by sending a
 `MsgUpdateGovernorStatus` transaction. However for the transition to active the minimum
 self-delegation required to become a governor need also to be satisfied.
 
+A status change is refused until `governor_status_change_period` has elapsed since
+the governor's last status change. A governor is also set inactive automatically when
+its bonded self-delegation falls below the minimum. If that happens because a validator
+holding the self-delegation is jailed, slashed or leaves the active set, the governor's
+`deactivated_by_validator` field is set and its next transition to active does not wait
+for `governor_status_change_period`, the governor only needs to meet the minimum
+self-delegation again (for instance once the validator is bonded again, or after
+redelegating to a bonded validator). A governor that goes below the minimum by
+undelegating its own stake waits for the period as usual.
+
+The field is only cleared by the governor's next successful status change. Delegation
+changes made by a governor that is already inactive do not touch it, so a governor
+deactivated by a validator that later undelegates its own stake can still become active
+again without waiting. This is accepted: the deactivation was caused by the validator,
+deciding whether a later undelegation should revoke the exemption would be ambiguous,
+and an inactive governor gains nothing from the exemption it could not already obtain by
+not voting.
+
 ```protobuf reference
 https://github.com/atomone-hub/atomone/blob/539ee0ea3b33211ce90a9c6679911893f72b8d26/proto/atomone/gov/v1/tx.proto#L274-L285
 ```
