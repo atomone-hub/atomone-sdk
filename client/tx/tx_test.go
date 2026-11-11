@@ -43,7 +43,7 @@ func (m mockContext) Invoke(_ context.Context, _ string, _, reply interface{}, _
 		return fmt.Errorf("mock err")
 	}
 
-	*(reply.(*txtypes.SimulateResponse)) = txtypes.SimulateResponse{
+	*reply.(*txtypes.SimulateResponse) = txtypes.SimulateResponse{
 		GasInfo: &sdk.GasInfo{GasUsed: m.gasUsed, GasWanted: m.gasUsed},
 		Result:  &sdk.Result{Data: []byte("tx data"), Log: "log"},
 	}

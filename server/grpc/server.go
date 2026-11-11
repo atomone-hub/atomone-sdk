@@ -48,7 +48,7 @@ func NewGRPCServer(clientCtx client.Context, app types.Application, cfg config.G
 			supportedModes := clientCtx.TxConfig.SignModeHandler().SupportedModes()
 			modes := make(map[string]int32, len(supportedModes))
 			for _, m := range supportedModes {
-				modes[m.String()] = (int32)(m)
+				modes[m.String()] = int32(m)
 			}
 
 			return modes
