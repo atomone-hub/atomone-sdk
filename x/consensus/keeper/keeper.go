@@ -24,6 +24,10 @@ import (
 
 var StoreKey = "Consensus"
 
+// MinBlockMaxGas is the smallest Block.MaxGas, other than -1 (unlimited), that
+// UpdateParams accepts.
+const MinBlockMaxGas int64 = 1_000_000
+
 type Keeper struct {
 	storeService storetypes.KVStoreService
 	event        event.Service
@@ -98,19 +102,29 @@ func (k Keeper) UpdateParams(ctx context.Context, msg *types.MsgUpdateParams) (*
 		return nil, err
 	}
 
-	// SECURITY: Block.MaxGas of 0 must never be accepted. CometBFT's
-	// ValidateBasic only rejects MaxGas < -1, so a proposal setting
-	// MaxGas = 0 passes every existing check, but 0 is not a benign value:
-	// CometBFT's mempool post-check (PostCheckMaxGas) enforces it as a block
-	// gas budget of zero and permanently rejects every transaction (no
-	// admissible tx has GasWanted == 0) from every node's mempool. Reversing
-	// the parameter is itself a transaction, so this locks governance out of
-	// the chain. Note the asymmetry: MaxBytes == 0 IS rejected by
-	// ValidateBasic, and baseapp's block gas meter treats 0 as unlimited
-	// (GetMaximumBlockGas), confirming 0 is the degenerate "unset" shape
-	// rather than an intended configuration.
-	if nextParams.Block.MaxGas == 0 {
-		return nil, fmt.Errorf("Block.MaxGas cannot be 0: a zero block gas budget makes every node's mempool reject all transactions permanently; use -1 for unlimited or a positive limit")
+	// SECURITY: Block.MaxBytes must hold a block's header, the last commit of
+	// the largest validator set CometBFT accepts and the evidence. CometBFT's
+	// ValidateBasic only rejects 0, values below -1 and values above
+	// MaxBlockSizeBytes, but a smaller limit makes MaxDataBytesNoEvidence panic
+	// when the block that stores it is committed, and again on every restart
+	// as the node replays that block. The commit is sized for MaxVotesCount so
+	// that a later increase of the validator set cannot reach the panic either.
+	if nextParams.Block.MaxBytes != -1 {
+		minMaxBytes := cmttypes.MaxOverheadForBlock + cmttypes.MaxHeaderBytes +
+			cmttypes.MaxCommitBytes(cmttypes.MaxVotesCount) + nextParams.Evidence.MaxBytes
+		if nextParams.Block.MaxBytes < minMaxBytes {
+			return nil, fmt.Errorf("Block.MaxBytes %d is below %d, the size of a block header, commit and evidence; use -1 for the maximum or a larger limit", nextParams.Block.MaxBytes, minMaxBytes)
+		}
+	}
+
+	// SECURITY: Block.MaxGas must leave room for ordinary transactions.
+	// CometBFT's ValidateBasic only rejects values below -1, but the ante
+	// handler refuses every transaction whose gas limit exceeds Block.MaxGas and
+	// CometBFT's mempool enforces 0 as a block gas budget of zero. A budget
+	// below the gas of a transaction refuses all of them, including the votes
+	// on a proposal that would repair the parameter.
+	if nextParams.Block.MaxGas != -1 && nextParams.Block.MaxGas < MinBlockMaxGas {
+		return nil, fmt.Errorf("Block.MaxGas %d is below %d; use -1 for unlimited or a larger limit", nextParams.Block.MaxGas, MinBlockMaxGas)
 	}
 
 	// SECURITY: Validator.PubKeyTypes may only be extended, never shrunk.
