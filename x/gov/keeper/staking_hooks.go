@@ -101,7 +101,7 @@ func (h Hooks) AfterDelegationModified(ctx context.Context, delAddr sdk.AccAddre
 	// the min self-delegation is checked once that one is created
 	if !stakingtypes.IsRedelegationSource(ctx, valAddr) &&
 		!h.k.ValidateGovernorMinSelfDelegation(sdkCtx, governor) {
-		return h.setGovernorInactive(ctx, sdkCtx, governor)
+		return h.setGovernorInactive(ctx, sdkCtx, governor, false)
 	}
 	return h.k.ActiveGovernorsByDelegatedValidator.Set(ctx, collections.Join(valAddr, delGovAddr))
 }
@@ -154,7 +154,7 @@ func (h Hooks) BeforeDelegationRemoved(ctx context.Context, delAddr sdk.AccAddre
 	}
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	if !h.k.validateGovernorMinSelfDelegationWithExclusions(sdkCtx, governor, exclusion) {
-		return h.setGovernorInactive(ctx, sdkCtx, governor)
+		return h.setGovernorInactive(ctx, sdkCtx, governor, false)
 	}
 	return nil
 }
@@ -202,7 +202,7 @@ func (h Hooks) BeforeValidatorSlashed(ctx context.Context, valAddr sdk.ValAddres
 		return err
 	}
 	for _, g := range toDeactivate {
-		if err := h.setGovernorInactive(ctx, sdkCtx, g); err != nil {
+		if err := h.setGovernorInactive(ctx, sdkCtx, g, true); err != nil {
 			return err
 		}
 	}
@@ -245,7 +245,7 @@ func (h Hooks) AfterValidatorBeginUnbonding(ctx context.Context, _ sdk.ConsAddre
 		return err
 	}
 	for _, g := range toDeactivate {
-		if err := h.setGovernorInactive(ctx, sdkCtx, g); err != nil {
+		if err := h.setGovernorInactive(ctx, sdkCtx, g, true); err != nil {
 			return err
 		}
 	}
@@ -289,21 +289,36 @@ func (h Hooks) walkGovernorsForValidator(
 
 // setGovernorInactive flips a governor's stored status to inactive, records
 // the change time, and clears every ActiveGovernorsByDelegatedValidator entry
-// the governor holds.
+// the governor holds. byValidator marks a deactivation caused by a validator
+// the governor delegates to (jail, slash, removal from the active set) rather
+// than by the governor's own delegation, it lets the governor become active
+// again without waiting for the GovernorStatusChangePeriod. The mark is only
+// cleared by the governor's next status change: the delegation hooks ignore
+// inactive governors, so a later undelegation keeps it (accepted, see the
+// x/gov README).
 //
 // CONTRACT: callers must not be mid-walk over ActiveGovernorsByDelegatedValidator
 // for this governor — that would write to the iterated domain and violate the
 // store iterator contract. Validator hooks use a collect-then-deactivate
 // pattern; other callers (AfterDelegationModified, BeforeDelegationRemoved)
 // are not iterating that collection.
-func (h Hooks) setGovernorInactive(ctx context.Context, sdkCtx sdk.Context, governor v1.Governor) error {
+func (h Hooks) setGovernorInactive(ctx context.Context, sdkCtx sdk.Context, governor v1.Governor, byValidator bool) error {
 	governor.Status = v1.Inactive
+	governor.DeactivatedByValidator = byValidator
 	now := sdkCtx.BlockTime()
 	governor.LastStatusChangeTime = &now
 	if err := h.k.Governors.Set(ctx, governor.GetAddress(), governor); err != nil {
 		return err
 	}
-	return h.k.removeActiveGovernorIndexEntries(sdkCtx, governor.GetAddress())
+	if err := h.k.removeActiveGovernorIndexEntries(sdkCtx, governor.GetAddress()); err != nil {
+		return err
+	}
+	sdkCtx.EventManager().EmitEvent(sdk.NewEvent(
+		types.EventTypeGovernorChangeStatus,
+		sdk.NewAttribute(types.AttributeKeyGovernor, governor.GetAddress().String()),
+		sdk.NewAttribute(types.AttributeKeyStatus, types.AttributeValueStatusInactive),
+	))
+	return nil
 }
 
 func (h Hooks) BeforeConsensusPubKeyRotation(_ context.Context, _ sdk.ValAddress, _, _ cryptotypes.PubKey) error {
