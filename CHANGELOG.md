@@ -66,7 +66,7 @@ Ref: https://keepachangelog.com/en/1.0.0/
 * (x/staking) [#140](https://github.com/atomone-hub/atomone-sdk/pull/140) Export and import consensus key rotation state in genesis
 * (x/consensus) [#156](https://github.com/atomone-hub/atomone-sdk/pull/156) Reject `Block.MaxBytes` and `Block.MaxGas` below a floor in `UpdateParams` (halt and tx lockout via a passed proposal)
 * (x/gov) [#143](https://github.com/atomone-hub/atomone-sdk/pull/143) Do not deactivate a governor on redelegation (CONSENSUS BREAKING BUGFIX)
-* (x/gov) [#XXX](https://github.com/atomone-hub/atomone-sdk/pull/XXX) Let a governor deactivated because a validator holding its self-delegation was jailed, slashed or left the active set become active again without waiting for `GovernorStatusChangePeriod`, recorded in the new `Governor.deactivated_by_validator` field, and emit `governor_change_status` when the staking hooks deactivate a governor (CONSENSUS BREAKING BUGFIX)
+* (x/gov) [#154](https://github.com/atomone-hub/atomone-sdk/pull/154) Let a governor deactivated because a validator holding its self-delegation was jailed, slashed or left the active set become active again without waiting for `GovernorStatusChangePeriod`, recorded in the new `Governor.deactivated_by_validator` field, and emit `governor_change_status` when the staking hooks deactivate a governor (CONSENSUS BREAKING BUGFIX)
 
 ### State Machine Breaking
 
