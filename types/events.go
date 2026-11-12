@@ -43,12 +43,14 @@ func NewEventManager() *EventManager {
 func (em *EventManager) Events() Events { return em.events }
 
 // EmitEvent stores a single Event object.
+//
 // Deprecated: Use EmitTypedEvent
 func (em *EventManager) EmitEvent(event Event) {
 	em.events = em.events.AppendEvent(event)
 }
 
 // EmitEvents stores a series of Event objects.
+//
 // Deprecated: Use EmitTypedEvents
 func (em *EventManager) EmitEvents(events Events) {
 	em.events = em.events.AppendEvents(events)
@@ -126,7 +128,7 @@ func ParseTypedEvent(event abci.Event) (proto.Message, error) {
 	}
 
 	var value reflect.Value
-	if concreteGoType.Kind() == reflect.Ptr {
+	if concreteGoType.Kind() == reflect.Pointer {
 		value = reflect.New(concreteGoType.Elem())
 	} else {
 		value = reflect.Zero(concreteGoType)
