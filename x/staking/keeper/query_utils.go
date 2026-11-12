@@ -122,8 +122,8 @@ func (k Keeper) GetAllRedelegations(
 	}
 	defer iterator.Close()
 
-	srcValFilter := !(srcValAddress.Empty())
-	dstValFilter := !(dstValAddress.Empty())
+	srcValFilter := !srcValAddress.Empty()
+	dstValFilter := !dstValAddress.Empty()
 
 	var redelegations []types.Redelegation
 	for ; iterator.Valid(); iterator.Next() {
@@ -136,11 +136,11 @@ func (k Keeper) GetAllRedelegations(
 		if err != nil {
 			return nil, err
 		}
-		if srcValFilter && !(srcValAddress.Equals(sdk.ValAddress(valSrcAddr))) {
+		if srcValFilter && !srcValAddress.Equals(sdk.ValAddress(valSrcAddr)) {
 			continue
 		}
 
-		if dstValFilter && !(dstValAddress.Equals(sdk.ValAddress(valDstAddr))) {
+		if dstValFilter && !dstValAddress.Equals(sdk.ValAddress(valDstAddr)) {
 			continue
 		}
 

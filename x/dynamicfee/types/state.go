@@ -48,7 +48,7 @@ func (s *State) UpdateBaseGasPrice(logger log.Logger, params Params, maxBlockGas
 	// Calculate the new base gasPrice with the learning rate adjustment.
 	currentBlockGas := math.LegacyNewDecFromInt(math.NewIntFromUint64(s.Window[s.Index]))
 	targetBlockGas := math.LegacyNewDecFromInt(math.NewIntFromUint64(GetTargetBlockGas(maxBlockGas, params)))
-	avgGas := (currentBlockGas.Sub(targetBlockGas)).Quo(targetBlockGas)
+	avgGas := currentBlockGas.Sub(targetBlockGas).Quo(targetBlockGas)
 
 	// Truncate the learning rate adjustment to an integer.
 	//
