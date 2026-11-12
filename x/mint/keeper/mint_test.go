@@ -156,6 +156,14 @@ func (s *IntegrationTestSuite) TestDefaultMintFn() {
 			expErr:          "invalid max_block_elapsed parameter",
 		},
 		{
+			name:            "zero max block elapsed is an error without a reference",
+			previous:        nil,
+			blockTime:       t0,
+			bondedRatio:     goalBonded,
+			maxBlockElapsed: dur(0),
+			expErr:          "invalid max_block_elapsed parameter",
+		},
+		{
 			name:        "block time before the reference is an error",
 			previous:    &t0Plus100s,
 			blockTime:   t0,
@@ -206,8 +214,7 @@ func (s *IntegrationTestSuite) TestDefaultMintFn() {
 			if tc.expErr != "" {
 				s.Require().ErrorContains(err, tc.expErr)
 				s.Require().Empty(mintEvents)
-				s.Require().NotNil(minter.PreviousBlockTime)
-				s.Require().Equal(*tc.previous, *minter.PreviousBlockTime)
+				s.Require().Equal(tc.previous, minter.PreviousBlockTime)
 				s.Require().Equal(math.LegacyZeroDec(), minter.AnnualProvisions)
 				return
 			}

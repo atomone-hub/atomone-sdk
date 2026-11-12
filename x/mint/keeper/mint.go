@@ -37,6 +37,9 @@ func DefaultMintFn(ic types.InflationCalculationFn) MintFn {
 		if err != nil {
 			return err
 		}
+		if params.MaxBlockElapsed <= 0 {
+			return fmt.Errorf("invalid max_block_elapsed parameter: %s", params.MaxBlockElapsed)
+		}
 
 		// recalculate inflation rate
 		totalStakingSupply, err := k.StakingTokenSupply(ctx)
@@ -65,9 +68,6 @@ func DefaultMintFn(ic types.InflationCalculationFn) MintFn {
 			return fmt.Errorf("block time %s is before the previous block time %s", now.UTC(), minter.PreviousBlockTime.UTC())
 		}
 
-		if params.MaxBlockElapsed <= 0 {
-			return fmt.Errorf("invalid max_block_elapsed parameter: %s", params.MaxBlockElapsed)
-		}
 		elapsed := now.Sub(*minter.PreviousBlockTime)
 		if elapsed > params.MaxBlockElapsed {
 			elapsed = params.MaxBlockElapsed
