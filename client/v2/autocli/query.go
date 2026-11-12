@@ -7,12 +7,13 @@ import (
 	"strings"
 	"time"
 
-	autocliv1 "cosmossdk.io/api/cosmos/autocli/v1"
-	"cosmossdk.io/math"
-	"cosmossdk.io/x/tx/signing/aminojson"
 	"github.com/cockroachdb/errors"
 	"github.com/spf13/cobra"
 	"google.golang.org/protobuf/reflect/protoreflect"
+
+	autocliv1 "cosmossdk.io/api/cosmos/autocli/v1"
+	"cosmossdk.io/math"
+	"cosmossdk.io/x/tx/signing/aminojson"
 
 	"github.com/cosmos/cosmos-sdk/client/v2/internal/flags"
 	"github.com/cosmos/cosmos-sdk/client/v2/internal/util"
