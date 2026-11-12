@@ -263,3 +263,17 @@ func (n *Network) MintedAt(height int64) (math.Int, error) {
 	}
 	return math.ZeroInt(), nil
 }
+
+// MintedUpTo returns the total amount minted by the x/mint module in the
+// blocks from height 1 to the given height included.
+func (n *Network) MintedUpTo(height int64) (math.Int, error) {
+	sum := math.ZeroInt()
+	for h := int64(1); h <= height; h++ {
+		minted, err := n.MintedAt(h)
+		if err != nil {
+			return math.Int{}, err
+		}
+		sum = sum.Add(minted)
+	}
+	return sum, nil
+}

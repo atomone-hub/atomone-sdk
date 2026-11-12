@@ -27,7 +27,6 @@ import (
 	simtestutil "github.com/cosmos/cosmos-sdk/testutil/sims"
 	simtypes "github.com/cosmos/cosmos-sdk/types/simulation"
 	authzkeeper "github.com/cosmos/cosmos-sdk/x/authz/keeper"
-	minttypes "github.com/cosmos/cosmos-sdk/x/mint/types"
 	"github.com/cosmos/cosmos-sdk/x/simulation"
 	simcli "github.com/cosmos/cosmos-sdk/x/simulation/client/cli"
 	slashingtypes "github.com/cosmos/cosmos-sdk/x/slashing/types"
@@ -176,6 +175,14 @@ func TestAppImportExport(t *testing.T) {
 
 	ctxA := app.NewContextLegacy(true, cmtproto.Header{Height: app.LastBlockHeight()})
 	ctxB := newApp.NewContextLegacy(true, cmtproto.Header{Height: app.LastBlockHeight()})
+
+	// x/mint exports the minter without previous_block_time, so clear it on
+	// the exporting side as well and compare the rest of the minter.
+	minter, err := app.MintKeeper.Minter.Get(ctxA)
+	require.NoError(t, err)
+	minter.PreviousBlockTime = nil
+	require.NoError(t, app.MintKeeper.Minter.Set(ctxA, minter))
+
 	_, err = newApp.ModuleManager.InitGenesis(ctxB, app.AppCodec(), genesisState)
 	if err != nil {
 		if strings.Contains(err.Error(), "validator set is empty after InitGenesis") {
@@ -200,7 +207,6 @@ func TestAppImportExport(t *testing.T) {
 		authzkeeper.StoreKey:   {authzkeeper.GrantQueuePrefix},
 		feegrant.StoreKey:      {feegrant.FeeAllowanceQueueKeyPrefix},
 		slashingtypes.StoreKey: {slashingtypes.ValidatorMissedBlockBitmapKeyPrefix},
-		minttypes.StoreKey:     {minttypes.MinterKey.Bytes()}, // previous_block_time is cleared on export
 	}
 
 	storeKeys := app.GetStoreKeys()

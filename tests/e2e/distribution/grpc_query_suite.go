@@ -45,12 +45,8 @@ func (s *GRPCQueryTestSuite) SetupSuite() {
 func (s *GRPCQueryTestSuite) allocatedShare(share string) sdk.DecCoins {
 	_, err := s.network.WaitForHeight(2)
 	s.Require().NoError(err)
-	allocated := math.ZeroInt()
-	for height := int64(1); height <= 2; height++ {
-		minted, err := s.network.MintedAt(height)
-		s.Require().NoError(err)
-		allocated = allocated.Add(minted)
-	}
+	allocated, err := s.network.MintedUpTo(2)
+	s.Require().NoError(err)
 	amount := math.LegacyNewDecFromInt(allocated).Mul(math.LegacyMustNewDecFromStr(share))
 	return sdk.DecCoins{sdk.NewDecCoinFromDec(s.cfg.BondDenom, amount)}
 }
