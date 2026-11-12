@@ -24,13 +24,9 @@ func (s *E2ETestSuite) TestTotalSupplyGRPCHandler() {
 	_, err := s.network.WaitForHeight(2)
 	s.Require().NoError(err)
 	mintedUpTo := func(height int64) math.Int {
-		sum := math.ZeroInt()
-		for h := int64(1); h <= height; h++ {
-			minted, err := s.network.MintedAt(h)
-			s.Require().NoError(err)
-			sum = sum.Add(minted)
-		}
-		return sum
+		minted, err := s.network.MintedUpTo(height)
+		s.Require().NoError(err)
+		return minted
 	}
 
 	testCases := []struct {
