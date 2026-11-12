@@ -2399,7 +2399,7 @@ func (suite *KeeperTestSuite) TestMigrator_Migrate3to4() {
 
 	for _, def := range []bool{true, false} {
 		params := banktypes.Params{
-			SendEnabled: []*banktypes.SendEnabled{
+			SendEnabled: []*banktypes.SendEnabled{ //nolint:staticcheck // exercises the deprecated API on purpose
 				{Denom: fmt.Sprintf("truecoin%t", def), Enabled: true},
 				{Denom: fmt.Sprintf("falsecoin%t", def), Enabled: false},
 			},

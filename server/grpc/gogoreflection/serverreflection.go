@@ -389,7 +389,7 @@ func (s *serverReflectionServer) ServerReflectionInfo(stream rpb.ServerReflectio
 
 		out := &rpb.ServerReflectionResponse{ //nolint:staticcheck // SA1019: we want to keep using v1alpha
 			ValidHost:       in.Host, //nolint:staticcheck // SA1019: we want to keep using v1alpha
-			OriginalRequest: in,
+			OriginalRequest: in,      //nolint:staticcheck // serves the v1alpha reflection API
 		}
 		switch req := in.MessageRequest.(type) {
 		case *rpb.ServerReflectionRequest_FileByFilename:
@@ -397,8 +397,8 @@ func (s *serverReflectionServer) ServerReflectionInfo(stream rpb.ServerReflectio
 			if err != nil {
 				out.MessageResponse = &rpb.ServerReflectionResponse_ErrorResponse{
 					ErrorResponse: &rpb.ErrorResponse{ //nolint:staticcheck // SA1019: we want to keep using v1alpha
-						ErrorCode:    int32(codes.NotFound),
-						ErrorMessage: err.Error(),
+						ErrorCode:    int32(codes.NotFound), //nolint:staticcheck // serves the v1alpha reflection API
+						ErrorMessage: err.Error(),           //nolint:staticcheck // serves the v1alpha reflection API
 					},
 				}
 			} else {
@@ -411,8 +411,8 @@ func (s *serverReflectionServer) ServerReflectionInfo(stream rpb.ServerReflectio
 			if err != nil {
 				out.MessageResponse = &rpb.ServerReflectionResponse_ErrorResponse{
 					ErrorResponse: &rpb.ErrorResponse{ //nolint:staticcheck // SA1019: we want to keep using v1alpha
-						ErrorCode:    int32(codes.NotFound),
-						ErrorMessage: err.Error(),
+						ErrorCode:    int32(codes.NotFound), //nolint:staticcheck // serves the v1alpha reflection API
+						ErrorMessage: err.Error(),           //nolint:staticcheck // serves the v1alpha reflection API
 					},
 				}
 			} else {
@@ -427,8 +427,8 @@ func (s *serverReflectionServer) ServerReflectionInfo(stream rpb.ServerReflectio
 			if err != nil {
 				out.MessageResponse = &rpb.ServerReflectionResponse_ErrorResponse{
 					ErrorResponse: &rpb.ErrorResponse{ //nolint:staticcheck // SA1019: we want to keep using v1alpha
-						ErrorCode:    int32(codes.NotFound),
-						ErrorMessage: err.Error(),
+						ErrorCode:    int32(codes.NotFound), //nolint:staticcheck // serves the v1alpha reflection API
+						ErrorMessage: err.Error(),           //nolint:staticcheck // serves the v1alpha reflection API
 					},
 				}
 			} else {
@@ -441,8 +441,8 @@ func (s *serverReflectionServer) ServerReflectionInfo(stream rpb.ServerReflectio
 			if err != nil {
 				out.MessageResponse = &rpb.ServerReflectionResponse_ErrorResponse{
 					ErrorResponse: &rpb.ErrorResponse{ //nolint:staticcheck // SA1019: we want to keep using v1alpha
-						ErrorCode:    int32(codes.NotFound),
-						ErrorMessage: err.Error(),
+						ErrorCode:    int32(codes.NotFound), //nolint:staticcheck // serves the v1alpha reflection API
+						ErrorMessage: err.Error(),           //nolint:staticcheck // serves the v1alpha reflection API
 					},
 				}
 				log.Printf("OH NO: %s", err)
@@ -450,7 +450,7 @@ func (s *serverReflectionServer) ServerReflectionInfo(stream rpb.ServerReflectio
 				out.MessageResponse = &rpb.ServerReflectionResponse_AllExtensionNumbersResponse{
 					AllExtensionNumbersResponse: &rpb.ExtensionNumberResponse{ //nolint:staticcheck // SA1019: we want to keep using v1alpha
 						BaseTypeName:    req.AllExtensionNumbersOfType, //nolint:staticcheck // SA1019: we want to keep using v1alpha
-						ExtensionNumber: extNums,
+						ExtensionNumber: extNums,                       //nolint:staticcheck // serves the v1alpha reflection API
 					},
 				}
 			}
@@ -459,12 +459,12 @@ func (s *serverReflectionServer) ServerReflectionInfo(stream rpb.ServerReflectio
 			serviceResponses := make([]*rpb.ServiceResponse, len(svcNames)) //nolint:staticcheck // SA1019: we want to keep using v1alpha
 			for i, n := range svcNames {
 				serviceResponses[i] = &rpb.ServiceResponse{ //nolint:staticcheck // SA1019: we want to keep using v1alpha
-					Name: n,
+					Name: n, //nolint:staticcheck // serves the v1alpha reflection API
 				}
 			}
 			out.MessageResponse = &rpb.ServerReflectionResponse_ListServicesResponse{
 				ListServicesResponse: &rpb.ListServiceResponse{ //nolint:staticcheck // SA1019: we want to keep using v1alpha
-					Service: serviceResponses,
+					Service: serviceResponses, //nolint:staticcheck // serves the v1alpha reflection API
 				},
 			}
 		default:
