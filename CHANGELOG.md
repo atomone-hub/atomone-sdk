@@ -44,6 +44,8 @@ Ref: https://keepachangelog.com/en/1.0.0/
 
 ### Improvements
 
+* (crypto) [#157](https://github.com/atomone-hub/atomone-sdk/pull/157) Replace the deprecated `golang.org/x/crypto/openpgp/armor` with an internal copy (GO-2026-5932)
+* (deps) [#158](https://github.com/atomone-hub/atomone-sdk/pull/158) Bump Go to 1.26.11 and the dependencies flagged by `govulncheck`, and migrate to golangci-lint v2
 * (server) [#145](https://github.com/atomone-hub/atomone-sdk/pull/145) Bound gRPC concurrent streams per connection and enable server keepalive
 
 ### Bug Fixes

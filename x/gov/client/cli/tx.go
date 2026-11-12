@@ -158,6 +158,7 @@ metadata example:
 }
 
 // NewCmdSubmitLegacyProposal implements submitting a proposal transaction command.
+//
 // Deprecated: please use NewCmdSubmitProposal instead.
 func NewCmdSubmitLegacyProposal() *cobra.Command {
 	cmd := &cobra.Command{

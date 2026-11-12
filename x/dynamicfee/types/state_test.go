@@ -196,7 +196,7 @@ func TestState_UpdateBaseGasPrice(t *testing.T) {
 
 		expectedLR := prevLR.Add(params.Alpha)
 		expectedGas := math.LegacyMustNewDecFromStr("-0.5")
-		expectedLRAdjustment := (expectedLR.Mul(expectedGas)).Add(math.LegacyOneDec())
+		expectedLRAdjustment := expectedLR.Mul(expectedGas).Add(math.LegacyOneDec())
 
 		expectedGasPrice := prevGasPrice.Mul(expectedLRAdjustment)
 
@@ -222,7 +222,7 @@ func TestState_UpdateBaseGasPrice(t *testing.T) {
 
 		expectedGas := math.LegacyMustNewDecFromStr("0.5")
 		expectedLR := prevLR.Add(params.Alpha)
-		expectedLRAdjustment := (expectedLR.Mul(expectedGas)).Add(math.LegacyOneDec())
+		expectedLRAdjustment := expectedLR.Mul(expectedGas).Add(math.LegacyOneDec())
 
 		expectedGasPrice := prevBGS.Mul(expectedLRAdjustment)
 		require.Equal(t, expectedLR, lr)

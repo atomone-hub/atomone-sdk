@@ -59,7 +59,7 @@ func (s *KeeperTestSuite) TestMsgCreateValidator() {
 					MaxChangeRate: math.LegacyNewDec(0),
 				},
 				MinSelfDelegation: math.NewInt(1),
-				DelegatorAddress:  Addr.String(),
+				DelegatorAddress:  Addr.String(), //nolint:staticcheck // exercises the deprecated API on purpose
 				ValidatorAddress:  ValAddr.String(),
 				Pubkey:            pubkey,
 				Value:             sdk.NewInt64Coin("stake", 10000),
@@ -79,7 +79,7 @@ func (s *KeeperTestSuite) TestMsgCreateValidator() {
 					MaxChangeRate: math.LegacyNewDec(0),
 				},
 				MinSelfDelegation: math.NewInt(1),
-				DelegatorAddress:  Addr.String(),
+				DelegatorAddress:  Addr.String(), //nolint:staticcheck // exercises the deprecated API on purpose
 				ValidatorAddress:  sdk.AccAddress([]byte("invalid")).String(),
 				Pubkey:            pubkey,
 				Value:             sdk.NewInt64Coin("stake", 10000),
@@ -99,7 +99,7 @@ func (s *KeeperTestSuite) TestMsgCreateValidator() {
 					MaxChangeRate: math.LegacyNewDec(0),
 				},
 				MinSelfDelegation: math.NewInt(1),
-				DelegatorAddress:  Addr.String(),
+				DelegatorAddress:  Addr.String(), //nolint:staticcheck // exercises the deprecated API on purpose
 				ValidatorAddress:  ValAddr.String(),
 				Pubkey:            nil,
 				Value:             sdk.NewInt64Coin("stake", 10000),
@@ -119,7 +119,7 @@ func (s *KeeperTestSuite) TestMsgCreateValidator() {
 					MaxChangeRate: math.LegacyNewDec(0),
 				},
 				MinSelfDelegation: math.NewInt(1),
-				DelegatorAddress:  Addr.String(),
+				DelegatorAddress:  Addr.String(), //nolint:staticcheck // exercises the deprecated API on purpose
 				ValidatorAddress:  ValAddr.String(),
 				Pubkey:            pubkey,
 				Value:             sdk.NewInt64Coin("stake", 0),
@@ -139,7 +139,7 @@ func (s *KeeperTestSuite) TestMsgCreateValidator() {
 					MaxChangeRate: math.LegacyNewDec(0),
 				},
 				MinSelfDelegation: math.NewInt(1),
-				DelegatorAddress:  Addr.String(),
+				DelegatorAddress:  Addr.String(), //nolint:staticcheck // exercises the deprecated API on purpose
 				ValidatorAddress:  ValAddr.String(),
 				Pubkey:            pubkey,
 				Value:             sdk.Coin{},
@@ -159,7 +159,7 @@ func (s *KeeperTestSuite) TestMsgCreateValidator() {
 					MaxChangeRate: math.LegacyNewDec(0),
 				},
 				MinSelfDelegation: math.NewInt(0),
-				DelegatorAddress:  Addr.String(),
+				DelegatorAddress:  Addr.String(), //nolint:staticcheck // exercises the deprecated API on purpose
 				ValidatorAddress:  ValAddr.String(),
 				Pubkey:            pubkey,
 				Value:             sdk.NewInt64Coin("stake", 10000),
@@ -179,7 +179,7 @@ func (s *KeeperTestSuite) TestMsgCreateValidator() {
 					MaxChangeRate: math.LegacyNewDec(0),
 				},
 				MinSelfDelegation: math.NewInt(-1),
-				DelegatorAddress:  Addr.String(),
+				DelegatorAddress:  Addr.String(), //nolint:staticcheck // exercises the deprecated API on purpose
 				ValidatorAddress:  ValAddr.String(),
 				Pubkey:            pubkey,
 				Value:             sdk.NewInt64Coin("stake", 10000),
@@ -199,7 +199,7 @@ func (s *KeeperTestSuite) TestMsgCreateValidator() {
 					MaxChangeRate: math.LegacyNewDec(0),
 				},
 				MinSelfDelegation: math.NewInt(100),
-				DelegatorAddress:  Addr.String(),
+				DelegatorAddress:  Addr.String(), //nolint:staticcheck // exercises the deprecated API on purpose
 				ValidatorAddress:  ValAddr.String(),
 				Pubkey:            pubkey,
 				Value:             sdk.NewInt64Coin("stake", 10),
@@ -223,7 +223,7 @@ func (s *KeeperTestSuite) TestMsgCreateValidator() {
 					MaxChangeRate: math.LegacyNewDec(0),
 				},
 				MinSelfDelegation: math.NewInt(1),
-				DelegatorAddress:  Addr.String(),
+				DelegatorAddress:  Addr.String(), //nolint:staticcheck // exercises the deprecated API on purpose
 				ValidatorAddress:  ValAddr.String(),
 				Pubkey:            pubkey,
 				Value:             sdk.NewInt64Coin("stake", 10000),
@@ -247,7 +247,7 @@ func (s *KeeperTestSuite) TestMsgCreateValidator() {
 					MaxChangeRate: math.LegacyNewDec(0),
 				},
 				MinSelfDelegation: math.NewInt(1),
-				DelegatorAddress:  Addr.String(),
+				DelegatorAddress:  Addr.String(), //nolint:staticcheck // exercises the deprecated API on purpose
 				ValidatorAddress:  ValAddr.String(),
 				Pubkey:            pubkey,
 				Value:             sdk.NewInt64Coin("stake", 10000),
@@ -1446,7 +1446,7 @@ func (s *KeeperTestSuite) TestMsgCreateValidatorStoresCanonicalOperatorAddress()
 				MaxChangeRate: math.LegacyNewDec(0),
 			},
 			MinSelfDelegation: math.NewInt(1),
-			DelegatorAddress:  Addr.String(),
+			DelegatorAddress:  Addr.String(), //nolint:staticcheck // exercises the deprecated API on purpose
 			ValidatorAddress:  valAddr,
 			Pubkey:            pubkey,
 			Value:             sdk.NewInt64Coin("stake", 10000),
