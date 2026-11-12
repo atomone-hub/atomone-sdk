@@ -3,9 +3,31 @@ package keeper_test
 import (
 	"google.golang.org/protobuf/encoding/protowire"
 
+	sdk "github.com/cosmos/cosmos-sdk/types"
+	"github.com/cosmos/cosmos-sdk/x/mint/exported"
 	"github.com/cosmos/cosmos-sdk/x/mint/keeper"
 	"github.com/cosmos/cosmos-sdk/x/mint/types"
 )
+
+// legacySubspace returns the params as x/params holds them, without
+// max_block_elapsed.
+type legacySubspace struct{}
+
+func (legacySubspace) GetParamSet(_ sdk.Context, ps exported.ParamSet) {
+	p := types.DefaultParams()
+	p.MaxBlockElapsed = 0
+	*ps.(*types.Params) = p
+}
+
+func (s *IntegrationTestSuite) TestMigrate1to3() {
+	m := keeper.NewMigrator(s.mintKeeper, legacySubspace{})
+	s.Require().NoError(m.Migrate1to2(s.ctx))
+	s.Require().NoError(m.Migrate2to3(s.ctx))
+
+	got, err := s.mintKeeper.Params.Get(s.ctx)
+	s.Require().NoError(err)
+	s.Require().Equal(types.DefaultParams(), got)
+}
 
 func (s *IntegrationTestSuite) TestMigrate2to3SetsMaxBlockElapsedAndDropsReservedField() {
 	params := types.DefaultParams()
