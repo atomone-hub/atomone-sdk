@@ -61,7 +61,7 @@ type App struct {
 // RegisterModules registers the provided modules with the module manager and
 // the basic module manager. This is the primary hook for integrating with
 // modules which are not registered using the app config.
-func (a *App) RegisterModules(modules ...module.AppModule) error {
+func (a *App) RegisterModules(modules ...module.AppModule) error { //nolint:staticcheck // the runtime still wires legacy modules
 	for _, appModule := range modules {
 		name := appModule.Name()
 		if _, ok := a.ModuleManager.Modules[name]; ok {

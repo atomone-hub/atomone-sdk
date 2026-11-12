@@ -181,7 +181,7 @@ func (registry *interfaceRegistry) RegisterInterface(protoName string, iface int
 //
 // Returns an error if not, and nil if so.
 func (registry *interfaceRegistry) EnsureRegistered(impl interface{}) error {
-	if reflect.ValueOf(impl).Kind() != reflect.Ptr {
+	if reflect.ValueOf(impl).Kind() != reflect.Pointer {
 		return fmt.Errorf("%T is not a pointer", impl)
 	}
 
@@ -334,7 +334,7 @@ func (r *statefulUnpacker) UnpackAny(v *Any, iface interface{}) error {
 	r.maxCalls.count--
 
 	rv := reflect.ValueOf(iface)
-	if rv.Kind() != reflect.Ptr {
+	if rv.Kind() != reflect.Pointer {
 		return fmt.Errorf("UnpackAny expects a pointer")
 	}
 

@@ -24,7 +24,7 @@ type autoCLIKeyring interface {
 }
 
 // NewAutoCLIKeyring wraps the SDK keyring and make it compatible with the AutoCLI keyring interfaces.
-func NewAutoCLIKeyring(kr Keyring) (autoCLIKeyring, error) {
+func NewAutoCLIKeyring(kr Keyring) (autoCLIKeyring, error) { //nolint:revive // exported API, the unexported return type is the AutoCLI keyring interface
 	return &autoCLIKeyringAdapter{kr}, nil
 }
 
