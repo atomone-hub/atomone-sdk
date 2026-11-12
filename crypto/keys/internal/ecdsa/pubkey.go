@@ -100,8 +100,8 @@ func (pk *PubKey) Unmarshal(bz []byte, curve elliptic.Curve, expectedSize int) e
 		return errorsmod.Wrapf(errors.ErrInvalidPubKey, "wrong ECDSA PK bytes, expecting %d bytes, got %d", expectedSize, len(bz))
 	}
 	cpk := ecdsa.PublicKey{Curve: curve}
-	cpk.X, cpk.Y = elliptic.UnmarshalCompressed(curve, bz)
-	if cpk.X == nil || cpk.Y == nil {
+	cpk.X, cpk.Y = elliptic.UnmarshalCompressed(curve, bz) //nolint:staticcheck // the key type exposes raw coordinates; moving to crypto/ecdh is a separate change
+	if cpk.X == nil || cpk.Y == nil {                      //nolint:staticcheck // see above
 		return errorsmod.Wrapf(errors.ErrInvalidPubKey, "wrong ECDSA PK bytes, unknown curve type: %d", bz[0])
 	}
 	pk.PublicKey = cpk

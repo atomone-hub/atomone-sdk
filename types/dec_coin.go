@@ -80,6 +80,7 @@ func (coin DecCoin) IsLT(other DecCoin) bool {
 }
 
 // IsEqual returns true if the two sets of Coins have the same value.
+//
 // Deprecated: Use DecCoin.Equal instead.
 func (coin DecCoin) IsEqual(other DecCoin) bool {
 	return coin.Equal(other)
