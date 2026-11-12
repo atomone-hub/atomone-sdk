@@ -27,7 +27,7 @@ func generateKeyPair() (pubkey, privkey []byte) {
 	pubkey = elliptic.Marshal(S256(), key.X, key.Y) //nolint:staticcheck // used for testing
 
 	privkey = make([]byte, 32)
-	blob := key.D.Bytes()
+	blob := key.D.Bytes() //nolint:staticcheck // exercises the deprecated API on purpose
 	copy(privkey[32-len(blob):], blob)
 
 	return pubkey, privkey
