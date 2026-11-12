@@ -33,7 +33,7 @@ func (suite *KeeperTestSuite) TestMsgUpdateParams() {
 			input: &banktypes.MsgUpdateParams{
 				Authority: suite.bankKeeper.GetAuthority(),
 				Params: banktypes.Params{
-					SendEnabled: []*banktypes.SendEnabled{
+					SendEnabled: []*banktypes.SendEnabled{ //nolint:staticcheck // exercises the deprecated API on purpose
 						{Denom: "foo", Enabled: true},
 					},
 				},
