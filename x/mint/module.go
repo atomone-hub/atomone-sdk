@@ -28,7 +28,7 @@ import (
 )
 
 // ConsensusVersion defines the current x/mint module consensus version.
-const ConsensusVersion = 2
+const ConsensusVersion = 3
 
 var (
 	_ module.AppModuleBasic      = AppModule{}
@@ -92,31 +92,32 @@ type AppModule struct {
 
 	// legacySubspace is used solely for migration of x/params managed parameters
 	legacySubspace exported.Subspace
-
-	// inflationCalculator is used to calculate the inflation rate during BeginBlock.
-	// If inflationCalculator is nil, the default inflation calculation logic is used.
-	inflationCalculator types.InflationCalculationFn
 }
 
-// NewAppModule creates a new AppModule object. If the InflationCalculationFn
-// argument is nil, then the SDK's default inflation function will be used.
+// NewAppModule creates a new AppModule object. A nil ic keeps the mint
+// function of the keeper. A non-nil ic installs DefaultMintFn(ic) as the mint
+// function of the module's copy of the keeper, the one that runs in
+// BeginBlock; it must be nil when the keeper was built with WithMintFn, as a
+// custom mint function is set in one place only.
 func NewAppModule(
 	cdc codec.Codec,
-	keeper keeper.Keeper,
+	k keeper.Keeper,
 	ak types.AccountKeeper,
 	ic types.InflationCalculationFn,
 	ss exported.Subspace,
 ) AppModule {
-	if ic == nil {
-		ic = types.DefaultInflationCalculationFn
+	if ic != nil {
+		if k.HasCustomMintFn() {
+			panic("x/mint: NewAppModule received an InflationCalculationFn but the keeper already has a mint function set with WithMintFn; set only one of them")
+		}
+		keeper.WithMintFn(keeper.DefaultMintFn(ic))(&k)
 	}
 
 	return AppModule{
-		AppModuleBasic:      AppModuleBasic{cdc: cdc},
-		keeper:              keeper,
-		authKeeper:          ak,
-		inflationCalculator: ic,
-		legacySubspace:      ss,
+		AppModuleBasic: AppModuleBasic{cdc: cdc},
+		keeper:         k,
+		authKeeper:     ak,
+		legacySubspace: ss,
 	}
 }
 
@@ -136,6 +137,10 @@ func (am AppModule) RegisterServices(cfg module.Configurator) {
 
 	if err := cfg.RegisterMigration(types.ModuleName, 1, m.Migrate1to2); err != nil {
 		panic(fmt.Sprintf("failed to migrate x/%s from version 1 to 2: %v", types.ModuleName, err))
+	}
+
+	if err := cfg.RegisterMigration(types.ModuleName, 2, m.Migrate2to3); err != nil {
+		panic(fmt.Sprintf("failed to migrate x/%s from version 2 to 3: %v", types.ModuleName, err))
 	}
 }
 
@@ -160,7 +165,7 @@ func (AppModule) ConsensusVersion() uint64 { return ConsensusVersion }
 
 // BeginBlock returns the begin blocker for the mint module.
 func (am AppModule) BeginBlock(ctx context.Context) error {
-	return BeginBlocker(ctx, am.keeper, am.inflationCalculator)
+	return BeginBlocker(ctx, am.keeper)
 }
 
 // AppModuleSimulation functions
@@ -198,10 +203,13 @@ func init() {
 type ModuleInputs struct {
 	depinject.In
 
-	ModuleKey              depinject.OwnModuleKey
-	Config                 *modulev1.Module
-	StoreService           store.KVStoreService
-	Cdc                    codec.Codec
+	ModuleKey    depinject.OwnModuleKey
+	Config       *modulev1.Module
+	StoreService store.KVStoreService
+	Cdc          codec.Codec
+	// MintFn replaces the whole minting logic; InflationCalculationFn replaces
+	// the inflation rate logic of the default one. At most one may be supplied.
+	MintFn                 keeper.MintFn                `optional:"true"`
 	InflationCalculationFn types.InflationCalculationFn `optional:"true"`
 
 	// LegacySubspace is used solely for migration of x/params managed parameters
@@ -231,6 +239,18 @@ func ProvideModule(in ModuleInputs) ModuleOutputs {
 		authority = authtypes.NewModuleAddressOrBech32Address(in.Config.Authority)
 	}
 
+	if in.MintFn != nil && in.InflationCalculationFn != nil {
+		panic("x/mint: MintFn and InflationCalculationFn cannot both be supplied; set only one of them")
+	}
+
+	var opts []keeper.InitOption
+	switch {
+	case in.MintFn != nil:
+		opts = append(opts, keeper.WithMintFn(in.MintFn))
+	case in.InflationCalculationFn != nil:
+		opts = append(opts, keeper.WithMintFn(keeper.DefaultMintFn(in.InflationCalculationFn)))
+	}
+
 	k := keeper.NewKeeper(
 		in.Cdc,
 		in.StoreService,
@@ -239,10 +259,10 @@ func ProvideModule(in ModuleInputs) ModuleOutputs {
 		in.BankKeeper,
 		feeCollectorName,
 		authority.String(),
+		opts...,
 	)
 
-	// when no inflation calculation function is provided it will use the default types.DefaultInflationCalculationFn
-	m := NewAppModule(in.Cdc, k, in.AccountKeeper, in.InflationCalculationFn, in.LegacySubspace)
+	m := NewAppModule(in.Cdc, k, in.AccountKeeper, nil, in.LegacySubspace)
 
 	return ModuleOutputs{MintKeeper: k, Module: m}
 }

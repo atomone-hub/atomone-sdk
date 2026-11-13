@@ -175,6 +175,14 @@ func TestAppImportExport(t *testing.T) {
 
 	ctxA := app.NewContextLegacy(true, cmtproto.Header{Height: app.LastBlockHeight()})
 	ctxB := newApp.NewContextLegacy(true, cmtproto.Header{Height: app.LastBlockHeight()})
+
+	// x/mint exports the minter without previous_block_time, so clear it on
+	// the exporting side as well and compare the rest of the minter.
+	minter, err := app.MintKeeper.Minter.Get(ctxA)
+	require.NoError(t, err)
+	minter.PreviousBlockTime = nil
+	require.NoError(t, app.MintKeeper.Minter.Set(ctxA, minter))
+
 	_, err = newApp.ModuleManager.InitGenesis(ctxB, app.AppCodec(), genesisState)
 	if err != nil {
 		if strings.Contains(err.Error(), "validator set is empty after InitGenesis") {

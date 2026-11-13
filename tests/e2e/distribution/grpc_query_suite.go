@@ -57,6 +57,33 @@ func (s *GRPCQueryTestSuite) SetupSuite() {
 	s.Require().NoError(s.network.WaitForNextBlock())
 }
 
+// allocatedShare returns the given share of the tokens the distribution module
+// has allocated by height 2 as the bond denom. No fees are paid before the
+// queries at that height, so the allocation is everything x/mint minted in the
+// first two blocks.
+func (s *GRPCQueryTestSuite) allocatedShare(share string) sdk.DecCoins {
+	_, err := s.network.WaitForHeight(2)
+	s.Require().NoError(err)
+	allocated, err := s.network.MintedUpTo(2)
+	s.Require().NoError(err)
+	amount := math.LegacyNewDecFromInt(allocated).Mul(math.LegacyMustNewDecFromStr(share))
+	return sdk.DecCoins{sdk.NewDecCoinFromDec(s.cfg.BondDenom, amount)}
+}
+
+// photon returns the given amount of the non-bond denom seeded in the fee
+// collector at genesis.
+func (s *GRPCQueryTestSuite) photon(amount int64) sdk.DecCoins {
+	return sdk.NewDecCoins(sdk.NewDecCoin("photon", math.NewInt(amount)))
+}
+
+// autoStakeDust returns the fractional part of the delegator's bond denom
+// reward, the part that auto-staking cannot stake and sends to the community
+// pool.
+func (s *GRPCQueryTestSuite) autoStakeDust() sdk.DecCoins {
+	reward := s.allocatedShare("0.49").AmountOf(s.cfg.BondDenom)
+	return sdk.NewDecCoins(sdk.NewDecCoinFromDec(s.cfg.BondDenom, reward.Sub(reward.TruncateDec())))
+}
+
 // TearDownSuite cleans up the curret test network after _each_ test.
 func (s *GRPCQueryTestSuite) TearDownSuite() {
 	s.T().Log("tearing down e2e test suite1")
@@ -136,11 +163,11 @@ func (s *GRPCQueryTestSuite) TestQueryOutstandingRewardsGRPC() {
 	val := s.network.Validators[0]
 	baseURL := val.APIAddress
 
-	// Bond denom delegator rewards are auto-staked. Outstanding = commission only: 9.8stake.
-	// Non-bond photon flows through F1 normally:
-	// 1000photon genesis fee_collector -> 980photon outstanding (490 commission + 490 delegator).
-	rewards, err := sdk.ParseDecCoins("980photon,9.8stake")
-	s.Require().NoError(err)
+	// Bond denom delegator rewards are auto-staked, so the outstanding bond denom
+	// rewards are the commission only: half of the validator's share. The non-bond
+	// photon seeded in the fee collector flows through F1 normally: 1000photon is
+	// 980photon after the community tax (490 commission and 490 delegator).
+	rewards := s.allocatedShare("0.49").Add(s.photon(980)...)
 
 	testCases := []struct {
 		name     string
@@ -193,8 +220,9 @@ func (s *GRPCQueryTestSuite) TestQueryValidatorCommissionGRPC() {
 	val := s.network.Validators[0]
 	baseURL := val.APIAddress
 
-	commission, err := sdk.ParseDecCoins("490photon,9.8stake")
-	s.Require().NoError(err)
+	// Half of the validator's share, at its 50% commission rate, plus half of the
+	// 980photon the validator receives from the seeded fee collector balance.
+	commission := s.allocatedShare("0.49").Add(s.photon(490)...)
 
 	testCases := []struct {
 		name     string
@@ -306,11 +334,9 @@ func (s *GRPCQueryTestSuite) TestQueryDelegatorRewardsGRPC() {
 	val := s.network.Validators[0]
 	baseURL := val.APIAddress
 
-	// Bond denom delegator rewards are auto-staked; only non-bond photon is claimable.
-	// 1000photon genesis fee_collector -> 490photon delegator share after community tax
-	// and 50% commission split.
-	rewards, err := sdk.ParseDecCoins("490photon")
-	s.Require().NoError(err)
+	// The bond denom share is auto-staked, so only the non-bond photon is
+	// claimable: 490photon after the community tax and the 50% commission.
+	rewards := s.photon(490)
 
 	testCases := []struct {
 		name     string
@@ -489,11 +515,10 @@ func (s *GRPCQueryTestSuite) TestQueryValidatorCommunityPoolGRPC() {
 	val := s.network.Validators[0]
 	baseURL := val.APIAddress
 
-	// Community pool receives: 2% community tax (0.4stake) + decimal truncation dust
-	// from auto-staking the delegator bond denom (9.8stake -> 9 tokens staked, 0.8stake dust)
-	// so in total 1.2stake. Plus the 2% community tax on 1000photon genesis fee = 20photon.
-	communityPool, err := sdk.ParseDecCoins("20photon,1.2stake")
-	s.Require().NoError(err)
+	// The community pool receives the 2% community tax on the bond denom and on the
+	// 1000photon seeded in the fee collector (20photon), plus the fractional part of
+	// the delegator bond denom reward, which auto-staking truncates to whole tokens.
+	communityPool := s.allocatedShare("0.02").Add(s.autoStakeDust()...).Add(s.photon(20)...)
 
 	testCases := []struct {
 		name     string
