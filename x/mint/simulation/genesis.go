@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/rand"
+	"time"
 
 	"cosmossdk.io/math"
 
@@ -18,6 +19,7 @@ const (
 	InflationMax        = "inflation_max"
 	InflationMin        = "inflation_min"
 	GoalBonded          = "goal_bonded"
+	MaxBlockElapsed     = "max_block_elapsed"
 )
 
 // GenInflation randomized Inflation
@@ -45,6 +47,12 @@ func GenGoalBonded(*rand.Rand) math.LegacyDec {
 	return math.LegacyNewDecWithPrec(67, 2)
 }
 
+// GenMaxBlockElapsed randomized MaxBlockElapsed, between one second and one
+// minute.
+func GenMaxBlockElapsed(r *rand.Rand) time.Duration {
+	return time.Duration(r.Intn(60)+1) * time.Second
+}
+
 // RandomizedGenState generates a random GenesisState for mint
 func RandomizedGenState(simState *module.SimulationState) {
 	// minter
@@ -64,9 +72,11 @@ func RandomizedGenState(simState *module.SimulationState) {
 	var goalBonded math.LegacyDec
 	simState.AppParams.GetOrGenerate(GoalBonded, &goalBonded, simState.Rand, func(r *rand.Rand) { goalBonded = GenGoalBonded(r) })
 
+	var maxBlockElapsed time.Duration
+	simState.AppParams.GetOrGenerate(MaxBlockElapsed, &maxBlockElapsed, simState.Rand, func(r *rand.Rand) { maxBlockElapsed = GenMaxBlockElapsed(r) })
+
 	mintDenom := simState.BondDenom
-	blocksPerYear := uint64(60 * 60 * 8766 / 5)
-	params := types.NewParams(mintDenom, inflationRateChange, inflationMax, inflationMin, goalBonded, blocksPerYear)
+	params := types.NewParams(mintDenom, inflationRateChange, inflationMax, inflationMin, goalBonded, maxBlockElapsed)
 
 	mintGenesis := types.NewGenesisState(types.InitialMinter(inflation), params)
 

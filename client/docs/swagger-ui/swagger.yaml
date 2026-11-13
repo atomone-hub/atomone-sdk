@@ -19231,10 +19231,16 @@ paths:
                   goal_bonded:
                     type: string
                     title: goal of percent bonded atoms
-                  blocks_per_year:
+                  max_block_elapsed:
                     type: string
-                    format: uint64
-                    title: expected blocks per year
+                    description: >-
+                      max_block_elapsed caps the time a single block accounts
+                      for when minting:
+
+                      a block whose timestamp is further ahead of the previous
+                      block's mints at
+
+                      most this much time's worth of provisions.
             description: >-
               QueryParamsResponse is the response type for the Query/Params RPC
               method.
@@ -41579,10 +41585,16 @@ definitions:
       goal_bonded:
         type: string
         title: goal of percent bonded atoms
-      blocks_per_year:
+      max_block_elapsed:
         type: string
-        format: uint64
-        title: expected blocks per year
+        description: >-
+          max_block_elapsed caps the time a single block accounts for when
+          minting:
+
+          a block whose timestamp is further ahead of the previous block's mints
+          at
+
+          most this much time's worth of provisions.
     description: Params defines the parameters for the x/mint module.
   cosmos.mint.v1beta1.QueryAnnualProvisionsResponse:
     type: object
@@ -41626,10 +41638,16 @@ definitions:
           goal_bonded:
             type: string
             title: goal of percent bonded atoms
-          blocks_per_year:
+          max_block_elapsed:
             type: string
-            format: uint64
-            title: expected blocks per year
+            description: >-
+              max_block_elapsed caps the time a single block accounts for when
+              minting:
+
+              a block whose timestamp is further ahead of the previous block's
+              mints at
+
+              most this much time's worth of provisions.
     description: QueryParamsResponse is the response type for the Query/Params RPC method.
   cosmos.params.v1beta1.ParamChange:
     type: object

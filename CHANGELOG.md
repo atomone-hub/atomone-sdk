@@ -40,6 +40,7 @@ Ref: https://keepachangelog.com/en/1.0.0/
 
 ### Features
 
+* (x/mint) [#146](https://github.com/atomone-hub/atomone-sdk/pull/146) Add the `MintFn` keeper hook and `WithMintFn` option to replace the BeginBlock minting logic
 * (x/staking) [#137](https://github.com/atomone-hub/cosmos-sdk/pull/137) Add a `BeforeConsensusPubKeyRotation` staking hook, called from the `MsgRotateConsPubKey` handler before any fee is charged or the rotation recorded, so a module keying state by consensus address can reject a rotation onto a key it considers taken.
 
 ### Improvements
@@ -49,7 +50,7 @@ Ref: https://keepachangelog.com/en/1.0.0/
 
 ### Bug Fixes
 
-* (x/gov) [#144](https://github.com/atomone-hub/atomone-sdk/pull/144) Register `MsgUpdateGovernorStatus` in the LegacyAmino codec and register `MsgProposeLaw` and `MsgProposeConstitutionAmendment` under the `amino.name` of their proto definitions, the one the nodes use for the `SIGN_MODE_LEGACY_AMINO_JSON` sign bytes
+* (x/gov) [#144](https://github.com/atomone-hub/atomone-sdk/pull/144) Align the `MsgUpdateGovernorStatus`, `MsgProposeLaw` and `MsgProposeConstitutionAmendment` LegacyAmino registrations with the proto `amino.name`
 * (x/gov) [#130](https://github.com/atomone-hub/atomone-sdk/pull/130) Cap deposit throttler floors to prevent an EndBlocker Int overflow (halt via a passed params-update proposal)
 * (x/consensus) [#135](https://github.com/atomone-hub/atomone-sdk/pull/135) Reject `Block.MaxGas = 0` in `UpdateParams` (mempool tx lockout via a passed proposal)
 * (x/slashing) [#134](https://github.com/atomone-hub/atomone-sdk/pull/134) Do not inherit stale slashing state (tombstone, missed-block bitmap) on consensus-key re-adoption
@@ -61,8 +62,23 @@ Ref: https://keepachangelog.com/en/1.0.0/
 * (x/staking) [#139](https://github.com/atomone-hub/atomone-sdk/pull/139) Store canonical address strings on validator creation and genesis import (CONSENSUS BREAKING BUGFIX)
 * (x/gov) [#139](https://github.com/atomone-hub/atomone-sdk/pull/139) Key the governor tally and governor delegations invariant by canonical validator addresses (CONSENSUS BREAKING BUGFIX)
 * (x/staking) [#140](https://github.com/atomone-hub/atomone-sdk/pull/140) Export and import consensus key rotation state in genesis
-* (x/gov) [#143](https://github.com/atomone-hub/atomone-sdk/pull/143) Do not deactivate a governor whose stake is redelegated: the min self-delegation was checked between the unbond from the source validator and the delegation to the destination one. Redelegations now mark the context passed to the staking hooks (`stakingtypes.WithRedelegationSource`) so the check is deferred to the destination delegation (CONSENSUS BREAKING BUGFIX)
+* (x/consensus) [#156](https://github.com/atomone-hub/atomone-sdk/pull/156) Reject `Block.MaxBytes` and `Block.MaxGas` below a floor in `UpdateParams` (halt and tx lockout via a passed proposal)
+* (x/gov) [#143](https://github.com/atomone-hub/atomone-sdk/pull/143) Do not deactivate a governor on redelegation (CONSENSUS BREAKING BUGFIX)
 * (x/gov) [#154](https://github.com/atomone-hub/atomone-sdk/pull/154) Do not make a governor deactivated by a validator event wait `GovernorStatusChangePeriod` to reactivate (CONSENSUS BREAKING BUGFIX)
+
+### State Machine Breaking
+
+* (x/mint) [#147](https://github.com/atomone-hub/atomone-sdk/pull/147) Mint provisions in proportion to the time elapsed since the previous block, capped at 8 seconds
+* (x/mint) [#148](https://github.com/atomone-hub/atomone-sdk/pull/148) Replace the `blocks_per_year` parameter with `max_block_elapsed`, the cap on a block's elapsed time
+
+### Client Breaking
+
+* (x/mint) [#148](https://github.com/atomone-hub/atomone-sdk/pull/148) `max_block_elapsed` replaces `blocks_per_year` in the `Params` query and `MsgUpdateParams`
+
+### API Breaking
+
+* (x/mint) [#147](https://github.com/atomone-hub/atomone-sdk/pull/147) `InflationCalculationFn`, `Minter.NextInflationRate` and `Minter.BlockProvision` take the elapsed `time.Duration`
+* (x/mint) [#148](https://github.com/atomone-hub/atomone-sdk/pull/148) `NewParams` takes `maxBlockElapsed time.Duration` in place of `blocksPerYear uint64`
 
 ## [v0.500.6](https://github.com/atomone-hub/cosmos-sdk/releases/tag/v0.500.6) - 2026-10-15
 
