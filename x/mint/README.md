@@ -83,13 +83,16 @@ Minting parameters are recalculated and inflation paid at the beginning of each
 block, in proportion to the time elapsed since the previous block:
 
 ```go
-elapsed = min(blockTime - previousBlockTime, MaxBlockElapsed)
+elapsed = min(blockTime - previousBlockTime, max_block_elapsed)
 ```
 
-`elapsed` is measured between consecutive block timestamps and capped at
-`MaxBlockElapsed` (8 seconds), so a block whose timestamp is far ahead of the
-previous one, after a halt or because its proposer set the time ahead of the
-wall clock, mints at most 8 seconds' worth of provisions.
+`elapsed` is measured between consecutive block timestamps and capped at the
+`max_block_elapsed` parameter (8 seconds by default), so a block whose
+timestamp is far ahead of the previous one, after a halt or because its
+proposer set the time ahead of the wall clock, mints at most that much time's
+worth of provisions. The parameter should sit slightly above the block
+interval: a lower value under-mints on legitimately slow blocks, a higher value
+lets a block with a timestamp set ahead of the wall clock mint more.
 
 When `previous_block_time` is unset the block mints nothing and emits no mint
 event: it records its own timestamp as `previous_block_time` and refreshes the
@@ -182,14 +185,14 @@ BlockProvision(params Params, elapsed time.Duration) sdk.Coin {
 
 The minting module contains the following parameters:
 
-| Key                 | Type            | Example                |
-|---------------------|-----------------|------------------------|
-| MintDenom           | string          | "uatom"                |
-| InflationRateChange | string (dec)    | "0.130000000000000000" |
-| InflationMax        | string (dec)    | "0.200000000000000000" |
-| InflationMin        | string (dec)    | "0.070000000000000000" |
-| GoalBonded          | string (dec)    | "0.670000000000000000" |
-| BlocksPerYear       | string (uint64) | "6311520"              |
+| Key                 | Type              | Example                |
+|---------------------|-------------------|------------------------|
+| MintDenom           | string            | "uatom"                |
+| InflationRateChange | string (dec)      | "0.130000000000000000" |
+| InflationMax        | string (dec)      | "0.200000000000000000" |
+| InflationMin        | string (dec)      | "0.070000000000000000" |
+| GoalBonded          | string (dec)      | "0.670000000000000000" |
+| MaxBlockElapsed     | string (duration) | "8s"                   |
 
 
 ## Events
@@ -272,11 +275,11 @@ simd query mint params [flags]
 Example:
 
 ```yml
-blocks_per_year: "4360000"
 goal_bonded: "0.670000000000000000"
 inflation_max: "0.200000000000000000"
 inflation_min: "0.070000000000000000"
 inflation_rate_change: "0.130000000000000000"
+max_block_elapsed: 8s
 mint_denom: stake
 ```
 
@@ -352,7 +355,7 @@ Example Output:
     "inflationMax": "200000000000000000",
     "inflationMin": "70000000000000000",
     "goalBonded": "670000000000000000",
-    "blocksPerYear": "6311520"
+    "maxBlockElapsed": "8s"
   }
 }
 ```
@@ -423,7 +426,7 @@ Example Output:
     "inflationMax": "200000000000000000",
     "inflationMin": "70000000000000000",
     "goalBonded": "670000000000000000",
-    "blocksPerYear": "6311520"
+    "maxBlockElapsed": "8s"
   }
 }
 ```

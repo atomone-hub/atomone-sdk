@@ -68,21 +68,23 @@ func (s *IntegrationTestSuite) TestDefaultMintFn() {
 	// With the bonded ratio at half the goal, inflation moves up by 6.5% per
 	// year, and a block whose elapsed time exceeds the cap moves it by the step
 	// for the capped time only.
-	cappedNs := types.MaxBlockElapsed.Nanoseconds()
+	cappedNs := types.DefaultMaxBlockElapsed.Nanoseconds()
 	cappedInflation := inflation.Add(math.LegacyNewDecWithPrec(65, 3).MulInt64(cappedNs).QuoInt64(types.NanosecondsPerYear))
 	cappedAnnualProvisions := cappedInflation.MulInt(stakingSupply)
 	cappedMinted := cappedAnnualProvisions.MulInt64(cappedNs).QuoInt64(types.NanosecondsPerYear).TruncateInt()
+	dur := func(d time.Duration) *time.Duration { return &d }
 
 	tests := []struct {
-		name          string
-		previous      *time.Time
-		blockTime     time.Time
-		bondedRatio   math.LegacyDec
-		expErr        string
-		expInflation  math.LegacyDec
-		expMinted     math.Int
-		expElapsed    string
-		expEventAttrs map[string]string
+		name            string
+		previous        *time.Time
+		blockTime       time.Time
+		bondedRatio     math.LegacyDec
+		maxBlockElapsed *time.Duration
+		expErr          string
+		expInflation    math.LegacyDec
+		expMinted       math.Int
+		expElapsed      string
+		expEventAttrs   map[string]string
 	}{
 		{
 			name:         "nil previous block time records the reference and mints nothing",
@@ -136,6 +138,32 @@ func (s *IntegrationTestSuite) TestDefaultMintFn() {
 			expElapsed:   "8000000000",
 		},
 		{
+			name:            "cap from params",
+			previous:        &t0,
+			blockTime:       t0.Add(6 * time.Second),
+			bondedRatio:     goalBonded,
+			maxBlockElapsed: dur(3 * time.Second),
+			expInflation:    inflation,
+			expMinted:       math.NewInt(3_000_000),
+			expElapsed:      "3000000000",
+		},
+		{
+			name:            "zero max block elapsed is an error",
+			previous:        &t0,
+			blockTime:       t0.Add(6 * time.Second),
+			bondedRatio:     goalBonded,
+			maxBlockElapsed: dur(0),
+			expErr:          "invalid max_block_elapsed parameter",
+		},
+		{
+			name:            "zero max block elapsed is an error without a reference",
+			previous:        nil,
+			blockTime:       t0,
+			bondedRatio:     goalBonded,
+			maxBlockElapsed: dur(0),
+			expErr:          "invalid max_block_elapsed parameter",
+		},
+		{
 			name:        "block time before the reference is an error",
 			previous:    &t0Plus100s,
 			blockTime:   t0,
@@ -146,6 +174,12 @@ func (s *IntegrationTestSuite) TestDefaultMintFn() {
 	for _, tc := range tests {
 		s.Run(tc.name, func() {
 			s.SetupTest()
+			if tc.maxBlockElapsed != nil {
+				params, err := s.mintKeeper.Params.Get(s.ctx)
+				s.Require().NoError(err)
+				params.MaxBlockElapsed = *tc.maxBlockElapsed
+				s.Require().NoError(s.mintKeeper.Params.Set(s.ctx, params))
+			}
 			s.Require().NoError(s.mintKeeper.Minter.Set(s.ctx, types.Minter{
 				Inflation:         inflation,
 				AnnualProvisions:  math.LegacyZeroDec(),
@@ -180,8 +214,7 @@ func (s *IntegrationTestSuite) TestDefaultMintFn() {
 			if tc.expErr != "" {
 				s.Require().ErrorContains(err, tc.expErr)
 				s.Require().Empty(mintEvents)
-				s.Require().NotNil(minter.PreviousBlockTime)
-				s.Require().Equal(*tc.previous, *minter.PreviousBlockTime)
+				s.Require().Equal(tc.previous, minter.PreviousBlockTime)
 				s.Require().Equal(math.LegacyZeroDec(), minter.AnnualProvisions)
 				return
 			}

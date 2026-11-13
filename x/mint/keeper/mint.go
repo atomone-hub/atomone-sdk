@@ -23,8 +23,8 @@ func (k *Keeper) MintFn(ctx sdk.Context) error {
 // DefaultMintFn returns a default mint function.
 // The default MintFn has a requirement on staking as it uses bond to calculate inflation.
 // It mints the share of the annual provisions corresponding to the time elapsed since the
-// previous block, capped at types.MaxBlockElapsed, and adjusts the inflation rate in
-// proportion to the same elapsed time.
+// previous block, capped at the max_block_elapsed parameter, and adjusts the inflation
+// rate in proportion to the same elapsed time.
 func DefaultMintFn(ic types.InflationCalculationFn) MintFn {
 	return func(ctx sdk.Context, k *Keeper) error {
 		// fetch stored minter & params
@@ -36,6 +36,9 @@ func DefaultMintFn(ic types.InflationCalculationFn) MintFn {
 		params, err := k.Params.Get(ctx)
 		if err != nil {
 			return err
+		}
+		if params.MaxBlockElapsed <= 0 {
+			return fmt.Errorf("invalid max_block_elapsed parameter: %s", params.MaxBlockElapsed)
 		}
 
 		// recalculate inflation rate
@@ -66,8 +69,8 @@ func DefaultMintFn(ic types.InflationCalculationFn) MintFn {
 		}
 
 		elapsed := now.Sub(*minter.PreviousBlockTime)
-		if elapsed > types.MaxBlockElapsed {
-			elapsed = types.MaxBlockElapsed
+		if elapsed > params.MaxBlockElapsed {
+			elapsed = params.MaxBlockElapsed
 		}
 
 		minter.Inflation = ic(ctx, minter, params, bondedRatio, elapsed)

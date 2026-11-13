@@ -66,10 +66,16 @@ Ref: https://keepachangelog.com/en/1.0.0/
 ### State Machine Breaking
 
 * (x/mint) [#147](https://github.com/atomone-hub/atomone-sdk/pull/147) Mint provisions in proportion to the time elapsed since the previous block, capped at 8 seconds
+* (x/mint) [#148](https://github.com/atomone-hub/atomone-sdk/pull/148) Replace the `blocks_per_year` parameter with `max_block_elapsed`, the cap on a block's elapsed time
+
+### Client Breaking
+
+* (x/mint) [#148](https://github.com/atomone-hub/atomone-sdk/pull/148) `max_block_elapsed` replaces `blocks_per_year` in the `Params` query and `MsgUpdateParams`
 
 ### API Breaking
 
 * (x/mint) [#147](https://github.com/atomone-hub/atomone-sdk/pull/147) `InflationCalculationFn`, `Minter.NextInflationRate` and `Minter.BlockProvision` take the elapsed `time.Duration`
+* (x/mint) [#148](https://github.com/atomone-hub/atomone-sdk/pull/148) `NewParams` takes `maxBlockElapsed time.Duration` in place of `blocksPerYear uint64`
 
 ## [v0.500.6](https://github.com/atomone-hub/cosmos-sdk/releases/tag/v0.500.6) - 2026-10-15
 
