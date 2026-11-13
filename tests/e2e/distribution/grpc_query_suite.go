@@ -14,6 +14,8 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	grpctypes "github.com/cosmos/cosmos-sdk/types/grpc"
 	"github.com/cosmos/cosmos-sdk/types/query"
+	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
+	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
 	"github.com/cosmos/cosmos-sdk/x/distribution/types"
 )
 
@@ -31,8 +33,25 @@ func (s *GRPCQueryTestSuite) SetupSuite() {
 	cfg.NumValidators = 1
 	s.cfg = cfg
 
-	var err error
-	s.network, err = network.New(s.T(), s.T().TempDir(), cfg)
+	// Seed fee_collector with non-bond denom so non-bond rewards appear in F1.
+	// These are swept (along with minted bond denom) on the first allocation at block 2.
+	genesisState := s.cfg.GenesisState
+	var bankData banktypes.GenesisState
+	s.Require().NoError(s.cfg.Codec.UnmarshalJSON(genesisState[banktypes.ModuleName], &bankData))
+
+	feeCollectorAddr := authtypes.NewModuleAddress(authtypes.FeeCollectorName)
+	photonCoins := sdk.NewCoins(sdk.NewCoin("photon", math.NewInt(1000)))
+	bankData.Balances = append(bankData.Balances, banktypes.Balance{
+		Address: feeCollectorAddr.String(),
+		Coins:   photonCoins,
+	})
+
+	bankDataBz, err := s.cfg.Codec.MarshalJSON(&bankData)
+	s.Require().NoError(err)
+	genesisState[banktypes.ModuleName] = bankDataBz
+	s.cfg.GenesisState = genesisState
+
+	s.network, err = network.New(s.T(), s.T().TempDir(), s.cfg)
 	s.Require().NoError(err)
 
 	s.Require().NoError(s.network.WaitForNextBlock())
@@ -49,6 +68,20 @@ func (s *GRPCQueryTestSuite) allocatedShare(share string) sdk.DecCoins {
 	s.Require().NoError(err)
 	amount := math.LegacyNewDecFromInt(allocated).Mul(math.LegacyMustNewDecFromStr(share))
 	return sdk.DecCoins{sdk.NewDecCoinFromDec(s.cfg.BondDenom, amount)}
+}
+
+// photon returns the given amount of the non-bond denom seeded in the fee
+// collector at genesis.
+func (s *GRPCQueryTestSuite) photon(amount int64) sdk.DecCoins {
+	return sdk.NewDecCoins(sdk.NewDecCoin("photon", math.NewInt(amount)))
+}
+
+// autoStakeDust returns the fractional part of the delegator's bond denom
+// reward, the part that auto-staking cannot stake and sends to the community
+// pool.
+func (s *GRPCQueryTestSuite) autoStakeDust() sdk.DecCoins {
+	reward := s.allocatedShare("0.49").AmountOf(s.cfg.BondDenom)
+	return sdk.NewDecCoins(sdk.NewDecCoinFromDec(s.cfg.BondDenom, reward.Sub(reward.TruncateDec())))
 }
 
 // TearDownSuite cleans up the curret test network after _each_ test.
@@ -130,8 +163,11 @@ func (s *GRPCQueryTestSuite) TestQueryOutstandingRewardsGRPC() {
 	val := s.network.Validators[0]
 	baseURL := val.APIAddress
 
-	// The validator's share after the 2% community tax.
-	rewards := s.allocatedShare("0.98")
+	// Bond denom delegator rewards are auto-staked, so the outstanding bond denom
+	// rewards are the commission only: half of the validator's share. The non-bond
+	// photon seeded in the fee collector flows through F1 normally: 1000photon is
+	// 980photon after the community tax (490 commission and 490 delegator).
+	rewards := s.allocatedShare("0.49").Add(s.photon(980)...)
 
 	testCases := []struct {
 		name     string
@@ -184,8 +220,9 @@ func (s *GRPCQueryTestSuite) TestQueryValidatorCommissionGRPC() {
 	val := s.network.Validators[0]
 	baseURL := val.APIAddress
 
-	// Half of the validator's share, at its 50% commission rate.
-	commission := s.allocatedShare("0.49")
+	// Half of the validator's share, at its 50% commission rate, plus half of the
+	// 980photon the validator receives from the seeded fee collector balance.
+	commission := s.allocatedShare("0.49").Add(s.photon(490)...)
 
 	testCases := []struct {
 		name     string
@@ -297,8 +334,9 @@ func (s *GRPCQueryTestSuite) TestQueryDelegatorRewardsGRPC() {
 	val := s.network.Validators[0]
 	baseURL := val.APIAddress
 
-	// The validator's share less its 50% commission.
-	rewards := s.allocatedShare("0.49")
+	// The bond denom share is auto-staked, so only the non-bond photon is
+	// claimable: 490photon after the community tax and the 50% commission.
+	rewards := s.photon(490)
 
 	testCases := []struct {
 		name     string
@@ -477,8 +515,10 @@ func (s *GRPCQueryTestSuite) TestQueryValidatorCommunityPoolGRPC() {
 	val := s.network.Validators[0]
 	baseURL := val.APIAddress
 
-	// The 2% community tax.
-	communityPool := s.allocatedShare("0.02")
+	// The community pool receives the 2% community tax on the bond denom and on the
+	// 1000photon seeded in the fee collector (20photon), plus the fractional part of
+	// the delegator bond denom reward, which auto-staking truncates to whole tokens.
+	communityPool := s.allocatedShare("0.02").Add(s.autoStakeDust()...).Add(s.photon(20)...)
 
 	testCases := []struct {
 		name     string
