@@ -6,9 +6,11 @@ import (
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/mock/gomock"
 
+	corestore "cosmossdk.io/core/store"
 	"cosmossdk.io/math"
 	storetypes "cosmossdk.io/store/types"
 
+	"github.com/cosmos/cosmos-sdk/codec"
 	"github.com/cosmos/cosmos-sdk/runtime"
 	"github.com/cosmos/cosmos-sdk/testutil"
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -24,6 +26,8 @@ import (
 type IntegrationTestSuite struct {
 	suite.Suite
 
+	cdc           codec.Codec
+	storeService  corestore.KVStoreService
 	mintKeeper    keeper.Keeper
 	ctx           sdk.Context
 	msgServer     types.MsgServer
@@ -39,6 +43,8 @@ func (s *IntegrationTestSuite) SetupTest() {
 	encCfg := moduletestutil.MakeTestEncodingConfig(mint.AppModuleBasic{})
 	key := storetypes.NewKVStoreKey(types.StoreKey)
 	storeService := runtime.NewKVStoreService(key)
+	s.cdc = encCfg.Codec
+	s.storeService = storeService
 	testCtx := testutil.DefaultContextWithDB(s.T(), key, storetypes.NewTransientStoreKey("transient_test"))
 	s.ctx = testCtx.Ctx
 
