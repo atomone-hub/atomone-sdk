@@ -457,12 +457,14 @@ func (k msgServer) UpdateGovernorStatus(goCtx context.Context, msg *v1.MsgUpdate
 
 	governorStatusChangePeriod := *params.GovernorStatusChangePeriod
 	changeTime := ctx.BlockTime()
-	if governor.LastStatusChangeTime.Add(governorStatusChangePeriod).After(changeTime) {
+	// a governor deactivated by a validator event did not change its status itself
+	if !governor.DeactivatedByValidator && governor.LastStatusChangeTime.Add(governorStatusChangePeriod).After(changeTime) {
 		return nil, govtypes.ErrGovernorStatusChangePeriod.Wrapf("last status change time: %s, need to wait until: %s", governor.LastStatusChangeTime, governor.LastStatusChangeTime.Add(governorStatusChangePeriod))
 	}
 
 	// Update the governor status
 	governor.Status = msg.GetStatus()
+	governor.DeactivatedByValidator = false
 	governor.LastStatusChangeTime = &changeTime
 	// prevent a change to active if min self-delegation is not met
 	if governor.IsActive() {

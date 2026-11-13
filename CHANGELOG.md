@@ -64,6 +64,7 @@ Ref: https://keepachangelog.com/en/1.0.0/
 * (x/staking) [#140](https://github.com/atomone-hub/atomone-sdk/pull/140) Export and import consensus key rotation state in genesis
 * (x/consensus) [#156](https://github.com/atomone-hub/atomone-sdk/pull/156) Reject `Block.MaxBytes` and `Block.MaxGas` below a floor in `UpdateParams` (halt and tx lockout via a passed proposal)
 * (x/gov) [#143](https://github.com/atomone-hub/atomone-sdk/pull/143) Do not deactivate a governor on redelegation (CONSENSUS BREAKING BUGFIX)
+* (x/gov) [#154](https://github.com/atomone-hub/atomone-sdk/pull/154) Do not make a governor deactivated by a validator event wait `GovernorStatusChangePeriod` to reactivate (CONSENSUS BREAKING BUGFIX)
 
 ### State Machine Breaking
 
