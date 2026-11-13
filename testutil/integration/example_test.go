@@ -76,7 +76,7 @@ func Example() {
 	minttypes.RegisterQueryServer(integrationApp.QueryHelper(), mintkeeper.NewQueryServerImpl(mintKeeper))
 
 	params := minttypes.DefaultParams()
-	params.BlocksPerYear = 10000
+	params.MintDenom = "newdenom"
 
 	// now we can use the application to test a mint message
 	result, err := integrationApp.RunMsg(&minttypes.MsgUpdateParams{
@@ -111,8 +111,8 @@ func Example() {
 	if diff := cmp.Diff(got, params); diff != "" {
 		panic(diff)
 	}
-	fmt.Println(got.BlocksPerYear)
-	// Output: 10000
+	fmt.Println(got.MintDenom)
+	// Output: newdenom
 }
 
 // ExampleOneModule shows how to use the integration test framework to test the integration of a single module.

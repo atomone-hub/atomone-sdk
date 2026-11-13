@@ -2,6 +2,7 @@ package keeper_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/suite"
 	"go.uber.org/mock/gomock"
@@ -54,7 +55,7 @@ func (s *GenesisTestSuite) SetupTest() {
 	bankKeeper := minttestutil.NewMockBankKeeper(ctrl)
 	s.accountKeeper = accountKeeper
 	accountKeeper.EXPECT().GetModuleAddress(minterAcc.Name).Return(minterAcc.GetAddress())
-	accountKeeper.EXPECT().GetModuleAccount(s.sdkCtx, minterAcc.Name).Return(minterAcc)
+	accountKeeper.EXPECT().GetModuleAccount(s.sdkCtx, minterAcc.Name).Return(minterAcc).AnyTimes()
 
 	s.keeper = keeper.NewKeeper(s.cdc, runtime.NewKVStoreService(key), stakingKeeper, accountKeeper, bankKeeper, "", "")
 }
@@ -68,7 +69,7 @@ func (s *GenesisTestSuite) TestImportExportGenesis() {
 		math.LegacyNewDecWithPrec(22, 2),
 		math.LegacyNewDecWithPrec(9, 2),
 		math.LegacyNewDecWithPrec(69, 2),
-		uint64(60*60*8766/5),
+		12*time.Second,
 	)
 
 	s.keeper.InitGenesis(s.sdkCtx, s.accountKeeper, genesisState)
@@ -87,4 +88,33 @@ func (s *GenesisTestSuite) TestImportExportGenesis() {
 
 	genesisState2 := s.keeper.ExportGenesis(s.sdkCtx)
 	s.Require().Equal(genesisState, genesisState2)
+
+	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	minter.PreviousBlockTime = &t0
+	s.Require().NoError(s.keeper.Minter.Set(s.sdkCtx, minter))
+
+	exported := s.keeper.ExportGenesis(s.sdkCtx)
+	s.Require().Nil(exported.Minter.PreviousBlockTime)
+	s.Require().Equal(genesisState.Minter, exported.Minter)
+}
+
+func (s *GenesisTestSuite) TestInitGenesisClearsPreviousBlockTime() {
+	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	genesisState := types.DefaultGenesisState()
+	genesisState.Minter.PreviousBlockTime = &t0
+
+	s.keeper.InitGenesis(s.sdkCtx, s.accountKeeper, genesisState)
+
+	minter, err := s.keeper.Minter.Get(s.sdkCtx)
+	s.Require().NoError(err)
+	s.Require().Nil(minter.PreviousBlockTime)
+}
+
+func (s *GenesisTestSuite) TestInitGenesisRejectsInvalidParams() {
+	genesisState := types.DefaultGenesisState()
+	genesisState.Params.MaxBlockElapsed = 0
+
+	s.Require().PanicsWithError("max block elapsed must be positive: 0s", func() {
+		s.keeper.InitGenesis(s.sdkCtx, s.accountKeeper, genesisState)
+	})
 }
