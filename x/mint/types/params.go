@@ -4,21 +4,28 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"cosmossdk.io/math"
 
 	sdk "github.com/cosmos/cosmos-sdk/types"
 )
 
+// DefaultMaxBlockElapsed is the default cap on the time a single block
+// accounts for when minting. It should sit slightly above the block interval:
+// a lower value under-mints on legitimately slow blocks, a higher value lets a
+// block whose timestamp was set ahead of the wall clock mint more.
+const DefaultMaxBlockElapsed = 8 * time.Second
+
 // NewParams returns Params instance with the given values.
-func NewParams(mintDenom string, inflationRateChange, inflationMax, inflationMin, goalBonded math.LegacyDec, blocksPerYear uint64) Params {
+func NewParams(mintDenom string, inflationRateChange, inflationMax, inflationMin, goalBonded math.LegacyDec, maxBlockElapsed time.Duration) Params {
 	return Params{
 		MintDenom:           mintDenom,
 		InflationRateChange: inflationRateChange,
 		InflationMax:        inflationMax,
 		InflationMin:        inflationMin,
 		GoalBonded:          goalBonded,
-		BlocksPerYear:       blocksPerYear,
+		MaxBlockElapsed:     maxBlockElapsed,
 	}
 }
 
@@ -30,7 +37,7 @@ func DefaultParams() Params {
 		InflationMax:        math.LegacyNewDecWithPrec(20, 2),
 		InflationMin:        math.LegacyNewDecWithPrec(7, 2),
 		GoalBonded:          math.LegacyNewDecWithPrec(67, 2),
-		BlocksPerYear:       uint64(60 * 60 * 8766 / 5), // assuming 5 second block times
+		MaxBlockElapsed:     DefaultMaxBlockElapsed,
 	}
 }
 
@@ -51,7 +58,7 @@ func (p Params) Validate() error {
 	if err := validateGoalBonded(p.GoalBonded); err != nil {
 		return err
 	}
-	if err := validateBlocksPerYear(p.BlocksPerYear); err != nil {
+	if err := validateMaxBlockElapsed(p.MaxBlockElapsed); err != nil {
 		return err
 	}
 	if p.InflationMax.LT(p.InflationMin) {
@@ -156,30 +163,14 @@ func validateGoalBonded(i interface{}) error {
 	return nil
 }
 
-// maxBlocksPerYear is the largest BlocksPerYear value that survives the int64
-// cast performed by the mint module's computations (Minter.NextInflationRate
-// and Minter.BlockProvision). It is math.MaxInt64 (2^63-1).
-const maxBlocksPerYear = uint64(1<<63 - 1)
-
-func validateBlocksPerYear(i interface{}) error {
-	v, ok := i.(uint64)
+func validateMaxBlockElapsed(i interface{}) error {
+	v, ok := i.(time.Duration)
 	if !ok {
 		return fmt.Errorf("invalid parameter type: %T", i)
 	}
 
-	if v == 0 {
-		return fmt.Errorf("blocks per year must be positive: %d", v)
-	}
-
-	// BlocksPerYear is cast to int64 when computing the inflation rate and the
-	// per-block provisions. A value greater than math.MaxInt64 silently flips
-	// negative in that cast, which inverts the sign of the computed provisions
-	// and makes sdk.NewCoin panic inside mint's BeginBlocker - on every block,
-	// permanently halting the chain (baseapp.beginBlock has no panic recovery).
-	// Reject such values up front so a governance MsgUpdateParams can never
-	// persist them.
-	if v > maxBlocksPerYear {
-		return fmt.Errorf("blocks per year must not be greater than %d: %d", maxBlocksPerYear, v)
+	if v <= 0 {
+		return fmt.Errorf("max block elapsed must be positive: %s", v)
 	}
 
 	return nil

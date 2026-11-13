@@ -29,9 +29,33 @@ type Keeper struct {
 	Schema collections.Schema
 	Params collections.Item[types.Params]
 	Minter collections.Item[types.Minter]
+
+	// mintFn is a function that encompasses all minting logic run in the x/mint begin blocker.
+	mintFn MintFn
+	// customMintFn records that mintFn was set with WithMintFn.
+	customMintFn bool
 }
 
-// NewKeeper creates a new mint Keeper instance
+// InitOption is a functional option applied to the Keeper by NewKeeper.
+type InitOption func(*Keeper)
+
+// WithMintFn sets a custom minting function for the x/mint keeper. It panics
+// on a nil function.
+func WithMintFn(mintFn MintFn) InitOption {
+	if mintFn == nil {
+		panic("x/mint: WithMintFn requires a non-nil mint function")
+	}
+
+	return func(k *Keeper) {
+		k.mintFn = mintFn
+		k.customMintFn = true
+	}
+}
+
+// NewKeeper creates a new mint Keeper instance.
+//
+// The mint keeper is always initialized with the DefaultMintFn but this can be overridden with the
+// WithMintFn option.
 func NewKeeper(
 	cdc codec.BinaryCodec,
 	storeService storetypes.KVStoreService,
@@ -40,6 +64,7 @@ func NewKeeper(
 	bk types.BankKeeper,
 	feeCollectorName string,
 	authority string,
+	opts ...InitOption,
 ) Keeper {
 	// ensure mint module account is set
 	if addr := ak.GetModuleAddress(types.ModuleName); addr == nil {
@@ -56,6 +81,7 @@ func NewKeeper(
 		authority:        authority,
 		Params:           collections.NewItem(sb, types.ParamsKey, "params", codec.CollValue[types.Params](cdc)),
 		Minter:           collections.NewItem(sb, types.MinterKey, "minter", codec.CollValue[types.Minter](cdc)),
+		mintFn:           DefaultMintFn(types.DefaultInflationCalculationFn),
 	}
 
 	schema, err := sb.Build()
@@ -63,7 +89,17 @@ func NewKeeper(
 		panic(err)
 	}
 	k.Schema = schema
+
+	for _, opt := range opts {
+		opt(&k)
+	}
+
 	return k
+}
+
+// HasCustomMintFn reports whether the mint function was set with WithMintFn.
+func (k Keeper) HasCustomMintFn() bool {
+	return k.customMintFn
 }
 
 // GetAuthority returns the x/mint module's authority.

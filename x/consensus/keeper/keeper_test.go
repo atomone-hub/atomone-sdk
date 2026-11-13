@@ -56,7 +56,7 @@ func (s *KeeperTestSuite) TestGRPCQueryConsensusParams() {
 	// Create ConsensusParams with modified fields
 	modifiedConsensusParams := cmttypes.DefaultConsensusParams().ToProto()
 	modifiedConsensusParams.Block.MaxBytes++
-	modifiedConsensusParams.Block.MaxGas = 100
+	modifiedConsensusParams.Block.MaxGas = 2_000_000
 	modifiedConsensusParams.Evidence.MaxAgeDuration++
 	modifiedConsensusParams.Evidence.MaxAgeNumBlocks++
 	modifiedConsensusParams.Evidence.MaxBytes++
