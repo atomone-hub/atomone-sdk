@@ -7,7 +7,16 @@ import (
 
 // InitGenesis new mint genesis
 func (keeper Keeper) InitGenesis(ctx sdk.Context, ak types.AccountKeeper, data *types.GenesisState) {
-	if err := keeper.Minter.Set(ctx, data.Minter); err != nil {
+	if err := types.ValidateGenesis(*data); err != nil {
+		panic(err)
+	}
+
+	// previous_block_time only has meaning against the clock of the chain that
+	// recorded it, so a chain starting from a genesis has no reference point:
+	// its first block records one and mints nothing.
+	minter := data.Minter
+	minter.PreviousBlockTime = nil
+	if err := keeper.Minter.Set(ctx, minter); err != nil {
 		panic(err)
 	}
 
@@ -24,6 +33,9 @@ func (keeper Keeper) ExportGenesis(ctx sdk.Context) *types.GenesisState {
 	if err != nil {
 		panic(err)
 	}
+
+	// See InitGenesis: the reference point is not carried across an export.
+	minter.PreviousBlockTime = nil
 
 	params, err := keeper.Params.Get(ctx)
 	if err != nil {

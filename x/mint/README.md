@@ -10,6 +10,7 @@ sidebar_position: 1
     * [Minter](#minter)
     * [Params](#params)
 * [Begin-Block](#begin-block)
+    * [Custom minting function](#custom-minting-function)
     * [NextInflationRate](#nextinflationrate)
     * [NextAnnualProvisions](#nextannualprovisions)
     * [BlockProvision](#blockprovision)
@@ -51,7 +52,13 @@ It can be broken down in the following way:
 
 ### Minter
 
-The minter is a space for holding current inflation information.
+The minter is a space for holding current inflation information:
+
+* `inflation`: the current annual inflation rate.
+* `annual_provisions`: the current annual expected provisions.
+* `previous_block_time`: the timestamp of the last block that ran the mint
+  BeginBlocker, used to measure the time elapsed until the next block. It is
+  unset until the first block has run, and it is not carried across an export.
 
 * Minter: `0x00 -> ProtocolBuffer(minter)`
 
@@ -72,32 +79,70 @@ https://github.com/cosmos/cosmos-sdk/blob/v0.47.0-rc1/proto/cosmos/mint/v1beta1/
 
 ## Begin-Block
 
-Minting parameters are recalculated and inflation paid at the beginning of each block.
-
-### Inflation rate calculation
-
-Inflation rate is calculated using an "inflation calculation function" that's
-passed to the `NewAppModule` function. If no function is passed, then the SDK's
-default inflation function will be used (`NextInflationRate`). In case a custom
-inflation calculation logic is needed, this can be achieved by defining and
-passing a function that matches `InflationCalculationFn`'s signature.
+Minting parameters are recalculated and inflation paid at the beginning of each
+block, in proportion to the time elapsed since the previous block:
 
 ```go
-type InflationCalculationFn func(ctx sdk.Context, minter Minter, params Params, bondedRatio math.LegacyDec) math.LegacyDec
+elapsed = min(blockTime - previousBlockTime, max_block_elapsed)
 ```
 
-#### NextInflationRate
+`elapsed` is measured between consecutive block timestamps and capped at the
+`max_block_elapsed` parameter (8 seconds by default), so a block whose
+timestamp is far ahead of the previous one, after a halt or because its
+proposer set the time ahead of the wall clock, mints at most that much time's
+worth of provisions. The parameter should sit slightly above the block
+interval: a lower value under-mints on legitimately slow blocks, a higher value
+lets a block with a timestamp set ahead of the wall clock mint more.
+
+When `previous_block_time` is unset the block mints nothing and emits no mint
+event: it records its own timestamp as `previous_block_time` and refreshes the
+annual provisions, and the next block mints normally. The field is unset on the
+first block after genesis and on the first block after the upgrade that
+introduces it. `ExportGenesis` writes it as unset and `InitGenesis` ignores it,
+so a chain restarted from an exported genesis also starts without a reference,
+whatever `genesis_time` the file carries. A block whose timestamp is before
+`previous_block_time` breaks the invariant that CometBFT enforces on block
+times, and the mint function returns an error, which halts the chain.
+
+A year is `NanosecondsPerYear` (a Julian year of 365.25 days,
+`31_557_600_000_000_000` nanoseconds).
+
+### Custom minting function
+
+The minting logic run at the beginning of each block is the keeper's `MintFn`.
+A custom function matching `keeper.MintFn` can be set with the
+`mintkeeper.WithMintFn(fn)` option of `mintkeeper.NewKeeper`. When the option is
+not given, `mintkeeper.DefaultMintFn(types.DefaultInflationCalculationFn)` is used.
+
+A custom inflation rate logic can be kept while reusing the rest of the default
+minting by wrapping a function that matches `InflationCalculationFn`'s signature
+with `mintkeeper.DefaultMintFn`:
+
+```go
+type InflationCalculationFn func(ctx context.Context, minter Minter, params Params, bondedRatio math.LegacyDec, elapsed time.Duration) math.LegacyDec
+
+mintkeeper.NewKeeper(..., mintkeeper.WithMintFn(mintkeeper.DefaultMintFn(customInflationFn)))
+```
+
+The same function can be given as the `ic` argument of `NewAppModule`, or
+supplied as an `InflationCalculationFn` to depinject; both install
+`mintkeeper.DefaultMintFn(ic)`. A custom mint function is set in one place
+only: `NewAppModule` panics when given a non-nil `ic` for a keeper built with
+`WithMintFn`, and depinject panics when both a `MintFn` and an
+`InflationCalculationFn` are supplied.
+
+### NextInflationRate
 
 The target annual inflation rate is recalculated each block.
 The inflation is also subject to a rate change (positive or negative)
 depending on the distance from the desired ratio (67%). The maximum rate change
-possible is defined to be 13% per year, however, the annual inflation is capped
-as between 7% and 20%.
+possible is defined to be 13% per year, applied in proportion to the elapsed
+time, however, the annual inflation is capped as between 7% and 20%.
 
 ```go
-NextInflationRate(params Params, bondedRatio math.LegacyDec) (inflation math.LegacyDec) {
+NextInflationRate(params Params, bondedRatio math.LegacyDec, elapsed time.Duration) (inflation math.LegacyDec) {
 	inflationRateChangePerYear = (1 - bondedRatio/params.GoalBonded) * params.InflationRateChange
-	inflationRateChange = inflationRateChangePerYear/blocksPerYr
+	inflationRateChange = inflationRateChangePerYear * elapsed / NanosecondsPerYear
 
 	// increase the new annual inflation for this next block
 	inflation += inflationRateChange
@@ -124,11 +169,14 @@ NextAnnualProvisions(params Params, totalSupply math.LegacyDec) (provisions math
 
 ### BlockProvision
 
-Calculate the provisions generated for each block based on current annual provisions. The provisions are then minted by the `mint` module's `ModuleMinterAccount` and then transferred to the `auth`'s `FeeCollector` `ModuleAccount`.
+Calculate the provisions generated for a block as the share of the current
+annual provisions corresponding to the elapsed time. The provisions are then
+minted by the `mint` module's `ModuleMinterAccount` and then transferred to the
+`auth`'s `FeeCollector` `ModuleAccount`.
 
 ```go
-BlockProvision(params Params) sdk.Coin {
-	provisionAmt = AnnualProvisions/ params.BlocksPerYear
+BlockProvision(params Params, elapsed time.Duration) sdk.Coin {
+	provisionAmt = AnnualProvisions * elapsed / NanosecondsPerYear
 	return sdk.NewCoin(params.MintDenom, provisionAmt.Truncate())
 ```
 
@@ -137,14 +185,14 @@ BlockProvision(params Params) sdk.Coin {
 
 The minting module contains the following parameters:
 
-| Key                 | Type            | Example                |
-|---------------------|-----------------|------------------------|
-| MintDenom           | string          | "uatom"                |
-| InflationRateChange | string (dec)    | "0.130000000000000000" |
-| InflationMax        | string (dec)    | "0.200000000000000000" |
-| InflationMin        | string (dec)    | "0.070000000000000000" |
-| GoalBonded          | string (dec)    | "0.670000000000000000" |
-| BlocksPerYear       | string (uint64) | "6311520"              |
+| Key                 | Type              | Example                |
+|---------------------|-------------------|------------------------|
+| MintDenom           | string            | "uatom"                |
+| InflationRateChange | string (dec)      | "0.130000000000000000" |
+| InflationMax        | string (dec)      | "0.200000000000000000" |
+| InflationMin        | string (dec)      | "0.070000000000000000" |
+| GoalBonded          | string (dec)      | "0.670000000000000000" |
+| MaxBlockElapsed     | string (duration) | "8s"                   |
 
 
 ## Events
@@ -159,6 +207,7 @@ The minting module emits the following events:
 | mint | inflation         | {inflation}        |
 | mint | annual_provisions | {annualProvisions} |
 | mint | amount            | {amount}           |
+| mint | elapsed_ns        | {elapsedNs}        |
 
 
 ## Client
@@ -226,11 +275,11 @@ simd query mint params [flags]
 Example:
 
 ```yml
-blocks_per_year: "4360000"
 goal_bonded: "0.670000000000000000"
 inflation_max: "0.200000000000000000"
 inflation_min: "0.070000000000000000"
 inflation_rate_change: "0.130000000000000000"
+max_block_elapsed: 8s
 mint_denom: stake
 ```
 
@@ -306,7 +355,7 @@ Example Output:
     "inflationMax": "200000000000000000",
     "inflationMin": "70000000000000000",
     "goalBonded": "670000000000000000",
-    "blocksPerYear": "6311520"
+    "maxBlockElapsed": "8s"
   }
 }
 ```
@@ -377,7 +426,7 @@ Example Output:
     "inflationMax": "200000000000000000",
     "inflationMin": "70000000000000000",
     "goalBonded": "670000000000000000",
-    "blocksPerYear": "6311520"
+    "maxBlockElapsed": "8s"
   }
 }
 ```

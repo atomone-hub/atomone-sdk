@@ -19205,10 +19205,16 @@ paths:
                   goal_bonded:
                     type: string
                     title: goal of percent bonded atoms
-                  blocks_per_year:
+                  max_block_elapsed:
                     type: string
-                    format: uint64
-                    title: expected blocks per year
+                    description: >-
+                      max_block_elapsed caps the time a single block accounts
+                      for when minting:
+
+                      a block whose timestamp is further ahead of the previous
+                      block's mints at
+
+                      most this much time's worth of provisions.
             description: >-
               QueryParamsResponse is the response type for the Query/Params RPC
               method.
@@ -22330,6 +22336,26 @@ paths:
                     title: >-
                       max_commission_rate represents the maximum commission rate
                       that a validator can charge their delegators
+                  key_rotation_fee:
+                    type: object
+                    properties:
+                      denom:
+                        type: string
+                      amount:
+                        type: string
+                    description: >-
+                      Coin defines a token with a denomination and an amount.
+
+
+                      NOTE: The amount field is an Int which implements the
+                      custom method
+
+                      signatures required by gogoproto.
+                    title: >-
+                      key_rotation_fee is fee to be spent when rotating
+                      validator's key
+
+                      (either consensus pubkey or operator key)
             description: >-
               QueryParamsResponse is response type for the Query/Params RPC
               method.
@@ -41495,10 +41521,16 @@ definitions:
       goal_bonded:
         type: string
         title: goal of percent bonded atoms
-      blocks_per_year:
+      max_block_elapsed:
         type: string
-        format: uint64
-        title: expected blocks per year
+        description: >-
+          max_block_elapsed caps the time a single block accounts for when
+          minting:
+
+          a block whose timestamp is further ahead of the previous block's mints
+          at
+
+          most this much time's worth of provisions.
     description: Params defines the parameters for the x/mint module.
   cosmos.mint.v1beta1.QueryAnnualProvisionsResponse:
     type: object
@@ -41542,10 +41574,16 @@ definitions:
           goal_bonded:
             type: string
             title: goal of percent bonded atoms
-          blocks_per_year:
+          max_block_elapsed:
             type: string
-            format: uint64
-            title: expected blocks per year
+            description: >-
+              max_block_elapsed caps the time a single block accounts for when
+              minting:
+
+              a block whose timestamp is further ahead of the previous block's
+              mints at
+
+              most this much time's worth of provisions.
     description: QueryParamsResponse is the response type for the Query/Params RPC method.
   cosmos.params.v1beta1.ParamChange:
     type: object
@@ -42321,6 +42359,21 @@ definitions:
         title: >-
           max_commission_rate represents the maximum commission rate that a
           validator can charge their delegators
+      key_rotation_fee:
+        type: object
+        properties:
+          denom:
+            type: string
+          amount:
+            type: string
+        description: |-
+          Coin defines a token with a denomination and an amount.
+
+          NOTE: The amount field is an Int which implements the custom method
+          signatures required by gogoproto.
+        title: |-
+          key_rotation_fee is fee to be spent when rotating validator's key
+          (either consensus pubkey or operator key)
     description: Params defines the parameters for the x/staking module.
   cosmos.staking.v1beta1.Pool:
     type: object
@@ -43298,6 +43351,24 @@ definitions:
             title: >-
               max_commission_rate represents the maximum commission rate that a
               validator can charge their delegators
+          key_rotation_fee:
+            type: object
+            properties:
+              denom:
+                type: string
+              amount:
+                type: string
+            description: >-
+              Coin defines a token with a denomination and an amount.
+
+
+              NOTE: The amount field is an Int which implements the custom
+              method
+
+              signatures required by gogoproto.
+            title: |-
+              key_rotation_fee is fee to be spent when rotating validator's key
+              (either consensus pubkey or operator key)
     description: QueryParamsResponse is response type for the Query/Params RPC method.
   cosmos.staking.v1beta1.QueryPoolResponse:
     type: object
