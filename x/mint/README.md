@@ -10,6 +10,7 @@ sidebar_position: 1
     * [Minter](#minter)
     * [Params](#params)
 * [Begin-Block](#begin-block)
+    * [Custom minting function](#custom-minting-function)
     * [NextInflationRate](#nextinflationrate)
     * [NextAnnualProvisions](#nextannualprovisions)
     * [BlockProvision](#blockprovision)
@@ -51,7 +52,13 @@ It can be broken down in the following way:
 
 ### Minter
 
-The minter is a space for holding current inflation information.
+The minter is a space for holding current inflation information:
+
+* `inflation`: the current annual inflation rate.
+* `annual_provisions`: the current annual expected provisions.
+* `previous_block_time`: the timestamp of the last block that ran the mint
+  BeginBlocker, used to measure the time elapsed until the next block. It is
+  unset until the first block has run, and it is not carried across an export.
 
 * Minter: `0x00 -> ProtocolBuffer(minter)`
 
@@ -72,7 +79,30 @@ https://github.com/cosmos/cosmos-sdk/blob/v0.47.0-rc1/proto/cosmos/mint/v1beta1/
 
 ## Begin-Block
 
-Minting parameters are recalculated and inflation paid at the beginning of each block.
+Minting parameters are recalculated and inflation paid at the beginning of each
+block, in proportion to the time elapsed since the previous block:
+
+```go
+elapsed = min(blockTime - previousBlockTime, MaxBlockElapsed)
+```
+
+`elapsed` is measured between consecutive block timestamps and capped at
+`MaxBlockElapsed` (8 seconds), so a block whose timestamp is far ahead of the
+previous one, after a halt or because its proposer set the time ahead of the
+wall clock, mints at most 8 seconds' worth of provisions.
+
+When `previous_block_time` is unset the block mints nothing and emits no mint
+event: it records its own timestamp as `previous_block_time` and refreshes the
+annual provisions, and the next block mints normally. The field is unset on the
+first block after genesis and on the first block after the upgrade that
+introduces it. `ExportGenesis` writes it as unset and `InitGenesis` ignores it,
+so a chain restarted from an exported genesis also starts without a reference,
+whatever `genesis_time` the file carries. A block whose timestamp is before
+`previous_block_time` breaks the invariant that CometBFT enforces on block
+times, and the mint function returns an error, which halts the chain.
+
+A year is `NanosecondsPerYear` (a Julian year of 365.25 days,
+`31_557_600_000_000_000` nanoseconds).
 
 ### Custom minting function
 
@@ -86,7 +116,7 @@ minting by wrapping a function that matches `InflationCalculationFn`'s signature
 with `mintkeeper.DefaultMintFn`:
 
 ```go
-type InflationCalculationFn func(ctx context.Context, minter Minter, params Params, bondedRatio math.LegacyDec) math.LegacyDec
+type InflationCalculationFn func(ctx context.Context, minter Minter, params Params, bondedRatio math.LegacyDec, elapsed time.Duration) math.LegacyDec
 
 mintkeeper.NewKeeper(..., mintkeeper.WithMintFn(mintkeeper.DefaultMintFn(customInflationFn)))
 ```
@@ -98,18 +128,18 @@ only: `NewAppModule` panics when given a non-nil `ic` for a keeper built with
 `WithMintFn`, and depinject panics when both a `MintFn` and an
 `InflationCalculationFn` are supplied.
 
-#### NextInflationRate
+### NextInflationRate
 
 The target annual inflation rate is recalculated each block.
 The inflation is also subject to a rate change (positive or negative)
 depending on the distance from the desired ratio (67%). The maximum rate change
-possible is defined to be 13% per year, however, the annual inflation is capped
-as between 7% and 20%.
+possible is defined to be 13% per year, applied in proportion to the elapsed
+time, however, the annual inflation is capped as between 7% and 20%.
 
 ```go
-NextInflationRate(params Params, bondedRatio math.LegacyDec) (inflation math.LegacyDec) {
+NextInflationRate(params Params, bondedRatio math.LegacyDec, elapsed time.Duration) (inflation math.LegacyDec) {
 	inflationRateChangePerYear = (1 - bondedRatio/params.GoalBonded) * params.InflationRateChange
-	inflationRateChange = inflationRateChangePerYear/blocksPerYr
+	inflationRateChange = inflationRateChangePerYear * elapsed / NanosecondsPerYear
 
 	// increase the new annual inflation for this next block
 	inflation += inflationRateChange
@@ -136,11 +166,14 @@ NextAnnualProvisions(params Params, totalSupply math.LegacyDec) (provisions math
 
 ### BlockProvision
 
-Calculate the provisions generated for each block based on current annual provisions. The provisions are then minted by the `mint` module's `ModuleMinterAccount` and then transferred to the `auth`'s `FeeCollector` `ModuleAccount`.
+Calculate the provisions generated for a block as the share of the current
+annual provisions corresponding to the elapsed time. The provisions are then
+minted by the `mint` module's `ModuleMinterAccount` and then transferred to the
+`auth`'s `FeeCollector` `ModuleAccount`.
 
 ```go
-BlockProvision(params Params) sdk.Coin {
-	provisionAmt = AnnualProvisions/ params.BlocksPerYear
+BlockProvision(params Params, elapsed time.Duration) sdk.Coin {
+	provisionAmt = AnnualProvisions * elapsed / NanosecondsPerYear
 	return sdk.NewCoin(params.MintDenom, provisionAmt.Truncate())
 ```
 
@@ -171,6 +204,7 @@ The minting module emits the following events:
 | mint | inflation         | {inflation}        |
 | mint | annual_provisions | {annualProvisions} |
 | mint | amount            | {amount}           |
+| mint | elapsed_ns        | {elapsedNs}        |
 
 
 ## Client

@@ -63,6 +63,14 @@ Ref: https://keepachangelog.com/en/1.0.0/
 * (x/gov) [#139](https://github.com/atomone-hub/atomone-sdk/pull/139) Key the governor tally and governor delegations invariant by canonical validator addresses (CONSENSUS BREAKING BUGFIX)
 * (x/staking) [#140](https://github.com/atomone-hub/atomone-sdk/pull/140) Export and import consensus key rotation state in genesis
 
+### State Machine Breaking
+
+* (x/mint) [#147](https://github.com/atomone-hub/atomone-sdk/pull/147) Mint provisions in proportion to the time elapsed since the previous block, capped at 8 seconds
+
+### API Breaking
+
+* (x/mint) [#147](https://github.com/atomone-hub/atomone-sdk/pull/147) `InflationCalculationFn`, `Minter.NextInflationRate` and `Minter.BlockProvision` take the elapsed `time.Duration`
+
 ## [v0.500.6](https://github.com/atomone-hub/cosmos-sdk/releases/tag/v0.500.6) - 2026-10-15
 
 > Note, v0.500.3-v0.500.5 have been retracted because they were tagged on wrong commits.

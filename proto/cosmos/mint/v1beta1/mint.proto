@@ -6,6 +6,7 @@ option go_package = "github.com/cosmos/cosmos-sdk/x/mint/types";
 import "gogoproto/gogo.proto";
 import "cosmos_proto/cosmos.proto";
 import "amino/amino.proto";
+import "google/protobuf/timestamp.proto";
 
 // Minter represents the minting state.
 message Minter {
@@ -21,6 +22,9 @@ message Minter {
     (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
     (gogoproto.nullable)   = false
   ];
+  // previous_block_time is the timestamp of the last block that ran the mint
+  // BeginBlocker. It is unset until the first block has run.
+  google.protobuf.Timestamp previous_block_time = 3 [(gogoproto.stdtime) = true, (gogoproto.nullable) = true];
 }
 
 // Params defines the parameters for the x/mint module.

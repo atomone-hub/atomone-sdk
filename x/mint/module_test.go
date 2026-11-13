@@ -3,6 +3,7 @@ package mint_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -29,8 +30,18 @@ import (
 // fixedInflationFn is an InflationCalculationFn that always returns fixedInflation.
 var fixedInflation = math.LegacyNewDecWithPrec(50, 2)
 
-func fixedInflationFn(_ context.Context, _ types.Minter, _ types.Params, _ math.LegacyDec) math.LegacyDec {
+func fixedInflationFn(_ context.Context, _ types.Minter, _ types.Params, _ math.LegacyDec, _ time.Duration) math.LegacyDec {
 	return fixedInflation
+}
+
+// mintTwoBlocks runs mint for a block that only records the reference time and
+// then for a block five seconds later, which runs the inflation function.
+func mintTwoBlocks(t *testing.T, ctx sdk.Context, mintBlock func(sdk.Context) error) {
+	t.Helper()
+
+	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	require.NoError(t, mintBlock(ctx.WithBlockTime(start)))
+	require.NoError(t, mintBlock(ctx.WithBlockTime(start.Add(5*time.Second))))
 }
 
 func TestItCreatesModuleAccountOnInitBlock(t *testing.T) {
@@ -59,7 +70,7 @@ func TestProvideModuleHonoursInflationCalculationFn(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx := app.BaseApp.NewContext(false)
-	require.NoError(t, mintKeeper.MintFn(ctx))
+	mintTwoBlocks(t, ctx, mintKeeper.MintFn)
 
 	minter, err := mintKeeper.Minter.Get(ctx)
 	require.NoError(t, err)
@@ -118,7 +129,7 @@ func TestNewAppModuleHonoursInflationCalculationFn(t *testing.T) {
 	encCfg := moduletestutil.MakeTestEncodingConfig(mint.AppModuleBasic{})
 
 	am := mint.NewAppModule(encCfg.Codec, k, nil, fixedInflationFn, nil)
-	require.NoError(t, am.BeginBlock(ctx))
+	mintTwoBlocks(t, ctx, func(ctx sdk.Context) error { return am.BeginBlock(ctx) })
 
 	minter, err := k.Minter.Get(ctx)
 	require.NoError(t, err)

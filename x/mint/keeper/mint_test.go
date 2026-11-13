@@ -1,6 +1,8 @@
 package keeper_test
 
 import (
+	"time"
+
 	"go.uber.org/mock/gomock"
 
 	"cosmossdk.io/math"
@@ -56,27 +58,165 @@ func (s *IntegrationTestSuite) TestWithMintFnRejectsNil() {
 	})
 }
 
-func (s *IntegrationTestSuite) TestDefaultMintFnMintsBlockProvision() {
-	s.Require().NoError(s.mintKeeper.Minter.Set(s.ctx, types.Minter{
-		Inflation:        math.LegacyNewDecWithPrec(10, 2),
-		AnnualProvisions: math.LegacyZeroDec(),
-	}))
+func (s *IntegrationTestSuite) TestDefaultMintFn() {
+	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	t0Plus100s := t0.Add(100 * time.Second)
+	stakingSupply := math.NewInt(315_576_000_000_000)
+	goalBonded := math.LegacyNewDecWithPrec(67, 2)
+	inflation := math.LegacyNewDecWithPrec(10, 2)
 
-	supply := math.NewInt(1_000_000_000_000)
-	s.stakingKeeper.EXPECT().StakingTokenSupply(gomock.Any()).Return(supply, nil)
-	s.stakingKeeper.EXPECT().BondedRatio(gomock.Any()).Return(math.LegacyNewDecWithPrec(67, 2), nil)
+	// With the bonded ratio at half the goal, inflation moves up by 6.5% per
+	// year, and a block whose elapsed time exceeds the cap moves it by the step
+	// for the capped time only.
+	cappedNs := types.MaxBlockElapsed.Nanoseconds()
+	cappedInflation := inflation.Add(math.LegacyNewDecWithPrec(65, 3).MulInt64(cappedNs).QuoInt64(types.NanosecondsPerYear))
+	cappedAnnualProvisions := cappedInflation.MulInt(stakingSupply)
+	cappedMinted := cappedAnnualProvisions.MulInt64(cappedNs).QuoInt64(types.NanosecondsPerYear).TruncateInt()
 
-	// 10% of the supply per year, spread over blocksPerYear and truncated.
-	blocksPerYear := uint64(60 * 60 * 8766 / 5)
-	annualProvisions := math.NewInt(100_000_000_000)
-	minted := sdk.NewCoins(sdk.NewCoin("stake", annualProvisions.Quo(math.NewIntFromUint64(blocksPerYear))))
-	s.bankKeeper.EXPECT().MintCoins(gomock.Any(), types.ModuleName, minted).Return(nil)
-	s.bankKeeper.EXPECT().SendCoinsFromModuleToModule(gomock.Any(), types.ModuleName, authtypes.FeeCollectorName, minted).Return(nil)
+	tests := []struct {
+		name          string
+		previous      *time.Time
+		blockTime     time.Time
+		bondedRatio   math.LegacyDec
+		expErr        string
+		expInflation  math.LegacyDec
+		expMinted     math.Int
+		expElapsed    string
+		expEventAttrs map[string]string
+	}{
+		{
+			name:         "nil previous block time records the reference and mints nothing",
+			previous:     nil,
+			blockTime:    t0,
+			bondedRatio:  goalBonded,
+			expInflation: inflation,
+			expMinted:    math.ZeroInt(),
+		},
+		{
+			name:         "six seconds",
+			previous:     &t0,
+			blockTime:    t0.Add(6 * time.Second),
+			bondedRatio:  goalBonded,
+			expInflation: inflation,
+			expMinted:    math.NewInt(6_000_000),
+			expElapsed:   "6000000000",
+			expEventAttrs: map[string]string{
+				types.AttributeKeyBondedRatio:      "0.670000000000000000",
+				types.AttributeKeyInflation:        "0.100000000000000000",
+				types.AttributeKeyAnnualProvisions: "31557600000000.000000000000000000",
+				sdk.AttributeKeyAmount:             "6000000",
+				types.AttributeKeyElapsed:          "6000000000",
+			},
+		},
+		{
+			name:         "zero elapsed",
+			previous:     &t0,
+			blockTime:    t0,
+			bondedRatio:  goalBonded,
+			expInflation: inflation,
+			expMinted:    math.ZeroInt(),
+			expElapsed:   "0",
+		},
+		{
+			name:         "elapsed above cap",
+			previous:     &t0,
+			blockTime:    t0.Add(10 * time.Minute),
+			bondedRatio:  goalBonded,
+			expInflation: inflation,
+			expMinted:    math.NewInt(8_000_000),
+			expElapsed:   "8000000000",
+		},
+		{
+			name:         "elapsed above cap moves inflation by the capped step",
+			previous:     &t0,
+			blockTime:    t0.Add(10 * time.Minute),
+			bondedRatio:  math.LegacyNewDecWithPrec(335, 3),
+			expInflation: cappedInflation,
+			expMinted:    cappedMinted,
+			expElapsed:   "8000000000",
+		},
+		{
+			name:        "block time before the reference is an error",
+			previous:    &t0Plus100s,
+			blockTime:   t0,
+			bondedRatio: goalBonded,
+			expErr:      "is before the previous block time",
+		},
+	}
+	for _, tc := range tests {
+		s.Run(tc.name, func() {
+			s.SetupTest()
+			s.Require().NoError(s.mintKeeper.Minter.Set(s.ctx, types.Minter{
+				Inflation:         inflation,
+				AnnualProvisions:  math.LegacyZeroDec(),
+				PreviousBlockTime: tc.previous,
+			}))
 
-	s.Require().NoError(s.mintKeeper.MintFn(s.ctx))
+			s.stakingKeeper.EXPECT().StakingTokenSupply(gomock.Any()).Return(stakingSupply, nil).AnyTimes()
+			s.stakingKeeper.EXPECT().BondedRatio(gomock.Any()).Return(tc.bondedRatio, nil).AnyTimes()
 
-	minter, err := s.mintKeeper.Minter.Get(s.ctx)
-	s.Require().NoError(err)
-	s.Require().Equal(math.LegacyNewDecFromInt(annualProvisions), minter.AnnualProvisions)
-	s.Require().Equal(math.LegacyNewDecWithPrec(10, 2), minter.Inflation)
+			// Without a reference point, and on an error, nothing is minted and
+			// no bank call is made.
+			if tc.previous != nil && tc.expErr == "" {
+				minted := sdk.NewCoins(sdk.NewCoin(sdk.DefaultBondDenom, tc.expMinted))
+				if tc.expMinted.IsPositive() {
+					s.bankKeeper.EXPECT().MintCoins(gomock.Any(), types.ModuleName, minted).Return(nil)
+				}
+				s.bankKeeper.EXPECT().SendCoinsFromModuleToModule(gomock.Any(), types.ModuleName, authtypes.FeeCollectorName, minted).Return(nil)
+			}
+
+			ctx := s.ctx.WithBlockTime(tc.blockTime).WithEventManager(sdk.NewEventManager())
+			err := s.mintKeeper.MintFn(ctx)
+
+			var mintEvents []sdk.Event
+			for _, event := range ctx.EventManager().Events() {
+				if event.Type == types.EventTypeMint {
+					mintEvents = append(mintEvents, event)
+				}
+			}
+			minter, getErr := s.mintKeeper.Minter.Get(s.ctx)
+			s.Require().NoError(getErr)
+
+			if tc.expErr != "" {
+				s.Require().ErrorContains(err, tc.expErr)
+				s.Require().Empty(mintEvents)
+				s.Require().NotNil(minter.PreviousBlockTime)
+				s.Require().Equal(*tc.previous, *minter.PreviousBlockTime)
+				s.Require().Equal(math.LegacyZeroDec(), minter.AnnualProvisions)
+				return
+			}
+			s.Require().NoError(err)
+
+			expAnnualProvisions := tc.expInflation.MulInt(stakingSupply)
+			s.Require().NotNil(minter.PreviousBlockTime)
+			s.Require().Equal(tc.blockTime, *minter.PreviousBlockTime)
+			s.Require().Equal(tc.expInflation, minter.Inflation)
+			s.Require().Equal(expAnnualProvisions, minter.AnnualProvisions)
+
+			if tc.previous == nil {
+				s.Require().Empty(mintEvents)
+				return
+			}
+
+			s.Require().Len(mintEvents, 1)
+			expAttributes := map[string]string{
+				types.AttributeKeyBondedRatio:      tc.bondedRatio.String(),
+				types.AttributeKeyInflation:        tc.expInflation.String(),
+				types.AttributeKeyAnnualProvisions: expAnnualProvisions.String(),
+				sdk.AttributeKeyAmount:             tc.expMinted.String(),
+				types.AttributeKeyElapsed:          tc.expElapsed,
+			}
+			s.Require().Len(mintEvents[0].Attributes, len(expAttributes))
+			for key, value := range expAttributes {
+				attr, ok := mintEvents[0].GetAttribute(key)
+				s.Require().True(ok, key)
+				s.Require().Equal(value, attr.Value, key)
+			}
+			for key, value := range tc.expEventAttrs {
+				attr, ok := mintEvents[0].GetAttribute(key)
+				s.Require().True(ok, key)
+				s.Require().Equal(value, attr.Value, key)
+			}
+		})
+	}
 }

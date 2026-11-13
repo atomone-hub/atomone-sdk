@@ -2,6 +2,7 @@ package keeper_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -97,12 +98,12 @@ func TestMinterBlocksPerYearOverflow(t *testing.T) {
 	}
 
 	// NextInflationRate must not panic and must not flip the change sign
-	inflation := minter.NextInflationRate(params, sdkmath.LegacyNewDecWithPrec(67, 2))
+	inflation := minter.NextInflationRate(params, sdkmath.LegacyNewDecWithPrec(67, 2), 6*time.Second)
 	require.False(t, inflation.IsNegative())
 
 	// BlockProvision must not panic and must not produce a negative coin
 	// amount (previously: 1e6 / -1 = -1e6 -> sdk.NewCoin panics)
-	coin := minter.BlockProvision(params)
+	coin := minter.BlockProvision(params, 6*time.Second)
 	require.False(t, coin.IsNegative())
 	require.True(t, coin.Amount.IsZero())
 }
