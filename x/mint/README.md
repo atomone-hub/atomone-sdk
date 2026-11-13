@@ -74,17 +74,29 @@ https://github.com/cosmos/cosmos-sdk/blob/v0.47.0-rc1/proto/cosmos/mint/v1beta1/
 
 Minting parameters are recalculated and inflation paid at the beginning of each block.
 
-### Inflation rate calculation
+### Custom minting function
 
-Inflation rate is calculated using an "inflation calculation function" that's
-passed to the `NewAppModule` function. If no function is passed, then the SDK's
-default inflation function will be used (`NextInflationRate`). In case a custom
-inflation calculation logic is needed, this can be achieved by defining and
-passing a function that matches `InflationCalculationFn`'s signature.
+The minting logic run at the beginning of each block is the keeper's `MintFn`.
+A custom function matching `keeper.MintFn` can be set with the
+`mintkeeper.WithMintFn(fn)` option of `mintkeeper.NewKeeper`. When the option is
+not given, `mintkeeper.DefaultMintFn(types.DefaultInflationCalculationFn)` is used.
+
+A custom inflation rate logic can be kept while reusing the rest of the default
+minting by wrapping a function that matches `InflationCalculationFn`'s signature
+with `mintkeeper.DefaultMintFn`:
 
 ```go
-type InflationCalculationFn func(ctx sdk.Context, minter Minter, params Params, bondedRatio math.LegacyDec) math.LegacyDec
+type InflationCalculationFn func(ctx context.Context, minter Minter, params Params, bondedRatio math.LegacyDec) math.LegacyDec
+
+mintkeeper.NewKeeper(..., mintkeeper.WithMintFn(mintkeeper.DefaultMintFn(customInflationFn)))
 ```
+
+The same function can be given as the `ic` argument of `NewAppModule`, or
+supplied as an `InflationCalculationFn` to depinject; both install
+`mintkeeper.DefaultMintFn(ic)`. A custom mint function is set in one place
+only: `NewAppModule` panics when given a non-nil `ic` for a keeper built with
+`WithMintFn`, and depinject panics when both a `MintFn` and an
+`InflationCalculationFn` are supplied.
 
 #### NextInflationRate
 

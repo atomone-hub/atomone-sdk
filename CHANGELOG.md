@@ -40,6 +40,7 @@ Ref: https://keepachangelog.com/en/1.0.0/
 
 ### Features
 
+* (x/mint) [#146](https://github.com/atomone-hub/atomone-sdk/pull/146) Add the `MintFn` keeper hook and `WithMintFn` option to replace the BeginBlock minting logic
 * (x/staking) [#137](https://github.com/atomone-hub/cosmos-sdk/pull/137) Add a `BeforeConsensusPubKeyRotation` staking hook, called from the `MsgRotateConsPubKey` handler before any fee is charged or the rotation recorded, so a module keying state by consensus address can reject a rotation onto a key it considers taken.
 
 ### Improvements
