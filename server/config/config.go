@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"math"
+	"time"
 
 	"github.com/spf13/viper"
 
@@ -29,6 +30,19 @@ const (
 	// DefaultGRPCMaxSendMsgSize defines the default gRPC max message size in
 	// bytes the server can send.
 	DefaultGRPCMaxSendMsgSize = math.MaxInt32
+
+	// DefaultGRPCMaxConcurrentStreams defines the default maximum number of
+	// concurrent streams the gRPC server accepts on a single connection.
+	DefaultGRPCMaxConcurrentStreams = 1000
+
+	// DefaultGRPCKeepaliveTime defines the default duration of inactivity
+	// after which the gRPC server pings a client connection.
+	DefaultGRPCKeepaliveTime = time.Minute
+
+	// DefaultGRPCKeepaliveTimeout defines the default duration the gRPC server
+	// waits for a keepalive ping to be acknowledged before closing the
+	// connection.
+	DefaultGRPCKeepaliveTimeout = 20 * time.Second
 )
 
 // BaseConfig defines the server's basic configuration
@@ -139,6 +153,23 @@ type GRPCConfig struct {
 	// MaxSendMsgSize defines the max message size in bytes the server can send.
 	// The default value is math.MaxInt32.
 	MaxSendMsgSize int `mapstructure:"max-send-msg-size"`
+
+	// MaxConcurrentStreams defines the max number of concurrent streams the
+	// server accepts on a single client connection. Streams whose responses a
+	// client does not read keep counting against this limit.
+	// A zero value uses DefaultGRPCMaxConcurrentStreams.
+	MaxConcurrentStreams uint32 `mapstructure:"max-concurrent-streams"`
+
+	// KeepaliveTime defines the duration of inactivity after which the server
+	// pings a client connection.
+	// A zero value uses DefaultGRPCKeepaliveTime.
+	KeepaliveTime time.Duration `mapstructure:"keepalive-time"`
+
+	// KeepaliveTimeout defines how long the server waits for a keepalive ping
+	// to be acknowledged before closing the connection and releasing all its
+	// streams.
+	// A zero value uses DefaultGRPCKeepaliveTimeout.
+	KeepaliveTimeout time.Duration `mapstructure:"keepalive-timeout"`
 }
 
 // GRPCWebConfig defines configuration for the gRPC-web server.
@@ -244,10 +275,13 @@ func DefaultConfig() *Config {
 			RPCMaxBodyBytes:    1000000,
 		},
 		GRPC: GRPCConfig{
-			Enable:         true,
-			Address:        DefaultGRPCAddress,
-			MaxRecvMsgSize: DefaultGRPCMaxRecvMsgSize,
-			MaxSendMsgSize: DefaultGRPCMaxSendMsgSize,
+			Enable:               true,
+			Address:              DefaultGRPCAddress,
+			MaxRecvMsgSize:       DefaultGRPCMaxRecvMsgSize,
+			MaxSendMsgSize:       DefaultGRPCMaxSendMsgSize,
+			MaxConcurrentStreams: DefaultGRPCMaxConcurrentStreams,
+			KeepaliveTime:        DefaultGRPCKeepaliveTime,
+			KeepaliveTimeout:     DefaultGRPCKeepaliveTimeout,
 		},
 		GRPCWeb: GRPCWebConfig{
 			Enable: true,
