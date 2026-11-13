@@ -26,6 +26,10 @@ concurrency:
 
 jobs:
   build:
+    # Pushes to ghcr.io/cosmos/proto-builder, which we can't publish to, and
+    # push events carry no tags input. To enable it, change IMAGE_NAME to our
+    # own namespace and generate a tag on push events.
+    if: github.repository == 'cosmos/cosmos-sdk'
     runs-on: ubuntu-latest
     permissions:
       contents: read
