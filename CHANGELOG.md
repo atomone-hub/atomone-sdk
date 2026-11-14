@@ -50,6 +50,7 @@ Ref: https://keepachangelog.com/en/1.0.0/
 
 ### Bug Fixes
 
+* (x/gov) [#160](https://github.com/atomone-hub/atomone-sdk/pull/160) Export the min deposit throttler times as stored instead of the block time of the export context
 * (x/gov) [#144](https://github.com/atomone-hub/atomone-sdk/pull/144) Register `MsgUpdateGovernorStatus` in the LegacyAmino codec and register `MsgProposeLaw` and `MsgProposeConstitutionAmendment` under the `amino.name` of their proto definitions, the one the nodes use for the `SIGN_MODE_LEGACY_AMINO_JSON` sign bytes
 * (x/gov) [#130](https://github.com/atomone-hub/atomone-sdk/pull/130) Cap deposit throttler floors to prevent an EndBlocker Int overflow (halt via a passed params-update proposal)
 * (x/consensus) [#135](https://github.com/atomone-hub/atomone-sdk/pull/135) Reject `Block.MaxGas = 0` in `UpdateParams` (mempool tx lockout via a passed proposal)
