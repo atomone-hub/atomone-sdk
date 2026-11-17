@@ -415,7 +415,7 @@ func (k Keeper) GetBondedValidatorsByPower(ctx context.Context) ([]types.Validat
 		// any bonded validator it skips (see ApplyAndReturnValidatorSetUpdates).
 		// Stopping here applies the same bound the EndBlocker applies to this
 		// index, without paying a store read for the suffix.
-		if types.ConsensusPowerFromPowerRankKey(iterator.Key()) <= 0 {
+		if types.IsZeroPowerRankKey(iterator.Key()) {
 			break
 		}
 

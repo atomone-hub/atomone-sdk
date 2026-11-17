@@ -62,7 +62,7 @@ func (k Keeper) IterateBondedValidatorsByPower(ctx context.Context, fn func(inde
 		// tally and quorum checks) must instead stop at the contiguous zero-power
 		// suffix of the power-descending index — no bonded validator can appear
 		// behind a zero-power key (see ApplyAndReturnValidatorSetUpdates).
-		if types.ConsensusPowerFromPowerRankKey(iterator.Key()) <= 0 {
+		if types.IsZeroPowerRankKey(iterator.Key()) {
 			break
 		}
 

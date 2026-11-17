@@ -177,13 +177,17 @@ func ParseValidatorPowerRankKey(key []byte) (operAddr []byte) {
 	return operAddr
 }
 
-// ConsensusPowerFromPowerRankKey parses the consensus power from a
-// validators-by-power index key. See GetValidatorsByPowerIndexKey for the key
-// format.
-func ConsensusPowerFromPowerRankKey(key []byte) int64 {
+// zeroPowerRankKeyBytes is the 8-byte big-endian encoding of consensus power 0.
+var zeroPowerRankKeyBytes [8]byte
+
+// IsZeroPowerRankKey reports whether a validators-by-power index key carries
+// zero consensus power. See GetValidatorsByPowerIndexKey for the key format.
+// The keeper writes index keys with sdk.TokensToConsensusPower, which is never
+// negative, so the power is zero exactly when all 8 power bytes are zero.
+func IsZeroPowerRankKey(key []byte) bool {
 	// key is of format prefix (1 byte) || powerbytes || addrLen (1byte) || addrBytes
 	kv.AssertKeyAtLeastLength(key, 10)
-	return int64(binary.BigEndian.Uint64(key[1:9]))
+	return bytes.Equal(key[1:9], zeroPowerRankKeyBytes[:])
 }
 
 // GetValidatorQueueKey returns the prefix key used for getting a set of unbonding
