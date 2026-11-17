@@ -1223,6 +1223,46 @@ func (s *KeeperTestSuite) TestMsgUpdateParamsUpdatesExistingValidatorCommissions
 	require.Equal(updatedAt, inRangeValidator.Commission.UpdateTime)
 }
 
+// TestMsgUpdateParamsBondDenomImmutable ensures a params update cannot switch
+// the bond denom. The bonded/not-bonded pool module accounts hold their
+// balances in the current bond denom while every pool movement (slash burns
+// in the slashing BeginBlocker, bonded <-> not-bonded transfers in the
+// staking EndBlocker) builds coins from the live param; a denom switch
+// strands the pools' balances so the first autonomous slash or validator kick
+// fails with ErrInsufficientFunds and halts the chain outside runTx.
+func (s *KeeperTestSuite) TestMsgUpdateParamsBondDenomImmutable() {
+	ctx, keeper, msgServer := s.ctx, s.stakingKeeper, s.msgServer
+	require := s.Require()
+
+	currParams, err := keeper.GetParams(ctx)
+	require.NoError(err)
+	require.NotEmpty(currParams.BondDenom)
+
+	// valid params, identical to the stored ones but for the bond denom
+	newParams := currParams
+	newParams.BondDenom = "photon"
+	require.NoError(newParams.Validate())
+
+	_, err = msgServer.UpdateParams(ctx, &stakingtypes.MsgUpdateParams{
+		Authority: keeper.GetAuthority(),
+		Params:    newParams,
+	})
+	require.Error(err)
+	require.Contains(err.Error(), "bond denom cannot be changed")
+
+	// the stored bond denom must be untouched by the rejected update
+	storedParams, err := keeper.GetParams(ctx)
+	require.NoError(err)
+	require.Equal(currParams.BondDenom, storedParams.BondDenom)
+
+	// a params update that keeps the current bond denom must still succeed
+	_, err = msgServer.UpdateParams(ctx, &stakingtypes.MsgUpdateParams{
+		Authority: keeper.GetAuthority(),
+		Params:    currParams,
+	})
+	require.NoError(err)
+}
+
 // mockDistributionKeeper is a minimal DistributionKeeper implementation for tests
 // where the real distribution keeper is not wired up. FundCommunityPool is a no-op.
 type mockDistributionKeeper struct {

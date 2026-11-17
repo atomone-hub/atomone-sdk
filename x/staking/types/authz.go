@@ -72,6 +72,20 @@ func (a StakeAuthorization) ValidateBasic() error {
 	return nil
 }
 
+// validatorAddressFromBech32 decodes an allow/deny list validator address entry
+// to its raw bytes so that entries and msg-supplied addresses are compared by
+// the address they identify rather than by their bech32 encoding, which is
+// case-variant (bech32 accepts an all-uppercase alternate encoding of the same
+// address). A list entry that fails to decode never matches.
+func validatorAddressFromBech32(address string) sdk.ValAddress {
+	bz, err := sdk.ValAddressFromBech32(address)
+	if err != nil {
+		return nil
+	}
+
+	return bz
+}
+
 // Accept implements Authorization.Accept. It checks, that the validator is not in the denied list,
 // and, should the allowed list not be empty, if the validator is in the allowed list.
 // If these conditions are met, the authorization amount is validated and if successful, the
@@ -99,12 +113,23 @@ func (a StakeAuthorization) Accept(ctx context.Context, msg sdk.Msg) (authz.Acce
 		return authz.AcceptResponse{}, sdkerrors.ErrInvalidRequest.Wrap("unknown msg type")
 	}
 
+	// The staking msg servers resolve the msg-supplied validator address to
+	// bytes through the bech32 codec, which accepts both the canonical
+	// all-lowercase encoding and the all-uppercase alternate encoding of the
+	// same address. Enforce the allow/deny lists on the decoded address bytes
+	// as well; comparing raw strings lets an all-uppercase encoding of a denied
+	// validator bypass the deny list.
+	validatorAddressBz, err := sdk.ValAddressFromBech32(validatorAddress)
+	if err != nil {
+		return authz.AcceptResponse{}, sdkerrors.ErrInvalidRequest.Wrapf("invalid validator address: %s", err)
+	}
+
 	isValidatorExists := false
 	allowedList := a.GetAllowList().GetAddress()
 	sdkCtx := sdk.UnwrapSDKContext(ctx)
 	for _, validator := range allowedList {
 		sdkCtx.GasMeter().ConsumeGas(gasCostPerIteration, "stake authorization")
-		if validator == validatorAddress {
+		if validatorAddressBz.Equals(validatorAddressFromBech32(validator)) {
 			isValidatorExists = true
 			break
 		}
@@ -113,7 +138,7 @@ func (a StakeAuthorization) Accept(ctx context.Context, msg sdk.Msg) (authz.Acce
 	denyList := a.GetDenyList().GetAddress()
 	for _, validator := range denyList {
 		sdkCtx.GasMeter().ConsumeGas(gasCostPerIteration, "stake authorization")
-		if validator == validatorAddress {
+		if validatorAddressBz.Equals(validatorAddressFromBech32(validator)) {
 			return authz.AcceptResponse{}, sdkerrors.ErrUnauthorized.Wrapf("cannot delegate/undelegate to %s validator", validator)
 		}
 	}

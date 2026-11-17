@@ -12,6 +12,15 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 )
 
+// MaxMaxValidators is the upper bound enforced on the MaxValidators param.
+// MaxValidators is a governance-updatable uint32 that sizes allocations and
+// bounds index walks in BeginBlock/EndBlock-reachable keeper code
+// (GetLastValidators, GetBondedValidatorsByPower), so without a cap a passed
+// params proposal could store math.MaxUint32 and turn the next block into an
+// unrecoverable out-of-memory on every validator. 2000 is far above every
+// deployed active set and above the simulation proposal range.
+const MaxMaxValidators uint32 = 2000
+
 // Staking params default values
 const (
 	// DefaultUnbondingTime reflects three weeks in seconds as the default
@@ -146,6 +155,10 @@ func validateMaxValidators(i any) error {
 
 	if v == 0 {
 		return fmt.Errorf("max validators must be positive: %d", v)
+	}
+
+	if v > MaxMaxValidators {
+		return fmt.Errorf("max validators must not exceed %d: %d", MaxMaxValidators, v)
 	}
 
 	return nil

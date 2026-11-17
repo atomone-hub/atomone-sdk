@@ -177,6 +177,15 @@ func ParseValidatorPowerRankKey(key []byte) (operAddr []byte) {
 	return operAddr
 }
 
+// ConsensusPowerFromPowerRankKey parses the consensus power from a
+// validators-by-power index key. See GetValidatorsByPowerIndexKey for the key
+// format.
+func ConsensusPowerFromPowerRankKey(key []byte) int64 {
+	// key is of format prefix (1 byte) || powerbytes || addrLen (1byte) || addrBytes
+	kv.AssertKeyAtLeastLength(key, 10)
+	return int64(binary.BigEndian.Uint64(key[1:9]))
+}
+
 // GetValidatorQueueKey returns the prefix key used for getting a set of unbonding
 // validators whose unbonding completion occurs at the given time and height.
 func GetValidatorQueueKey(timestamp time.Time, height int64) []byte {

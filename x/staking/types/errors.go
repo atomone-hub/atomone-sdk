@@ -54,4 +54,7 @@ var (
 	ErrConsensusPubKeyAlreadyUsedForValidator = errors.Register(ModuleName, 47, "consensus pubkey is already used for a validator")
 	ErrExceedingMaxConsPubKeyRotations        = errors.Register(ModuleName, 48, "exceeding maximum consensus pubkey rotations within unbonding period")
 	ErrConsensusPubKeyLenInvalid              = errors.Register(ModuleName, 49, "consensus pubkey length is invalid")
+
+	// param errors
+	ErrBondDenomImmutable = errors.Register(ModuleName, 50, "bond denom cannot be changed")
 )
