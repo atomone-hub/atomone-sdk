@@ -63,6 +63,10 @@ Ref: https://keepachangelog.com/en/1.0.0/
 * (x/gov) [#139](https://github.com/atomone-hub/atomone-sdk/pull/139) Key the governor tally and governor delegations invariant by canonical validator addresses (CONSENSUS BREAKING BUGFIX)
 * (x/staking) [#140](https://github.com/atomone-hub/atomone-sdk/pull/140) Export and import consensus key rotation state in genesis
 * (x/consensus) [#156](https://github.com/atomone-hub/atomone-sdk/pull/156) Reject `Block.MaxBytes` and `Block.MaxGas` below a floor in `UpdateParams` (halt and tx lockout via a passed proposal)
+* (x/staking) [#161](https://github.com/atomone-hub/atomone-sdk/pull/161) Cap `MaxValidators` at 2000 and never size validator allocations from the param (fatal BeginBlock OOM via a passed params proposal)
+* (x/staking) [#161](https://github.com/atomone-hub/atomone-sdk/pull/161) Stop the bonded-validator power-index walks at the zero-power suffix (unmetered DoS via permissionlessly planted dust validators, reached from the gov tally and the epoch hook)
+* (x/staking) [#161](https://github.com/atomone-hub/atomone-sdk/pull/161) Compare `StakeAuthorization` allow/deny lists on decoded address bytes (all-uppercase bech32 deny-list bypass)
+* (x/staking) [#161](https://github.com/atomone-hub/atomone-sdk/pull/161) Reject `BondDenom` changes in `UpdateParams` (stranded pool balances halt the chain on the first slash or validator kick)
 
 ### State Machine Breaking
 
