@@ -61,9 +61,34 @@ func NewWeightedVoteOption(option VoteOption, weight math.LegacyDec) *WeightedVo
 	return &WeightedVoteOption{Option: option, Weight: weight.String()}
 }
 
+// MaxWeightStrLen is the maximum allowed length of a WeightedVoteOption.Weight
+// string. A valid weight is a LegacyDec in (0, 1], which with 18 decimals of
+// precision is at most "1.000000000000000000" (20 chars, plus an optional
+// leading '-' and leading zeros). Anything longer is either invalid or a
+// non-canonical (bloated) encoding.
+//
+// Security: LegacyNewDecFromStr parses the string with big.Int.SetString,
+// which is quadratic in the number of digits. Without a length bound, a
+// single MsgVoteWeighted tx carrying a megabyte Weight costs seconds of
+// unmetered CPU per vote validation on every validator and full node, is
+// persisted verbatim (state bloat), and is re-parsed per delegation in the
+// un-metered EndBlocker tally/HasReachedQuorum paths via
+// WeightedVoteOption.Power. Length-checking here bounds all of that cheaply
+// before the expensive parse.
+const MaxWeightStrLen = 40
+
+// parseWeight parses a Weight string, rejecting over-length inputs before
+// reaching the quadratic big.Int.SetString path.
+func parseWeight(weight string) (math.LegacyDec, error) {
+	if len(weight) > MaxWeightStrLen {
+		return math.LegacyDec{}, fmt.Errorf("weight string too long: %d > %d", len(weight), MaxWeightStrLen)
+	}
+	return math.LegacyNewDecFromStr(weight)
+}
+
 // IsValid returns true if the sub vote is valid and false otherwise.
 func (w *WeightedVoteOption) IsValid() bool {
-	weight, err := math.LegacyNewDecFromStr(w.Weight)
+	weight, err := parseWeight(w.Weight)
 	if err != nil {
 		return false
 	}
@@ -84,7 +109,13 @@ func (w WeightedVoteOption) Power(totalPower math.LegacyDec) math.LegacyDec {
 	if w.Weight == oneDecStr {
 		return totalPower
 	}
-	weight, _ := math.LegacyNewDecFromStr(w.Weight)
+	weight, err := parseWeight(w.Weight)
+	if err != nil {
+		// Over-length/unparseable weights must never reach the quadratic
+		// big.Int parse; treat them as zero power rather than multiplying
+		// a zero-value LegacyDec (nil big.Int), which would panic.
+		return math.LegacyZeroDec()
+	}
 	return totalPower.Mul(weight)
 }
 
@@ -95,7 +126,7 @@ func NewNonSplitVoteOption(option VoteOption) WeightedVoteOptions {
 
 // ValidWeightedVoteOption returns true if the sub vote is valid and false otherwise.
 func ValidWeightedVoteOption(option WeightedVoteOption) bool {
-	weight, err := math.LegacyNewDecFromStr(option.Weight)
+	weight, err := parseWeight(option.Weight)
 	if err != nil || !weight.IsPositive() || weight.GT(math.LegacyNewDec(1)) {
 		return false
 	}
@@ -133,7 +164,7 @@ func WeightedVoteOptionsFromString(str string) (WeightedVoteOptions, error) {
 		if len(fields) < 2 {
 			return options, fmt.Errorf("weight field does not exist for %s option", fields[0])
 		}
-		weight, err := math.LegacyNewDecFromStr(fields[1])
+		weight, err := parseWeight(fields[1])
 		if err != nil {
 			return options, err
 		}

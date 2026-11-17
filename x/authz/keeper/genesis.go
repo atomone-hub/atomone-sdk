@@ -9,8 +9,13 @@ import (
 func (k Keeper) InitGenesis(ctx sdk.Context, data *authz.GenesisState) {
 	now := ctx.BlockTime()
 	for _, entry := range data.Authorization {
-		// ignore expired authorizations
-		if entry.Expiration != nil && entry.Expiration.Before(now) {
+		// ignore expired authorizations. The skip condition must be the exact
+		// complement of the invariant enforced by SaveGrant (authz.NewGrant
+		// requires expiration.After(blockTime)), otherwise an entry whose
+		// expiration equals the genesis block time reaches SaveGrant, fails
+		// validation and panics during InitChain. Such a grant is unusable on
+		// every subsequent block anyway, so treat it as expired.
+		if entry.Expiration != nil && !entry.Expiration.After(now) {
 			continue
 		}
 

@@ -96,3 +96,42 @@ func (keeper Keeper) validateGovernorMinSelfDelegationWithTotalBonded(ctx sdk.Co
 
 	return true
 }
+
+// EnforceGovernorMinSelfDelegation reestablishes the live-state invariant
+// "every ACTIVE governor has bonded tokens >= MinGovernorSelfDelegation"
+// against the params currently on store, deactivating every active governor
+// that no longer meets the minimum.
+//
+// The minimum is otherwise only enforced pointwise -- at governor creation,
+// on activation, and by the staking hooks when a governor's bonded amount
+// changes. When MsgUpdateParams changes the parameter itself, active
+// governors must be revalidated against the new minimum, mirroring what the
+// staking hooks do when a governor's bonded amount falls below it. Without
+// this, raising the minimum leaves an ACTIVE governor below it on store,
+// and the chain runs normally until the exported genesis fails the same
+// check in InitGenesis and panics on every node restart.
+func (keeper Keeper) EnforceGovernorMinSelfDelegation(ctx sdk.Context) error {
+	hooks := keeper.StakingHooks()
+
+	// Collect first and deactivate after the walk: setGovernorInactive
+	// writes to store collections and must not run mid-walk (store iterator
+	// contract), matching the collect-then-deactivate pattern of the
+	// validator staking hooks.
+	var toDeactivate []v1.Governor
+	err := keeper.Governors.Walk(ctx, nil, func(_ types.GovernorAddress, governor v1.Governor) (bool, error) {
+		if governor.IsActive() && !keeper.ValidateGovernorMinSelfDelegation(ctx, governor) {
+			toDeactivate = append(toDeactivate, governor)
+		}
+		return false, nil
+	})
+	if err != nil {
+		return err
+	}
+
+	for _, governor := range toDeactivate {
+		if err := hooks.setGovernorInactive(ctx, ctx, governor); err != nil {
+			return err
+		}
+	}
+	return nil
+}
