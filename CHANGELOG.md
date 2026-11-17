@@ -63,6 +63,9 @@ Ref: https://keepachangelog.com/en/1.0.0/
 * (x/gov) [#139](https://github.com/atomone-hub/atomone-sdk/pull/139) Key the governor tally and governor delegations invariant by canonical validator addresses (CONSENSUS BREAKING BUGFIX)
 * (x/staking) [#140](https://github.com/atomone-hub/atomone-sdk/pull/140) Export and import consensus key rotation state in genesis
 * (x/consensus) [#156](https://github.com/atomone-hub/atomone-sdk/pull/156) Reject `Block.MaxBytes` and `Block.MaxGas` below a floor in `UpdateParams` (halt and tx lockout via a passed proposal)
+* (x/gov) [#162](https://github.com/atomone-hub/atomone-sdk/pull/162) Bound `WeightedVoteOption.Weight` strings to 40 chars before the decimal parse (quadratic unmetered CPU DoS per vote and per tally; also removes a nil-dec panic in `Power`)
+* (x/authz) [#162](https://github.com/atomone-hub/atomone-sdk/pull/162) Skip genesis grants expiring exactly at the genesis block time (InitChain panic on every node at restart-from-export)
+* (x/gov) [#162](https://github.com/atomone-hub/atomone-sdk/pull/162) Deactivate active governors below `MinGovernorSelfDelegation` when `UpdateParams` raises it (exported genesis panicked `InitGenesis` on restart)
 
 ### State Machine Breaking
 
