@@ -15,13 +15,13 @@ type redelegationSourceKey struct{}
 //
 // Between the two halves the delegator's total stake is transiently lower than
 // it is once the redelegation completes. Hooks that validate the delegator's
-// total stake can use RedelegationSource to defer that validation until the
+// total stake can use IsRedelegationSource to defer that validation until the
 // destination delegation exists.
+//
+// The marker is set on the sdk.Context itself, so it is kept by sdk.UnwrapSDKContext.
+// It panics if ctx does not hold an sdk.Context.
 func WithRedelegationSource(ctx context.Context, valSrcAddr sdk.ValAddress) context.Context {
-	if sdkCtx, ok := ctx.(sdk.Context); ok {
-		return sdkCtx.WithValue(redelegationSourceKey{}, valSrcAddr)
-	}
-	return context.WithValue(ctx, redelegationSourceKey{}, valSrcAddr)
+	return sdk.UnwrapSDKContext(ctx).WithValue(redelegationSourceKey{}, valSrcAddr)
 }
 
 // IsRedelegationSource reports whether ctx was derived with
