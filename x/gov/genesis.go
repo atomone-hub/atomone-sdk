@@ -1,6 +1,7 @@
 package gov
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -284,15 +285,16 @@ func ExportGenesis(ctx sdk.Context, k *keeper.Keeper) (*v1.GenesisState, error) 
 		panic(err)
 	}
 
-	blockTime := ctx.BlockTime()
-	lastMinDeposit := v1.LastMinDeposit{
-		Value: k.GetMinDeposit(ctx),
-		Time:  &blockTime,
+	// export the throttler state as stored, with the time of its last update;
+	// InitGenesis falls back to the floor value when they are not exported
+	lastMinDeposit, err := exportLastMinDeposit(ctx, k.LastMinDeposit)
+	if err != nil {
+		return nil, err
 	}
 
-	lastMinInitialDeposit := v1.LastMinDeposit{
-		Value: k.GetMinInitialDeposit(ctx),
-		Time:  &blockTime,
+	lastMinInitialDeposit, err := exportLastMinDeposit(ctx, k.LastMinInitialDeposit)
+	if err != nil {
+		return nil, err
 	}
 
 	participationEma, err := k.ParticipationEMA.Get(ctx)
@@ -338,12 +340,25 @@ func ExportGenesis(ctx sdk.Context, k *keeper.Keeper) (*v1.GenesisState, error) 
 		Proposals:                             proposals,
 		Params:                                &params,
 		Constitution:                          constitution,
-		LastMinDeposit:                        &lastMinDeposit,
-		LastMinInitialDeposit:                 &lastMinInitialDeposit,
+		LastMinDeposit:                        lastMinDeposit,
+		LastMinInitialDeposit:                 lastMinInitialDeposit,
 		ParticipationEma:                      participationEma.String(),
 		ConstitutionAmendmentParticipationEma: constitutionAmendmentParticipationEma.String(),
 		LawParticipationEma:                   lawParticipationEma.String(),
 		Governors:                             governors,
 		GovernanceDelegations:                 governanceDelegations,
 	}, nil
+}
+
+// exportLastMinDeposit returns the stored throttler state, or nil if it was
+// never set.
+func exportLastMinDeposit(ctx sdk.Context, item collections.Item[v1.LastMinDeposit]) (*v1.LastMinDeposit, error) {
+	lastMinDeposit, err := item.Get(ctx)
+	if errors.Is(err, collections.ErrNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &lastMinDeposit, nil
 }
