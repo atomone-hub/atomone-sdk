@@ -58,6 +58,45 @@ func TestImportExportQueues_ErrorUnconsistentState(t *testing.T) {
 	require.NotEmpty(t, genState.LastMinInitialDeposit.Value)
 }
 
+// TestExportGenesis_PreservesMinDepositTimes verifies that the throttler state
+// is exported as stored: the exported times are the ones of the last update, not
+// the block time of the (possibly time-less) export context, and they survive an
+// import.
+func TestExportGenesis_PreservesMinDepositTimes(t *testing.T) {
+	suite := createTestSuite(t)
+	ctx := suite.App.BaseApp.NewContext(false)
+	gov.InitGenesis(ctx, suite.AccountKeeper, suite.BankKeeper, suite.GovKeeper, v1.DefaultGenesisState())
+
+	depositTime := time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC)
+	initialDepositTime := depositTime.Add(time.Hour)
+	require.NoError(t, suite.GovKeeper.LastMinDeposit.Set(ctx, v1.LastMinDeposit{
+		Value: sdk.NewCoins(sdk.NewInt64Coin("stake", 618)),
+		Time:  &depositTime,
+	}))
+	require.NoError(t, suite.GovKeeper.LastMinInitialDeposit.Set(ctx, v1.LastMinDeposit{
+		Value: sdk.NewCoins(sdk.NewInt64Coin("stake", 185)),
+		Time:  &initialDepositTime,
+	}))
+
+	// export at a block time different from the stored times
+	exportCtx := ctx.WithBlockTime(depositTime.Add(48 * time.Hour))
+	genState, err := gov.ExportGenesis(exportCtx, suite.GovKeeper)
+	require.NoError(t, err)
+	require.Equal(t, sdk.NewCoins(sdk.NewInt64Coin("stake", 618)), sdk.Coins(genState.LastMinDeposit.Value))
+	require.Equal(t, sdk.NewCoins(sdk.NewInt64Coin("stake", 185)), sdk.Coins(genState.LastMinInitialDeposit.Value))
+	require.Equal(t, depositTime, *genState.LastMinDeposit.Time)
+	require.Equal(t, initialDepositTime, *genState.LastMinInitialDeposit.Time)
+
+	// import into a clean state and export again
+	suite2 := createTestSuite(t)
+	ctx2 := suite2.App.BaseApp.NewContext(false)
+	gov.InitGenesis(ctx2, suite2.AccountKeeper, suite2.BankKeeper, suite2.GovKeeper, genState)
+	genState2, err := gov.ExportGenesis(ctx2.WithBlockTime(depositTime.Add(72*time.Hour)), suite2.GovKeeper)
+	require.NoError(t, err)
+	require.Equal(t, genState.LastMinDeposit, genState2.LastMinDeposit)
+	require.Equal(t, genState.LastMinInitialDeposit, genState2.LastMinInitialDeposit)
+}
+
 // TestInitGenesis_GovernorDelegationToOtherGovernorPanics verifies that an
 // active governor cannot delegate to a different governor.
 func TestInitGenesis_GovernorDelegationToOtherGovernorPanics(t *testing.T) {

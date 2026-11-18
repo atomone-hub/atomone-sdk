@@ -1258,7 +1258,11 @@ func (k Keeper) BeginRedelegation(
 		return time.Time{}, types.ErrMaxRedelegationEntries
 	}
 
-	returnAmount, err := k.Unbond(ctx, delAddr, valSrcAddr, sharesAmount)
+	// the unbond and the delegation below are the two halves of one operation,
+	// let the hooks know so they do not act on the state in between
+	redelCtx := types.WithRedelegationSource(ctx, valSrcAddr)
+
+	returnAmount, err := k.Unbond(redelCtx, delAddr, valSrcAddr, sharesAmount)
 	if err != nil {
 		return time.Time{}, err
 	}
@@ -1267,7 +1271,7 @@ func (k Keeper) BeginRedelegation(
 		return time.Time{}, types.ErrTinyRedelegationAmount
 	}
 
-	sharesCreated, err := k.Delegate(ctx, delAddr, returnAmount, srcValidator.GetStatus(), dstValidator, false)
+	sharesCreated, err := k.Delegate(redelCtx, delAddr, returnAmount, srcValidator.GetStatus(), dstValidator, false)
 	if err != nil {
 		return time.Time{}, err
 	}
