@@ -158,7 +158,7 @@ type GRPCConfig struct {
 	// server accepts on a single client connection. Streams whose responses a
 	// client does not read keep counting against this limit.
 	// A zero value uses DefaultGRPCMaxConcurrentStreams.
-	MaxConcurrentStreams uint32 `mapstructure:"max-concurrent-streams"`
+	MaxConcurrentStreams int `mapstructure:"max-concurrent-streams"`
 
 	// KeepaliveTime defines the duration of inactivity after which the server
 	// pings a client connection.
@@ -170,6 +170,23 @@ type GRPCConfig struct {
 	// streams.
 	// A zero value uses DefaultGRPCKeepaliveTimeout.
 	KeepaliveTimeout time.Duration `mapstructure:"keepalive-timeout"`
+}
+
+// Validate returns an error if a gRPC server limit is out of range.
+func (c GRPCConfig) Validate() error {
+	if c.MaxConcurrentStreams < 0 || int64(c.MaxConcurrentStreams) > math.MaxUint32 {
+		return sdkerrors.ErrAppConfig.Wrapf(
+			"grpc max-concurrent-streams must be between 0 and %d, got %d", uint32(math.MaxUint32), c.MaxConcurrentStreams,
+		)
+	}
+	if c.KeepaliveTime < 0 {
+		return sdkerrors.ErrAppConfig.Wrapf("grpc keepalive-time must not be negative, got %s", c.KeepaliveTime)
+	}
+	if c.KeepaliveTimeout < 0 {
+		return sdkerrors.ErrAppConfig.Wrapf("grpc keepalive-timeout must not be negative, got %s", c.KeepaliveTimeout)
+	}
+
+	return nil
 }
 
 // GRPCWebConfig defines configuration for the gRPC-web server.
@@ -320,6 +337,9 @@ func (c Config) ValidateBasic() error {
 		return sdkerrors.ErrAppConfig.Wrapf(
 			"cannot enable state sync snapshots with '%s' pruning setting", pruningtypes.PruningOptionEverything,
 		)
+	}
+	if err := c.GRPC.Validate(); err != nil {
+		return err
 	}
 
 	return nil

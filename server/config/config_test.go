@@ -128,9 +128,45 @@ func TestGRPCConfigMissingKeysUseDefaults(t *testing.T) {
 	cfg, err := GetConfig(v)
 	require.NoError(t, err)
 
-	require.Equal(t, uint32(DefaultGRPCMaxConcurrentStreams), cfg.GRPC.MaxConcurrentStreams)
+	require.Equal(t, DefaultGRPCMaxConcurrentStreams, cfg.GRPC.MaxConcurrentStreams)
 	require.Equal(t, DefaultGRPCKeepaliveTime, cfg.GRPC.KeepaliveTime)
 	require.Equal(t, DefaultGRPCKeepaliveTimeout, cfg.GRPC.KeepaliveTimeout)
+}
+
+func TestGRPCConfigValidate(t *testing.T) {
+	tests := []struct {
+		name    string
+		toml    string
+		wantErr string
+	}{
+		{name: "defaults"},
+		{name: "zero values", toml: "max-concurrent-streams = 0\nkeepalive-time = \"0s\"\nkeepalive-timeout = \"0s\"\n"},
+		{name: "max uint32 streams", toml: "max-concurrent-streams = 4294967295\n"},
+		{name: "negative streams", toml: "max-concurrent-streams = -1\n", wantErr: "max-concurrent-streams"},
+		{name: "streams above max uint32", toml: "max-concurrent-streams = 4294967296\n", wantErr: "max-concurrent-streams"},
+		{name: "negative keepalive time", toml: "keepalive-time = \"-5s\"\n", wantErr: "keepalive-time"},
+		{name: "negative keepalive timeout", toml: "keepalive-timeout = \"-1s\"\n", wantErr: "keepalive-timeout"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			appConfigFile := filepath.Join(t.TempDir(), "app.toml")
+			body := "minimum-gas-prices = \"0stake\"\n[grpc]\n" + tc.toml
+			require.NoError(t, os.WriteFile(appConfigFile, []byte(body), 0o600))
+
+			v := viper.New()
+			v.SetConfigFile(appConfigFile)
+			require.NoError(t, v.ReadInConfig())
+			cfg, err := GetConfig(v)
+			require.NoError(t, err)
+
+			err = cfg.ValidateBasic()
+			if tc.wantErr == "" {
+				require.NoError(t, err)
+				return
+			}
+			require.ErrorContains(t, err, tc.wantErr)
+		})
+	}
 }
 
 func TestIndexEventsWriteRead(t *testing.T) {

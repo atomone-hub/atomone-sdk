@@ -23,6 +23,10 @@ import (
 // NewGRPCServer returns a correctly configured and initialized gRPC server.
 // Note, the caller is responsible for starting the server. See StartGRPCServer.
 func NewGRPCServer(clientCtx client.Context, app types.Application, cfg config.GRPCConfig) (*grpc.Server, error) {
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
+
 	maxSendMsgSize := cfg.MaxSendMsgSize
 	if maxSendMsgSize == 0 {
 		maxSendMsgSize = config.DefaultGRPCMaxSendMsgSize
@@ -54,7 +58,7 @@ func NewGRPCServer(clientCtx client.Context, app types.Application, cfg config.G
 		grpc.MaxRecvMsgSize(maxRecvMsgSize),
 		// A client that stops reading responses leaves its streams blocked on
 		// HTTP/2 flow control, where they stay counted against this limit.
-		grpc.MaxConcurrentStreams(maxConcurrentStreams),
+		grpc.MaxConcurrentStreams(uint32(maxConcurrentStreams)), // range checked by cfg.Validate
 		// Such a client also never acknowledges keepalive pings, so the
 		// connection is closed and its streams released after the timeout.
 		grpc.KeepaliveParams(keepalive.ServerParameters{
