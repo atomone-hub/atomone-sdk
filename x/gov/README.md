@@ -1074,6 +1074,14 @@ deciding whether a later undelegation should revoke the exemption would be ambig
 and an inactive governor gains nothing from the exemption it could not already obtain by
 not voting.
 
+The validator event is usually outside the governor's control, but not when the governor
+also operates the validator: it can get the validator jailed, for instance by undelegating
+below the validator's minimum self-delegation, and reactivate right after unjailing. This
+is accepted too. A governor's delegated power only counts in a tally if the governor voted,
+so being inactive is equivalent to not voting, and any governor can already leave a tally
+at any time by undelegating its own stake. Excluding governors that operate the validator
+would not help either, since the validator can be run with a different key.
+
 ```protobuf reference
 https://github.com/atomone-hub/atomone/blob/539ee0ea3b33211ce90a9c6679911893f72b8d26/proto/atomone/gov/v1/tx.proto#L274-L285
 ```
