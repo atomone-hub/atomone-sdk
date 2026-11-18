@@ -103,6 +103,11 @@ type DelegationSet interface {
 // staking keeper can call.
 
 // StakingHooks event hooks for staking validator object (noalias)
+//
+// A redelegation is an unbond from the source validator followed by a delegation
+// to the destination validator, so the delegation hooks fire for the source before
+// the destination delegation exists. Hooks that need to tell the two halves apart
+// can use IsRedelegationSource on the context they are given.
 type StakingHooks interface {
 	AfterValidatorCreated(ctx context.Context, valAddr sdk.ValAddress) error                           // Must be called when a validator is created
 	BeforeValidatorModified(ctx context.Context, valAddr sdk.ValAddress) error                         // Must be called when a validator's state changes

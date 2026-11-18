@@ -431,6 +431,12 @@ message Governor {
 
   // last_status_change_time is the time when the governor's status was last changed.
   google.protobuf.Timestamp last_status_change_time = 4 [(gogoproto.stdtime) = true];
+
+  // deactivated_by_validator is true when the governor was set inactive because a
+  // validator holding its self-delegation was jailed, slashed or left the active
+  // set. Such a governor can become active again without waiting for the
+  // governor_status_change_period.
+  bool deactivated_by_validator = 5;
 }
 
 // GovernorStatus is the status of a governor.
