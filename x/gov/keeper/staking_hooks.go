@@ -97,7 +97,10 @@ func (h Hooks) AfterDelegationModified(ctx context.Context, delAddr sdk.AccAddre
 		panic("active governor delegating to another governor")
 	}
 
-	if !h.k.ValidateGovernorMinSelfDelegation(sdkCtx, governor) {
+	// the source half of a redelegation runs before the destination delegation exists,
+	// the min self-delegation is checked once that one is created
+	if !stakingtypes.IsRedelegationSource(ctx, valAddr) &&
+		!h.k.ValidateGovernorMinSelfDelegation(sdkCtx, governor) {
 		return h.setGovernorInactive(ctx, sdkCtx, governor)
 	}
 	return h.k.ActiveGovernorsByDelegatedValidator.Set(ctx, collections.Join(valAddr, delGovAddr))
@@ -138,6 +141,12 @@ func (h Hooks) BeforeDelegationRemoved(ctx context.Context, delAddr sdk.AccAddre
 	}
 	if governor.GovernorAddress != govDelegation.GovernorAddress {
 		panic("active governor delegating to another governor")
+	}
+
+	// the source half of a redelegation runs before the destination delegation exists,
+	// the min self-delegation is checked once that one is created
+	if stakingtypes.IsRedelegationSource(ctx, valAddr) {
+		return nil
 	}
 
 	exclusion := map[string]struct{}{
