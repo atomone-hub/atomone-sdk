@@ -745,13 +745,10 @@ func (k msgServer) UpdateParams(ctx context.Context, msg *types.MsgUpdateParams)
 		return nil, err
 	}
 
-	// BondDenom is immutable: the bonded/not-bonded pool accounts hold their
-	// balances in the current denom with no migration path, while every pool
-	// movement (slash burns, bonded <-> not-bonded transfers) builds coins
-	// from the live param. A denom switch strands the pools and makes the
-	// first autonomous slash or validator kick fail inside Begin/EndBlock
-	// with ErrInsufficientFunds — an unrecoverable halt. Genesis and compiled
-	// upgrade handlers write params via SetParams and are unaffected.
+	// BondDenom is immutable: pool movements build coins from the live param
+	// while the pool accounts keep their balances in the current denom, so a
+	// switch makes the next slash or validator kick fail inside Begin/EndBlock
+	// with ErrInsufficientFunds. Genesis and upgrade handlers use SetParams.
 	currParams, err := k.GetParams(ctx)
 	if err != nil {
 		return nil, err

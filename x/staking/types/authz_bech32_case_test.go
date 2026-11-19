@@ -14,22 +14,16 @@ import (
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
 )
 
-// TestStakeAuthorizationBech32CaseDenyBypass guards the allow/deny list
-// comparison in StakeAuthorization.Accept.
-//
-// bech32 accepts an all-uppercase alternate encoding of the same address,
-// and the staking msg servers resolve msg-supplied validator addresses to
-// bytes through the bech32 codec (MsgDelegate/MsgUndelegate/MsgBeginRedelegate/
-// MsgCancelUnbondingDelegation all reach Accept from the authz MsgExec path
-// before the handler runs). Accept must therefore enforce its lists on the
-// decoded address bytes, in every encoding the handler accepts.
+// TestStakeAuthorizationBech32CaseDenyBypass checks that Accept enforces its
+// allow/deny lists on decoded address bytes: bech32 accepts an all-uppercase
+// encoding of the same address, which is how the staking msg servers resolve
+// validator addresses.
 func TestStakeAuthorizationBech32CaseDenyBypass(t *testing.T) {
 	key := storetypes.NewKVStoreKey(stakingtypes.StoreKey)
 	testCtx := testutil.DefaultContextWithDB(t, key, storetypes.NewTransientStoreKey("transient_test"))
 	ctx := testCtx.Ctx.WithHeaderInfo(coreheader.Info{})
 
-	// Sanity: the all-uppercase form is a valid alternate bech32 encoding that
-	// resolves to the same address bytes (what the msg servers resolve to).
+	// the uppercase form resolves to the same address bytes
 	uppercaseVal1 := strings.ToUpper(val1.String())
 	bzCanonical, err := sdk.ValAddressFromBech32(val1.String())
 	require.NoError(t, err)

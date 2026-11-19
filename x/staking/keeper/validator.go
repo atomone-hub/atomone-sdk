@@ -369,11 +369,10 @@ func (k Keeper) GetValidators(ctx context.Context, maxRetrieve uint32) (validato
 // grown from the MaxValidators param (see boundedValidatorCapacity).
 const maxPreallocatedValidators = 256
 
-// boundedValidatorCapacity returns an initial capacity for a slice that will
-// hold up to maxValidators entries. MaxValidators is governance-updatable and
-// SetParams performs no validation, so it must not be trusted as an allocation
-// size: an absurd stored value would turn make([]types.Validator, maxValidators)
-// into a fatal out-of-memory inside BeginBlock.
+// boundedValidatorCapacity returns an initial capacity for a slice holding up
+// to maxValidators entries. SetParams performs no validation, so the
+// governance-updatable param is not a safe allocation size: a failed
+// allocation here is a fatal out-of-memory inside BeginBlock.
 func boundedValidatorCapacity(maxValidators uint32) int {
 	if maxValidators > maxPreallocatedValidators {
 		return maxPreallocatedValidators
@@ -388,10 +387,7 @@ func (k Keeper) GetBondedValidatorsByPower(ctx context.Context) ([]types.Validat
 		return nil, err
 	}
 
-	// Do not size the allocation from the param: this function is reachable
-	// from BeginBlock (the distribution epoch hook via
-	// AdjustNakamotoBonusCoefficient calls it), where a failed allocation is a
-	// fatal, unrecoverable out-of-memory.
+	// never size the allocation from the param (see boundedValidatorCapacity)
 	validators := make([]types.Validator, 0, boundedValidatorCapacity(maxValidators))
 
 	iterator, err := k.ValidatorsPowerStoreIterator(ctx)
@@ -401,16 +397,12 @@ func (k Keeper) GetBondedValidatorsByPower(ctx context.Context) ([]types.Validat
 	defer iterator.Close()
 
 	for ; iterator.Valid() && len(validators) < int(maxValidators); iterator.Next() {
-		// Stop at the zero-power suffix of the power-descending index: the
-		// EndBlocker never bonds a zero-power validator and force-unbonds any
-		// bonded one that drops to zero power (see
-		// ApplyAndReturnValidatorSetUpdates), so only unbonded dust entries sit
-		// there — anyone can plant them permanently via MsgCreateValidator with
-		// a 1-token self-delegation, and skipping them keeps this unmetered walk
-		// bounded by the bonded set rather than the whole index. Mid-block, a
-		// bonded validator that just dropped below one power unit is excluded
-		// too, until staking's EndBlocker unbonds it (less than one power unit
-		// of weight here).
+		// No bonded validator follows a zero-power key once the staking
+		// EndBlocker has run (it force-unbonds validators that drop to zero
+		// power, see ApplyAndReturnValidatorSetUpdates) — the suffix only holds
+		// permanently plantable dust entries, so stop there instead of walking
+		// the whole index. Mid-block, a bonded validator below one power unit
+		// is excluded until staking's EndBlocker runs.
 		if types.IsZeroPowerRankKey(iterator.Key()) {
 			break
 		}
@@ -511,9 +503,8 @@ func (k Keeper) GetLastValidators(ctx context.Context) (validators []types.Valid
 		return nil, err
 	}
 
-	// As in GetBondedValidatorsByPower, never size the allocation from the
-	// param: this runs from staking's own BeginBlocker (TrackHistoricalInfo)
-	// on every block.
+	// never size the allocation from the param; this runs in BeginBlocker
+	// every block (see boundedValidatorCapacity)
 	validators = make([]types.Validator, 0, boundedValidatorCapacity(maxValidators))
 
 	iterator, err := store.Iterator(types.LastValidatorPowerKey, storetypes.PrefixEndBytes(types.LastValidatorPowerKey))

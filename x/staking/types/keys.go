@@ -177,13 +177,12 @@ func ParseValidatorPowerRankKey(key []byte) (operAddr []byte) {
 	return operAddr
 }
 
-// zeroPowerRankKeyBytes is the 8-byte big-endian encoding of consensus power 0.
 var zeroPowerRankKeyBytes [8]byte
 
 // IsZeroPowerRankKey reports whether a validators-by-power index key carries
-// zero consensus power. See GetValidatorsByPowerIndexKey for the key format.
-// The keeper writes index keys with sdk.TokensToConsensusPower, which is never
-// negative, so the power is zero exactly when all 8 power bytes are zero.
+// zero consensus power (all 8 power bytes zero — the keeper writes them with
+// sdk.TokensToConsensusPower, never negative). See
+// GetValidatorsByPowerIndexKey for the key format.
 func IsZeroPowerRankKey(key []byte) bool {
 	// key is of format prefix (1 byte) || powerbytes || addrLen (1byte) || addrBytes
 	kv.AssertKeyAtLeastLength(key, 10)

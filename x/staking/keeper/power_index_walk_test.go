@@ -21,14 +21,10 @@ import (
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
 )
 
-// TestIterateBondedValidatorsByPowerStopsAtZeroPowerSuffix guards the bound
-// on the bonded-validator power-index walks (IterateBondedValidatorsByPower,
-// GetBondedValidatorsByPower), which are reached with no gas bound from the
-// gov EndBlocker tally/quorum checks and the distribution epoch hook. The
-// walks must stop at the zero-power suffix of the power-descending index:
-// bonded validators always have consensus power > 0 once the EndBlocker has
-// run, and the unbonded dust validators anyone can plant via
-// MsgCreateValidator sit in that suffix forever.
+// TestIterateBondedValidatorsByPowerStopsAtZeroPowerSuffix checks that the
+// bonded-validator power-index walks (unmetered: gov EndBlocker tally and the
+// distribution epoch hook) stop at the zero-power suffix instead of walking
+// every planted dust entry.
 func TestIterateBondedValidatorsByPowerStopsAtZeroPowerSuffix(t *testing.T) {
 	key := storetypes.NewKVStoreKey(stakingtypes.StoreKey)
 	storeService := runtime.NewKVStoreService(key)
@@ -64,9 +60,7 @@ func TestIterateBondedValidatorsByPowerStopsAtZeroPowerSuffix(t *testing.T) {
 	require.NoError(t, keeper.SetValidator(ctx, bondedVal))
 	require.NoError(t, keeper.SetValidatorByPowerIndex(ctx, bondedVal))
 
-	// the attacker's permanent state: unbonded validators holding a single
-	// dust token, i.e. zero consensus power, whose power-index entries
-	// MsgCreateValidator writes unconditionally and nothing ever removes
+	// unbonded dust validators: zero consensus power, index entries permanent
 	const planted = 200
 	for i := 1; i <= planted; i++ {
 		pubKey := PKs[i]
@@ -77,10 +71,8 @@ func TestIterateBondedValidatorsByPowerStopsAtZeroPowerSuffix(t *testing.T) {
 		require.NoError(t, keeper.SetValidatorByPowerIndex(ctx, val))
 	}
 
-	// The walk may only pay O(bonded) store reads. The gas budget below fits
-	// a bounded walk but not one over every planted entry: the bonded count
-	// (1) is below MaxValidators (100), so the collected-bonded cap alone
-	// never stops the walk.
+	// The gas budget fits a walk over the bonded set but not over the planted
+	// entries (bonded < MaxValidators, so the cap alone never stops it).
 	gasCtx := ctx.WithGasMeter(storetypes.NewGasMeter(20_000))
 	var visited []string
 	err := keeper.IterateBondedValidatorsByPower(gasCtx, func(_ int64, validator stakingtypes.ValidatorI) (stop bool) {
@@ -90,9 +82,8 @@ func TestIterateBondedValidatorsByPowerStopsAtZeroPowerSuffix(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []string{bondedVal.OperatorAddress}, visited)
 
-	// A dangling zero-power index entry proves the walk never visits the
-	// zero-power suffix: a walk that fetched every visited entry's record
-	// would panic on this missing one.
+	// A dangling zero-power entry: a walk that fetched it would panic on the
+	// missing record.
 	poisonPubKey := PKs[planted+1]
 	poisonAddr := sdk.ValAddress(poisonPubKey.Address().Bytes())
 	poisonStr, err := valAddrCodec.BytesToString(poisonAddr)
@@ -112,8 +103,7 @@ func TestIterateBondedValidatorsByPowerStopsAtZeroPowerSuffix(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []string{bondedVal.OperatorAddress}, visited)
 
-	// the distribution-epoch sibling walk (GetBondedValidatorsByPower) must
-	// be bounded the same way
+	// GetBondedValidatorsByPower is bounded the same way
 	vals, err := keeper.GetBondedValidatorsByPower(ctx.WithGasMeter(storetypes.NewGasMeter(20_000)))
 	require.NoError(t, err)
 	require.Len(t, vals, 1)

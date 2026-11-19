@@ -12,12 +12,10 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 )
 
-// MaxMaxValidators is the upper bound enforced on the MaxValidators param.
-// The param sizes allocations and bounds index walks in BeginBlock- and
-// EndBlock-reachable keeper code (GetLastValidators,
-// GetBondedValidatorsByPower), so an unbounded value lets a passed params
-// proposal fatally OOM every validator on the next block. 2000 is far above
-// every deployed active set and above the simulation proposal range.
+// MaxMaxValidators bounds the MaxValidators param, which sizes allocations
+// and index walks in BeginBlock-reachable code — an unbounded value lets a
+// passed params proposal fatally OOM every validator. 2000 is far above
+// every deployed active set and the simulation proposal range.
 const MaxMaxValidators uint32 = 2000
 
 // Staking params default values

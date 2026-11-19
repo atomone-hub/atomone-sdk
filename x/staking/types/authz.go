@@ -72,9 +72,7 @@ func (a StakeAuthorization) ValidateBasic() error {
 	return nil
 }
 
-// validatorAddressFromBech32 decodes an allow/deny list validator address entry
-// to its raw bytes so that entries and msg-supplied addresses are compared by
-// the address they identify rather than by their bech32 encoding. A list
+// validatorAddressFromBech32 decodes a list entry to its raw bytes; an
 // entry that fails to decode never matches.
 func validatorAddressFromBech32(address string) sdk.ValAddress {
 	bz, err := sdk.ValAddressFromBech32(address)
@@ -112,10 +110,9 @@ func (a StakeAuthorization) Accept(ctx context.Context, msg sdk.Msg) (authz.Acce
 		return authz.AcceptResponse{}, sdkerrors.ErrInvalidRequest.Wrap("unknown msg type")
 	}
 
-	// The allow/deny lists are enforced on the decoded address bytes, the same
-	// resolution the staking msg servers perform: bech32 accepts an
-	// all-uppercase encoding of the same address, so comparing raw strings
-	// would let such an encoding of a listed validator slip past the list.
+	// Lists are compared on decoded bytes, matching how the staking msg
+	// servers resolve addresses: bech32 accepts an all-uppercase encoding of
+	// the same address.
 	validatorAddressBz, err := sdk.ValAddressFromBech32(validatorAddress)
 	if err != nil {
 		return authz.AcceptResponse{}, sdkerrors.ErrInvalidRequest.Wrapf("invalid validator address: %s", err)

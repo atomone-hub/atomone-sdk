@@ -54,16 +54,10 @@ func (k Keeper) IterateBondedValidatorsByPower(ctx context.Context, fn func(inde
 
 	i := int64(0)
 	for ; iterator.Valid() && i < int64(maxValidators); iterator.Next() {
-		// Stop at the zero-power suffix of the power-descending index: the
-		// EndBlocker never bonds a zero-power validator and force-unbonds any
-		// bonded one that drops to zero power (see
-		// ApplyAndReturnValidatorSetUpdates), so only unbonded dust entries sit
-		// there — anyone can plant them permanently via MsgCreateValidator with
-		// a 1-token self-delegation, and skipping them keeps this unmetered walk
-		// (gov EndBlocker tally and quorum checks) bounded by the bonded set
-		// rather than the whole index. Mid-block, a bonded validator that just
-		// dropped below one power unit is excluded too, until staking's
-		// EndBlocker unbonds it (less than one power unit of tally weight).
+		// Stop at the zero-power suffix: no bonded validator follows it once
+		// the staking EndBlocker has run, and a bonded validator below one
+		// power unit mid-block is excluded until then (see
+		// GetBondedValidatorsByPower for the full rationale).
 		if types.IsZeroPowerRankKey(iterator.Key()) {
 			break
 		}

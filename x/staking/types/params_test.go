@@ -38,10 +38,8 @@ func TestValidateParams(t *testing.T) {
 	require.Error(t, params.Validate())
 }
 
-// TestValidateParamsMaxValidatorsBound guards the upper bound on the
-// MaxValidators param: it sizes allocations and bounds index walks in
-// BeginBlock/EndBlock-reachable keeper code, so Params.Validate() (the check
-// staking MsgUpdateParams runs) must reject absurd values.
+// TestValidateParamsMaxValidatorsBound checks that Params.Validate() — the
+// check MsgUpdateParams runs — rejects MaxValidators above the cap.
 func TestValidateParamsMaxValidatorsBound(t *testing.T) {
 	testCases := []struct {
 		name    string
