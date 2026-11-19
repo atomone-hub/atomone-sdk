@@ -182,12 +182,9 @@ func (k msgServer) VoteWeighted(goCtx context.Context, msg *v1.MsgVoteWeighted) 
 	totalWeight := math.LegacyNewDec(0)
 	usedOptions := make(map[v1.VoteOption]bool)
 	for _, option := range msg.Options {
-		if !option.IsValid() {
+		weight, valid := option.ValidWeight()
+		if !valid {
 			return nil, govtypes.ErrInvalidVote.Wrap(option.String())
-		}
-		weight, err := math.LegacyNewDecFromStr(option.Weight)
-		if err != nil {
-			return nil, govtypes.ErrInvalidVote.Wrapf("invalid weight: %s", err)
 		}
 		totalWeight = totalWeight.Add(weight)
 		if usedOptions[option.Option] {
@@ -281,8 +278,7 @@ func (k msgServer) UpdateParams(goCtx context.Context, msg *v1.MsgUpdateParams) 
 		return nil, err
 	}
 
-	// Fetch the params currently on store before overwriting them, so a
-	// change of the minimum governor self-delegation can be detected below.
+	// snapshot the params to detect a MinGovernorSelfDelegation change below
 	oldParams, err := k.Params.Get(goCtx)
 	if err != nil {
 		return nil, err
@@ -292,17 +288,8 @@ func (k msgServer) UpdateParams(goCtx context.Context, msg *v1.MsgUpdateParams) 
 		return nil, err
 	}
 
-	// The minimum governor self-delegation is otherwise only enforced
-	// pointwise: at governor creation, on activation, and by the staking
-	// hooks when a governor's bonded amount changes. When the parameter
-	// itself moves, the live-state invariant "every ACTIVE governor has
-	// bonded tokens >= MinGovernorSelfDelegation" must be reestablished
-	// against the new minimum, deactivating active governors that no longer
-	// meet it -- exactly what the staking hooks do when a governor's bonded
-	// amount falls below the minimum. Without this, raising the minimum
-	// leaves an ACTIVE governor below it on store, the chain keeps running
-	// normally, and the exported genesis panics InitGenesis on every node
-	// restart.
+	// recheck active governors when the minimum moves (see
+	// EnforceGovernorMinSelfDelegation)
 	oldMinSelfDelegation, _ := math.NewIntFromString(oldParams.MinGovernorSelfDelegation)
 	newMinSelfDelegation, _ := math.NewIntFromString(msg.Params.MinGovernorSelfDelegation)
 	if !oldMinSelfDelegation.Equal(newMinSelfDelegation) {
@@ -483,12 +470,14 @@ func (k msgServer) UpdateGovernorStatus(goCtx context.Context, msg *v1.MsgUpdate
 
 	governorStatusChangePeriod := *params.GovernorStatusChangePeriod
 	changeTime := ctx.BlockTime()
-	if governor.LastStatusChangeTime.Add(governorStatusChangePeriod).After(changeTime) {
+	// a governor deactivated by a validator event did not change its status itself
+	if !governor.DeactivatedByValidator && governor.LastStatusChangeTime.Add(governorStatusChangePeriod).After(changeTime) {
 		return nil, govtypes.ErrGovernorStatusChangePeriod.Wrapf("last status change time: %s, need to wait until: %s", governor.LastStatusChangeTime, governor.LastStatusChangeTime.Add(governorStatusChangePeriod))
 	}
 
 	// Update the governor status
 	governor.Status = msg.GetStatus()
+	governor.DeactivatedByValidator = false
 	governor.LastStatusChangeTime = &changeTime
 	// prevent a change to active if min self-delegation is not met
 	if governor.IsActive() {

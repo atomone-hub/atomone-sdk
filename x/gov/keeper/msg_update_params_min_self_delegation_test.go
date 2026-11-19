@@ -14,14 +14,12 @@ import (
 	v1 "github.com/cosmos/cosmos-sdk/x/gov/types/v1"
 )
 
-// TestUpdateParamsMinGovernorSelfDelegationInvariant reproduces the finding
-// that MsgUpdateParams could raise MinGovernorSelfDelegation above an active
-// governor's bonded tokens. The minimum was only enforced pointwise (governor
-// creation, activation, staking hooks), so the governor stayed ACTIVE below
-// the new minimum and the exported genesis panicked InitGenesis on every
-// restart. UpdateParams must now reestablish the live-state invariant by
-// deactivating active governors that no longer meet the new minimum,
-// mirroring the staking hooks.
+// TestUpdateParamsMinGovernorSelfDelegationInvariant checks that UpdateParams
+// deactivates active governors below a raised MinGovernorSelfDelegation: the
+// minimum is otherwise only enforced pointwise, and a below-min ACTIVE
+// governor makes the exported genesis panic InitGenesis on restart. A param
+// raise is not the governor's doing, so the governor is deactivated with
+// DeactivatedByValidator set and can reactivate immediately after topping up.
 func TestUpdateParamsMinGovernorSelfDelegationInvariant(t *testing.T) {
 	govKeeper, accKeeper, bankKeeper, stakingKeeper, distrKeeper, _, ctx := setupGovKeeper(t, mockAccountKeeperExpectations)
 	// 2 validators, 2 delegators, 3 governors: governors[0], governors[1]
@@ -82,18 +80,20 @@ func TestUpdateParamsMinGovernorSelfDelegationInvariant(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, newParams.MinGovernorSelfDelegation, storedParams.MinGovernorSelfDelegation)
 
-	// Governor A is below the raised minimum: it must be deactivated.
+	// Governor A is below the raised minimum: deactivated, with the
+	// not-self-caused mark that exempts it from GovernorStatusChangePeriod.
 	govAStored, err := govKeeper.Governors.Get(ctx, govA)
 	require.NoError(t, err)
 	assert.False(t, govAStored.IsActive(), "active governor below the raised minimum must be deactivated")
+	assert.True(t, govAStored.DeactivatedByValidator, "a param raise is not the governor's doing")
 
 	// Governor B still meets the raised minimum: it must remain active.
 	govBStored, err := govKeeper.Governors.Get(ctx, govB)
 	require.NoError(t, err)
 	assert.True(t, govBStored.IsActive(), "active governor above the raised minimum must stay active")
 
-	// The InitGenesis precondition must hold on the resulting live state: no
-	// ACTIVE governor has bonded tokens below the minimum.
+	// The InitGenesis precondition holds on the resulting live state: no
+	// ACTIVE governor is below the minimum.
 	minSelfDelegation := sdkmath.NewInt(2 * fullMin)
 	err = govKeeper.Governors.Walk(ctx, nil, func(_ types.GovernorAddress, governor v1.Governor) (bool, error) {
 		if governor.IsActive() {
@@ -107,13 +107,23 @@ func TestUpdateParamsMinGovernorSelfDelegationInvariant(t *testing.T) {
 	})
 	require.NoError(t, err)
 
+	// Topping up meets the new minimum: reactivation succeeds immediately,
+	// without waiting GovernorStatusChangePeriod.
+	s.delegate(delA, s.valAddrs[0], fullMin)
+	_, err = msgSrvr.UpdateGovernorStatus(ctx, v1.NewMsgUpdateGovernorStatus(delA, v1.Active))
+	require.NoError(t, err)
+	govAStored, err = govKeeper.Governors.Get(ctx, govA)
+	require.NoError(t, err)
+	assert.True(t, govAStored.IsActive(), "governor that topped up must reactivate without waiting")
+	assert.False(t, govAStored.DeactivatedByValidator, "reactivation clears the mark")
+
 	// Lowering the minimum back is accepted and does not resurrect governors.
 	_, err = msgSrvr.UpdateParams(ctx, &v1.MsgUpdateParams{
 		Authority: govKeeper.GetAuthority(),
 		Params:    params,
 	})
 	require.NoError(t, err)
-	govAStored, err = govKeeper.Governors.Get(ctx, govA)
+	govBStored, err = govKeeper.Governors.Get(ctx, govB)
 	require.NoError(t, err)
-	assert.False(t, govAStored.IsActive(), "deactivated governor must not be resurrected by lowering the minimum")
+	assert.True(t, govBStored.IsActive())
 }

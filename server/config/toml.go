@@ -182,6 +182,19 @@ max-recv-msg-size = "{{ .GRPC.MaxRecvMsgSize }}"
 # The default value is math.MaxInt32.
 max-send-msg-size = "{{ .GRPC.MaxSendMsgSize }}"
 
+# MaxConcurrentStreams defines the max number of concurrent streams the server
+# accepts on a single client connection. Streams whose responses a client does
+# not read keep counting against this limit.
+max-concurrent-streams = {{ .GRPC.MaxConcurrentStreams }}
+
+# KeepaliveTime defines the duration of inactivity after which the server pings
+# a client connection.
+keepalive-time = "{{ .GRPC.KeepaliveTime }}"
+
+# KeepaliveTimeout defines how long the server waits for a keepalive ping to be
+# acknowledged before closing the connection and releasing all its streams.
+keepalive-timeout = "{{ .GRPC.KeepaliveTimeout }}"
+
 ###############################################################################
 ###                        gRPC Web Configuration                           ###
 ###############################################################################

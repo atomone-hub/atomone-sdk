@@ -26,13 +26,11 @@ import (
 	bank "github.com/cosmos/cosmos-sdk/x/bank/types"
 )
 
-// TestInitGenesisExpirationEqualBlockTime guards against the restart-from-export
-// halt: a genesis grant whose expiration equals the InitChain block time used to
-// be neither skipped by InitGenesis (Before(now) is false) nor accepted by
-// SaveGrant/NewGrant (!After(blockTime) is true), so InitGenesis panicked and
-// every node importing that genesis aborted before committing any state.
-// InitGenesis must skip grants that are not strictly after the genesis block
-// time — the exact complement of NewGrant's invariant — instead of panicking.
+// TestInitGenesisExpirationEqualBlockTime checks that InitGenesis only
+// imports grants whose expiration is strictly after the genesis block time —
+// the exact complement of NewGrant's invariant — and imports nothing else:
+// a boundary grant would be rejected by SaveGrant and panic InitChain on
+// every node importing the genesis.
 func TestInitGenesisExpirationEqualBlockTime(t *testing.T) {
 	key := storetypes.NewKVStoreKey(keeper.StoreKey)
 	storeService := runtime.NewKVStoreService(key)
@@ -78,7 +76,7 @@ func TestInitGenesisExpirationEqualBlockTime(t *testing.T) {
 	genesis := authz.NewGenesisState([]authz.GrantAuthorization{
 		// strictly past: always skipped
 		{Granter: otherGranter.String(), Grantee: grantee.String(), Expiration: &past, Authorization: newAuth()},
-		// boundary: previously not skipped, then rejected by NewGrant -> panic
+		// boundary: not strictly after the genesis time, skipped
 		{Granter: granter.String(), Grantee: grantee.String(), Expiration: &boundary, Authorization: newAuth()},
 		// strictly future: must be imported
 		{Granter: granter.String(), Grantee: grantee.String(), Expiration: &future, Authorization: newAuth()},

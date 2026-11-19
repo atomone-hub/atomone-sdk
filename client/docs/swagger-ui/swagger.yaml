@@ -13867,6 +13867,19 @@ paths:
                       description: >-
                         last_status_change_time is the time when the governor's
                         status was last changed.
+                    deactivated_by_validator:
+                      type: boolean
+                      description: >-
+                        deactivated_by_validator is true when the governor was
+                        set inactive because a
+
+                        validator holding its self-delegation was jailed,
+                        slashed or left the active
+
+                        set. Such a governor can become active again without
+                        waiting for the
+
+                        governor_status_change_period.
                   description: >-
                     Governor defines a governor, together with the total amount
                     of delegated
@@ -14214,6 +14227,19 @@ paths:
                     description: >-
                       last_status_change_time is the time when the governor's
                       status was last changed.
+                  deactivated_by_validator:
+                    type: boolean
+                    description: >-
+                      deactivated_by_validator is true when the governor was set
+                      inactive because a
+
+                      validator holding its self-delegation was jailed, slashed
+                      or left the active
+
+                      set. Such a governor can become active again without
+                      waiting for the
+
+                      governor_status_change_period.
             description: >-
               QueryGovernorResponse is the response type for the Query/Governor
               RPC method.
@@ -39036,6 +39062,18 @@ definitions:
         description: >-
           last_status_change_time is the time when the governor's status was
           last changed.
+      deactivated_by_validator:
+        type: boolean
+        description: >-
+          deactivated_by_validator is true when the governor was set inactive
+          because a
+
+          validator holding its self-delegation was jailed, slashed or left the
+          active
+
+          set. Such a governor can become active again without waiting for the
+
+          governor_status_change_period.
     description: |-
       Governor defines a governor, together with the total amount of delegated
       validator's bond shares for a set amount of validators. When a delegator
@@ -40020,6 +40058,19 @@ definitions:
             description: >-
               last_status_change_time is the time when the governor's status was
               last changed.
+          deactivated_by_validator:
+            type: boolean
+            description: >-
+              deactivated_by_validator is true when the governor was set
+              inactive because a
+
+              validator holding its self-delegation was jailed, slashed or left
+              the active
+
+              set. Such a governor can become active again without waiting for
+              the
+
+              governor_status_change_period.
     description: >-
       QueryGovernorResponse is the response type for the Query/Governor RPC
       method.
@@ -40116,6 +40167,19 @@ definitions:
               description: >-
                 last_status_change_time is the time when the governor's status
                 was last changed.
+            deactivated_by_validator:
+              type: boolean
+              description: >-
+                deactivated_by_validator is true when the governor was set
+                inactive because a
+
+                validator holding its self-delegation was jailed, slashed or
+                left the active
+
+                set. Such a governor can become active again without waiting for
+                the
+
+                governor_status_change_period.
           description: >-
             Governor defines a governor, together with the total amount of
             delegated

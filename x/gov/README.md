@@ -1056,6 +1056,36 @@ Governors can set their status to inactive or active by sending a
 `MsgUpdateGovernorStatus` transaction. However for the transition to active the minimum
 self-delegation required to become a governor need also to be satisfied.
 
+A status change is refused until `governor_status_change_period` has elapsed since
+the governor's last status change. A governor is also set inactive automatically when
+its bonded self-delegation falls below the minimum. If that happens because a validator
+holding the self-delegation is jailed, slashed or leaves the active set, the governor's
+`deactivated_by_validator` field is set and its next transition to active does not wait
+for `governor_status_change_period`, the governor only needs to meet the minimum
+self-delegation again (for instance once the validator is bonded again, or after
+redelegating to a bonded validator). A governor that goes below the minimum by
+undelegating its own stake waits for the period as usual.
+
+The same applies when a governance vote raises `min_governor_self_delegation` above a
+governor's bonded self-delegation: the governor is deactivated with `deactivated_by_validator`
+set and can reactivate as soon as it meets the new minimum.
+
+The field is only cleared by the governor's next successful status change. Delegation
+changes made by a governor that is already inactive do not touch it, so a governor
+deactivated by a validator that later undelegates its own stake can still become active
+again without waiting. This is accepted: the deactivation was caused by the validator,
+deciding whether a later undelegation should revoke the exemption would be ambiguous,
+and an inactive governor gains nothing from the exemption it could not already obtain by
+not voting.
+
+The validator event is usually outside the governor's control, but not when the governor
+also operates the validator: it can get the validator jailed, for instance by undelegating
+below the validator's minimum self-delegation, and reactivate right after unjailing. This
+is accepted too. A governor's delegated power only counts in a tally if the governor voted,
+so being inactive is equivalent to not voting, and any governor can already leave a tally
+at any time by undelegating its own stake. Excluding governors that operate the validator
+would not help either, since the validator can be run with a different key.
+
 ```protobuf reference
 https://github.com/atomone-hub/atomone/blob/539ee0ea3b33211ce90a9c6679911893f72b8d26/proto/atomone/gov/v1/tx.proto#L274-L285
 ```

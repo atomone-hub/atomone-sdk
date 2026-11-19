@@ -14,11 +14,10 @@ import (
 	v1 "github.com/cosmos/cosmos-sdk/x/gov/types/v1"
 )
 
-// Regression test for the unbounded WeightedVoteOption.Weight string: an
-// over-length weight used to be parsed with quadratic big.Int.SetString at
-// every vote validation (MsgServer.VoteWeighted -> IsValid /
-// ValidWeightedVoteOption) and at every tally step (WeightedVoteOption.Power,
-// un-metered EndBlocker). It must now be rejected by length before parsing.
+// Checks that over-length WeightedVoteOption.Weight strings are rejected by
+// length before the quadratic decimal parse — at vote time (VoteWeighted,
+// which must not persist them) and in the tally (Power, which must return
+// zero instead of panicking).
 type WeightLengthRegressionSuite struct {
 	KeeperTestSuite
 }
