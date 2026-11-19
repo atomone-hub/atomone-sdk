@@ -1223,13 +1223,11 @@ func (s *KeeperTestSuite) TestMsgUpdateParamsUpdatesExistingValidatorCommissions
 	require.Equal(updatedAt, inRangeValidator.Commission.UpdateTime)
 }
 
-// TestMsgUpdateParamsBondDenomImmutable ensures a params update cannot switch
-// the bond denom. The bonded/not-bonded pool module accounts hold their
-// balances in the current bond denom while every pool movement (slash burns
-// in the slashing BeginBlocker, bonded <-> not-bonded transfers in the
-// staking EndBlocker) builds coins from the live param; a denom switch
-// strands the pools' balances so the first autonomous slash or validator kick
-// fails with ErrInsufficientFunds and halts the chain outside runTx.
+// TestMsgUpdateParamsBondDenomImmutable guards the BondDenom immutability in
+// UpdateParams: the bonded/not-bonded pool accounts hold their balances in the
+// current bond denom while every pool movement builds coins from the live
+// param, so a denom switch would strand the pools and halt the chain inside
+// Begin/EndBlock on the first autonomous slash or validator kick.
 func (s *KeeperTestSuite) TestMsgUpdateParamsBondDenomImmutable() {
 	ctx, keeper, msgServer := s.ctx, s.stakingKeeper, s.msgServer
 	require := s.Require()

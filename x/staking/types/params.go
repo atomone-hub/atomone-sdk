@@ -13,12 +13,11 @@ import (
 )
 
 // MaxMaxValidators is the upper bound enforced on the MaxValidators param.
-// MaxValidators is a governance-updatable uint32 that sizes allocations and
-// bounds index walks in BeginBlock/EndBlock-reachable keeper code
-// (GetLastValidators, GetBondedValidatorsByPower), so without a cap a passed
-// params proposal could store math.MaxUint32 and turn the next block into an
-// unrecoverable out-of-memory on every validator. 2000 is far above every
-// deployed active set and above the simulation proposal range.
+// The param sizes allocations and bounds index walks in BeginBlock- and
+// EndBlock-reachable keeper code (GetLastValidators,
+// GetBondedValidatorsByPower), so an unbounded value lets a passed params
+// proposal fatally OOM every validator on the next block. 2000 is far above
+// every deployed active set and above the simulation proposal range.
 const MaxMaxValidators uint32 = 2000
 
 // Staking params default values

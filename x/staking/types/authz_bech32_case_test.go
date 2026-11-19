@@ -14,17 +14,15 @@ import (
 	stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
 )
 
-// TestStakeAuthorizationBech32CaseDenyBypass is a regression test for the
-// StakeAuthorization deny-list bech32 case bypass.
+// TestStakeAuthorizationBech32CaseDenyBypass guards the allow/deny list
+// comparison in StakeAuthorization.Accept.
 //
-// bech32 accepts an all-uppercase alternate encoding of the same address, and
-// the staking msg servers resolve msg-supplied validator addresses to bytes
-// through the bech32 codec (MsgDelegate/MsgUndelegate/MsgBeginRedelegate/
+// bech32 accepts an all-uppercase alternate encoding of the same address,
+// and the staking msg servers resolve msg-supplied validator addresses to
+// bytes through the bech32 codec (MsgDelegate/MsgUndelegate/MsgBeginRedelegate/
 // MsgCancelUnbondingDelegation all reach Accept from the authz MsgExec path
-// before the handler runs). Accept must therefore enforce its allow/deny
-// lists on the decoded address bytes; comparing raw strings let an
-// all-uppercase encoding of a denied validator bypass the deny list for every
-// msg type Accept handles.
+// before the handler runs). Accept must therefore enforce its lists on the
+// decoded address bytes, in every encoding the handler accepts.
 func TestStakeAuthorizationBech32CaseDenyBypass(t *testing.T) {
 	key := storetypes.NewKVStoreKey(stakingtypes.StoreKey)
 	testCtx := testutil.DefaultContextWithDB(t, key, storetypes.NewTransientStoreKey("transient_test"))

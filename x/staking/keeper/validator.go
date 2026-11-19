@@ -370,11 +370,10 @@ func (k Keeper) GetValidators(ctx context.Context, maxRetrieve uint32) (validato
 const maxPreallocatedValidators = 256
 
 // boundedValidatorCapacity returns an initial capacity for a slice that will
-// hold up to maxValidators entries, without ever trusting the governance-
-// updatable param as an allocation size: state may already hold an absurd
-// value (e.g. stored before parameter validation was tightened, since
-// SetParams performs no validation), and make([]types.Validator, maxValidators)
-// would then request an allocation far larger than available memory.
+// hold up to maxValidators entries. MaxValidators is governance-updatable and
+// SetParams performs no validation, so it must not be trusted as an allocation
+// size: an absurd stored value would turn make([]types.Validator, maxValidators)
+// into a fatal out-of-memory inside BeginBlock.
 func boundedValidatorCapacity(maxValidators uint32) int {
 	if maxValidators > maxPreallocatedValidators {
 		return maxPreallocatedValidators
@@ -389,10 +388,10 @@ func (k Keeper) GetBondedValidatorsByPower(ctx context.Context) ([]types.Validat
 		return nil, err
 	}
 
-	// Never size the allocation from the param: this function is reachable
-	// from BeginBlock (the epochs module dispatches the distribution epoch
-	// hooks, whose AdjustNakamotoBonusCoefficient calls it), where a failed
-	// allocation is a fatal, unrecoverable out-of-memory.
+	// Do not size the allocation from the param: this function is reachable
+	// from BeginBlock (the distribution epoch hook via
+	// AdjustNakamotoBonusCoefficient calls it), where a failed allocation is a
+	// fatal, unrecoverable out-of-memory.
 	validators := make([]types.Validator, 0, boundedValidatorCapacity(maxValidators))
 
 	iterator, err := k.ValidatorsPowerStoreIterator(ctx)
@@ -402,19 +401,16 @@ func (k Keeper) GetBondedValidatorsByPower(ctx context.Context) ([]types.Validat
 	defer iterator.Close()
 
 	for ; iterator.Valid() && len(validators) < int(maxValidators); iterator.Next() {
-		// The power index holds every non-jailed validator, including unbonded
-		// zero-power validators that anyone can permanently plant via
-		// MsgCreateValidator with a 1-token self-delegation (never bonded by the
-		// EndBlocker, never jailable, never removed). Since the loop cap counts
-		// only collected bonded validators, it never trips while the bonded set
-		// is below MaxValidators, and this unmetered walk would otherwise pay a
-		// store read plus a full unmarshal for every planted entry. The index is
-		// ordered by consensus power descending, so zero-power entries form a
-		// contiguous suffix, and no bonded validator can appear behind one: the
-		// EndBlocker breaks at the first zero-power validator and force-unbonds
-		// any bonded validator it skips (see ApplyAndReturnValidatorSetUpdates).
-		// Stopping here applies the same bound the EndBlocker applies to this
-		// index, without paying a store read for the suffix.
+		// Stop at the zero-power suffix of the power-descending index: the
+		// EndBlocker never bonds a zero-power validator and force-unbonds any
+		// bonded one that drops to zero power (see
+		// ApplyAndReturnValidatorSetUpdates), so only unbonded dust entries sit
+		// there — anyone can plant them permanently via MsgCreateValidator with
+		// a 1-token self-delegation, and skipping them keeps this unmetered walk
+		// bounded by the bonded set rather than the whole index. Mid-block, a
+		// bonded validator that just dropped below one power unit is excluded
+		// too, until staking's EndBlocker unbonds it (less than one power unit
+		// of weight here).
 		if types.IsZeroPowerRankKey(iterator.Key()) {
 			break
 		}
@@ -516,8 +512,8 @@ func (k Keeper) GetLastValidators(ctx context.Context) (validators []types.Valid
 	}
 
 	// As in GetBondedValidatorsByPower, never size the allocation from the
-	// governance-updatable MaxValidators param: this runs from staking's own
-	// BeginBlocker (TrackHistoricalInfo) on every block.
+	// param: this runs from staking's own BeginBlocker (TrackHistoricalInfo)
+	// on every block.
 	validators = make([]types.Validator, 0, boundedValidatorCapacity(maxValidators))
 
 	iterator, err := store.Iterator(types.LastValidatorPowerKey, storetypes.PrefixEndBytes(types.LastValidatorPowerKey))

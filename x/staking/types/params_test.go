@@ -38,12 +38,10 @@ func TestValidateParams(t *testing.T) {
 	require.Error(t, params.Validate())
 }
 
-// TestValidateParamsMaxValidatorsBound ensures a params update cannot persist
-// an unbounded MaxValidators. The param sizes allocations and bounds index
-// walks in BeginBlock/EndBlock-reachable keeper code (GetLastValidators,
-// GetBondedValidatorsByPower), so a value like math.MaxUint32 would turn the
-// next block's make() into a fatal out-of-memory on every validator.
-// Params.Validate() is the check staking MsgUpdateParams runs before storing.
+// TestValidateParamsMaxValidatorsBound guards the upper bound on the
+// MaxValidators param: it sizes allocations and bounds index walks in
+// BeginBlock/EndBlock-reachable keeper code, so Params.Validate() (the check
+// staking MsgUpdateParams runs) must reject absurd values.
 func TestValidateParamsMaxValidatorsBound(t *testing.T) {
 	testCases := []struct {
 		name    string
