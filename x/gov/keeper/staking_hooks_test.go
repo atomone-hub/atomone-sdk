@@ -419,6 +419,71 @@ func TestActiveGovernorsByDelegatedValidator(t *testing.T) {
 			expectActive:     boolPtr(true),
 		},
 		{
+			name: "redelegation: the source half does not deactivate, the destination half validates the final state and indexes it",
+			run: func(t *testing.T, s *fixture, k *keeper.Keeper) types.GovernorAddress {
+				gov := s.activeGovernors[0].GetAddress()
+				acc := sdk.AccAddress(gov)
+				s.delegate(acc, s.valAddrs[0], fullMin)
+				require.NoError(t, k.DelegateToGovernor(s.ctx, acc, gov))
+				ctx := stakingtypes.WithRedelegationSource(s.ctx, s.valAddrs[0])
+				// source half: full unbond of val[0], the destination delegation does not exist yet
+				require.NoError(t, k.StakingHooks().BeforeDelegationRemoved(ctx, acc, s.valAddrs[0]))
+				s.removeDelegation(acc, s.valAddrs[0])
+				// destination half
+				s.delegate(acc, s.valAddrs[1], fullMin)
+				require.NoError(t, k.StakingHooks().AfterDelegationModified(ctx, acc, s.valAddrs[1]))
+				return gov
+			},
+			expectIndexed: map[int]bool{0: false, 1: true},
+			expectActive:  boolPtr(true),
+		},
+		{
+			name: "redelegation: the destination half deactivates a governor whose final state is below the minimum",
+			run: func(t *testing.T, s *fixture, k *keeper.Keeper) types.GovernorAddress {
+				gov := s.activeGovernors[0].GetAddress()
+				acc := sdk.AccAddress(gov)
+				s.delegate(acc, s.valAddrs[0], fullMin)
+				require.NoError(t, k.DelegateToGovernor(s.ctx, acc, gov))
+				ctx := stakingtypes.WithRedelegationSource(s.ctx, s.valAddrs[0])
+				require.NoError(t, k.StakingHooks().BeforeDelegationRemoved(ctx, acc, s.valAddrs[0]))
+				s.removeDelegation(acc, s.valAddrs[0])
+				// the destination validator is not bonded, so the delegation does not count
+				s.setValidatorStatus(1, stakingtypes.Unbonded)
+				s.delegate(acc, s.valAddrs[1], fullMin)
+				require.NoError(t, k.StakingHooks().AfterDelegationModified(ctx, acc, s.valAddrs[1]))
+				return gov
+			},
+			expectIndexed: map[int]bool{0: false, 1: false},
+			expectActive:  boolPtr(false),
+		},
+		{
+			name: "redelegation: AfterDelegationModified of the source half does not check the minimum",
+			run: func(t *testing.T, s *fixture, k *keeper.Keeper) types.GovernorAddress {
+				gov := s.activeGovernors[0].GetAddress()
+				acc := sdk.AccAddress(gov)
+				s.delegate(acc, s.valAddrs[0], 1)
+				require.NoError(t, k.DelegateToGovernor(s.ctx, acc, gov))
+				ctx := stakingtypes.WithRedelegationSource(s.ctx, s.valAddrs[0])
+				require.NoError(t, k.StakingHooks().AfterDelegationModified(ctx, acc, s.valAddrs[0]))
+				return gov
+			},
+			expectIndexed: map[int]bool{0: true},
+			expectActive:  boolPtr(true),
+		},
+		{
+			name: "outside of a redelegation AfterDelegationModified checks the minimum",
+			run: func(t *testing.T, s *fixture, k *keeper.Keeper) types.GovernorAddress {
+				gov := s.activeGovernors[0].GetAddress()
+				acc := sdk.AccAddress(gov)
+				s.delegate(acc, s.valAddrs[0], 1)
+				require.NoError(t, k.DelegateToGovernor(s.ctx, acc, gov))
+				require.NoError(t, k.StakingHooks().AfterDelegationModified(s.ctx, acc, s.valAddrs[0]))
+				return gov
+			},
+			expectIndexed: map[int]bool{0: false},
+			expectActive:  boolPtr(false),
+		},
+		{
 			name: "MsgUpdateGovernorStatus active to inactive clears every index entry the governor holds",
 			run: func(t *testing.T, s *fixture, k *keeper.Keeper) types.GovernorAddress {
 				gov := s.activeGovernors[0].GetAddress()
