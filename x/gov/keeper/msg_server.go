@@ -288,8 +288,7 @@ func (k msgServer) UpdateParams(goCtx context.Context, msg *v1.MsgUpdateParams) 
 		return nil, err
 	}
 
-	// recheck active governors when the minimum moves (see
-	// EnforceGovernorMinSelfDelegation)
+	// recheck active governors when the minimum moves (see EnforceGovernorMinSelfDelegation)
 	oldMinSelfDelegation, _ := math.NewIntFromString(oldParams.MinGovernorSelfDelegation)
 	newMinSelfDelegation, _ := math.NewIntFromString(msg.Params.MinGovernorSelfDelegation)
 	if !oldMinSelfDelegation.Equal(newMinSelfDelegation) {

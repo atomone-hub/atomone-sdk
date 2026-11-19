@@ -61,13 +61,10 @@ func NewWeightedVoteOption(option VoteOption, weight math.LegacyDec) *WeightedVo
 	return &WeightedVoteOption{Option: option, Weight: weight.String()}
 }
 
-// MaxWeightStrLen is the maximum allowed length of a WeightedVoteOption.Weight
-// string. A valid weight is a LegacyDec in (0, 1] with 18 decimals of
-// precision, i.e. at most "1.000000000000000000" plus sign and leading zeros;
-// anything longer is a bloated or invalid encoding. The bound keeps
-// over-length strings away from LegacyNewDecFromStr, whose big.Int parse is
-// quadratic in digits — reachable unmetered per vote, per tally delegation
-// (Power) and persisted verbatim.
+// MaxWeightStrLen bounds the Weight string length: a valid weight is a
+// LegacyDec in (0, 1] ("1.000000000000000000" at most, plus sign and leading
+// zeros), and the bound keeps bloated encodings away from the quadratic
+// big.Int parse in LegacyNewDecFromStr.
 const MaxWeightStrLen = 40
 
 // parseWeight parses a Weight string, rejecting over-length inputs before
@@ -85,8 +82,7 @@ func (w *WeightedVoteOption) IsValid() bool {
 	return ok
 }
 
-// ValidWeight returns the parsed weight if the option is valid, parsing the
-// weight string once.
+// ValidWeight returns the parsed weight if the option is valid, parsing once.
 func (w *WeightedVoteOption) ValidWeight() (math.LegacyDec, bool) {
 	weight, err := parseWeight(w.Weight)
 	if err != nil || !weight.IsPositive() || weight.GT(math.LegacyNewDec(1)) {
@@ -106,8 +102,7 @@ func (w WeightedVoteOption) Power(totalPower math.LegacyDec) math.LegacyDec {
 	}
 	weight, err := parseWeight(w.Weight)
 	if err != nil {
-		// zero power for unparseable weights (a zero-value LegacyDec would
-		// panic in the Mul below)
+		// zero power for unparseable weights (a zero-value LegacyDec panics in Mul)
 		return math.LegacyZeroDec()
 	}
 	return totalPower.Mul(weight)

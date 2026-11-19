@@ -27,10 +27,8 @@ import (
 )
 
 // TestInitGenesisExpirationEqualBlockTime checks that InitGenesis only
-// imports grants whose expiration is strictly after the genesis block time —
-// the exact complement of NewGrant's invariant — and imports nothing else:
-// a boundary grant would be rejected by SaveGrant and panic InitChain on
-// every node importing the genesis.
+// imports grants expiring strictly after the genesis block time (NewGrant's
+// invariant): a boundary grant would otherwise panic InitChain.
 func TestInitGenesisExpirationEqualBlockTime(t *testing.T) {
 	key := storetypes.NewKVStoreKey(keeper.StoreKey)
 	storeService := runtime.NewKVStoreService(key)
@@ -70,7 +68,7 @@ func TestInitGenesisExpirationEqualBlockTime(t *testing.T) {
 	}
 
 	past := blockTime.Add(-time.Hour)
-	boundary := blockTime // expiration exactly equal to the genesis block time
+	boundary := blockTime // expiration == genesis block time
 	future := blockTime.Add(time.Hour)
 
 	genesis := authz.NewGenesisState([]authz.GrantAuthorization{

@@ -14,10 +14,8 @@ import (
 	v1 "github.com/cosmos/cosmos-sdk/x/gov/types/v1"
 )
 
-// Checks that over-length WeightedVoteOption.Weight strings are rejected by
-// length before the quadratic decimal parse — at vote time (VoteWeighted,
-// which must not persist them) and in the tally (Power, which must return
-// zero instead of panicking).
+// Checks that over-length Weight strings are rejected by length before the
+// quadratic decimal parse, both at vote time and in Power.
 type WeightLengthRegressionSuite struct {
 	KeeperTestSuite
 }
@@ -80,8 +78,7 @@ func (s *WeightLengthRegressionSuite) TestVoteWeightedRejectsOverlongWeight() {
 
 func (s *WeightLengthRegressionSuite) TestPowerOnOverlongWeightIsCheap() {
 	s.reset()
-	// Power must not reach the quadratic big.Int parse (nor panic on a
-	// zero-value LegacyDec) for over-length weights.
+	// Power must not parse over-length weights (nor panic on them)
 	w := v1.WeightedVoteOption{Option: v1.OptionYes, Weight: strings.Repeat("0", 100000) + "1"}
 	p := w.Power(sdkmath.LegacyNewDec(100))
 	s.Require().True(p.IsZero())

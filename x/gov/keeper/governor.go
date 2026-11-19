@@ -97,16 +97,11 @@ func (keeper Keeper) validateGovernorMinSelfDelegationWithTotalBonded(ctx sdk.Co
 	return true
 }
 
-// EnforceGovernorMinSelfDelegation deactivates every ACTIVE governor that no
-// longer meets the MinGovernorSelfDelegation param currently on store.
-//
-// The minimum is otherwise only enforced pointwise (governor creation,
-// activation, staking hooks on bonded-amount changes); when the param itself
-// moves it must be rechecked, otherwise an ACTIVE governor below the new
-// minimum stays on store and the exported genesis panics InitGenesis on
-// restart. Deactivation passes byValidator=true: like a validator event, a
-// param raise is not the governor's doing, so the governor may reactivate
-// immediately after topping up (no GovernorStatusChangePeriod wait).
+// EnforceGovernorMinSelfDelegation deactivates every ACTIVE governor below
+// the MinGovernorSelfDelegation param on store — the minimum is otherwise
+// only enforced pointwise, and a below-min ACTIVE governor makes the exported
+// genesis panic InitGenesis on restart. byValidator=true: a param raise is
+// not the governor's doing, so it may reactivate immediately after topping up.
 func (keeper Keeper) EnforceGovernorMinSelfDelegation(ctx sdk.Context) error {
 	hooks := keeper.StakingHooks()
 

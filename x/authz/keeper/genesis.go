@@ -10,9 +10,7 @@ func (k Keeper) InitGenesis(ctx sdk.Context, data *authz.GenesisState) {
 	now := ctx.BlockTime()
 	for _, entry := range data.Authorization {
 		// skip grants that are not strictly after the genesis block time — the
-		// exact complement of the invariant SaveGrant/NewGrant enforces — since
-		// SaveGrant would reject (and panic on) them; such a grant is dead on
-		// every subsequent block anyway.
+		// exact complement of NewGrant's invariant (SaveGrant would reject them)
 		if entry.Expiration != nil && !entry.Expiration.After(now) {
 			continue
 		}
