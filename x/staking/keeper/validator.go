@@ -200,6 +200,47 @@ func (k Keeper) RemoveValidatorTokens(ctx context.Context,
 	return validator, nil
 }
 
+// AddValidatorTokens increases a validator's token balance without issuing new
+// delegator shares and updates the validators power index key.
+// This raises the per-share exchange rate for all existing delegators proportionally.
+// The caller is responsible for transferring the equivalent coins to the pool
+// holding the validator's tokens (bonded pool if the validator is bonded,
+// not-bonded pool otherwise) before calling this function, to satisfy
+// ModuleAccountInvariant. Validators without delegator shares are rejected,
+// since nobody would own the added tokens and the validator could never be
+// removed once unbonded. So are additions that would exceed the exchange rate
+// allowed by types.CanAddTokensWithoutShares, at which later delegations could
+// be issued zero shares.
+func (k Keeper) AddValidatorTokens(ctx context.Context, valAddr sdk.ValAddress, tokensToAdd math.Int) error {
+	if !tokensToAdd.IsPositive() {
+		return nil
+	}
+
+	validator, err := k.GetValidator(ctx, valAddr)
+	if err != nil {
+		return err
+	}
+
+	if !validator.DelegatorShares.IsPositive() {
+		return errorsmod.Wrapf(types.ErrInsufficientShares, "validator %s has no delegator shares", validator.GetOperator())
+	}
+	if !types.CanAddTokensWithoutShares(validator.Tokens, validator.DelegatorShares, tokensToAdd) {
+		return errorsmod.Wrapf(types.ErrInsufficientShares, "validator %s has too few delegator shares for %s more tokens", validator.GetOperator(), tokensToAdd)
+	}
+
+	if err := k.DeleteValidatorByPowerIndex(ctx, validator); err != nil {
+		return err
+	}
+
+	validator.Tokens = validator.Tokens.Add(tokensToAdd)
+
+	if err := k.SetValidator(ctx, validator); err != nil {
+		return err
+	}
+
+	return k.SetValidatorByPowerIndex(ctx, validator)
+}
+
 // UpdateValidatorCommission attempts to update a validator's commission rate.
 // An error is returned if the new commission rate is invalid.
 func (k Keeper) UpdateValidatorCommission(ctx context.Context,

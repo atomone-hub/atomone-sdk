@@ -383,26 +383,6 @@ func (k Keeper) SetValidatorSlashEvent(ctx context.Context, val sdk.ValAddress, 
 	return store.Set(types.GetValidatorSlashEventKey(val, height, period), b)
 }
 
-// IterateValidatorSlashEventsBetween iterates over slash events between heights, inclusive
-func (k Keeper) IterateValidatorSlashEventsBetween(ctx context.Context, val sdk.ValAddress, startingHeight, endingHeight uint64,
-	handler func(height uint64, event types.ValidatorSlashEvent) (stop bool),
-) {
-	store := runtime.KVStoreAdapter(k.storeService.OpenKVStore(ctx))
-	iter := store.Iterator(
-		types.GetValidatorSlashEventKeyPrefix(val, startingHeight),
-		types.GetValidatorSlashEventKeyPrefix(val, endingHeight+1),
-	)
-	defer iter.Close()
-	for ; iter.Valid(); iter.Next() {
-		var event types.ValidatorSlashEvent
-		k.cdc.MustUnmarshal(iter.Value(), &event)
-		_, height := types.GetValidatorSlashEventAddressHeight(iter.Key())
-		if handler(height, event) {
-			break
-		}
-	}
-}
-
 // IterateValidatorSlashEvents iterates over all slash events
 func (k Keeper) IterateValidatorSlashEvents(ctx context.Context, handler func(val sdk.ValAddress, height uint64, event types.ValidatorSlashEvent) (stop bool)) {
 	store := runtime.KVStoreAdapter(k.storeService.OpenKVStore(ctx))
