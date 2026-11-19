@@ -61,18 +61,34 @@ func NewWeightedVoteOption(option VoteOption, weight math.LegacyDec) *WeightedVo
 	return &WeightedVoteOption{Option: option, Weight: weight.String()}
 }
 
+// MaxWeightStrLen bounds the Weight string length: a valid weight is a
+// LegacyDec in (0, 1] ("1.000000000000000000" at most, plus sign and leading
+// zeros), and the bound keeps bloated encodings away from the quadratic
+// big.Int parse in LegacyNewDecFromStr.
+const MaxWeightStrLen = 40
+
+// parseWeight parses a Weight string, rejecting over-length inputs before
+// the quadratic big.Int parse.
+func parseWeight(weight string) (math.LegacyDec, error) {
+	if len(weight) > MaxWeightStrLen {
+		return math.LegacyDec{}, fmt.Errorf("weight string too long: %d > %d", len(weight), MaxWeightStrLen)
+	}
+	return math.LegacyNewDecFromStr(weight)
+}
+
 // IsValid returns true if the sub vote is valid and false otherwise.
 func (w *WeightedVoteOption) IsValid() bool {
-	weight, err := math.LegacyNewDecFromStr(w.Weight)
-	if err != nil {
-		return false
-	}
+	_, ok := w.ValidWeight()
+	return ok
+}
 
-	if !weight.IsPositive() || weight.GT(math.LegacyNewDec(1)) {
-		return false
+// ValidWeight returns the parsed weight if the option is valid, parsing once.
+func (w *WeightedVoteOption) ValidWeight() (math.LegacyDec, bool) {
+	weight, err := parseWeight(w.Weight)
+	if err != nil || !weight.IsPositive() || weight.GT(math.LegacyNewDec(1)) {
+		return math.LegacyDec{}, false
 	}
-
-	return ValidVoteOption(w.Option)
+	return weight, ValidVoteOption(w.Option)
 }
 
 var oneDecStr = math.LegacyOneDec().String()
@@ -84,7 +100,11 @@ func (w WeightedVoteOption) Power(totalPower math.LegacyDec) math.LegacyDec {
 	if w.Weight == oneDecStr {
 		return totalPower
 	}
-	weight, _ := math.LegacyNewDecFromStr(w.Weight)
+	weight, err := parseWeight(w.Weight)
+	if err != nil {
+		// zero power for unparseable weights (a zero-value LegacyDec panics in Mul)
+		return math.LegacyZeroDec()
+	}
 	return totalPower.Mul(weight)
 }
 
@@ -95,7 +115,7 @@ func NewNonSplitVoteOption(option VoteOption) WeightedVoteOptions {
 
 // ValidWeightedVoteOption returns true if the sub vote is valid and false otherwise.
 func ValidWeightedVoteOption(option WeightedVoteOption) bool {
-	weight, err := math.LegacyNewDecFromStr(option.Weight)
+	weight, err := parseWeight(option.Weight)
 	if err != nil || !weight.IsPositive() || weight.GT(math.LegacyNewDec(1)) {
 		return false
 	}
@@ -133,7 +153,7 @@ func WeightedVoteOptionsFromString(str string) (WeightedVoteOptions, error) {
 		if len(fields) < 2 {
 			return options, fmt.Errorf("weight field does not exist for %s option", fields[0])
 		}
-		weight, err := math.LegacyNewDecFromStr(fields[1])
+		weight, err := parseWeight(fields[1])
 		if err != nil {
 			return options, err
 		}

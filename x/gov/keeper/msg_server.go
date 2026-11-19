@@ -182,12 +182,9 @@ func (k msgServer) VoteWeighted(goCtx context.Context, msg *v1.MsgVoteWeighted) 
 	totalWeight := math.LegacyNewDec(0)
 	usedOptions := make(map[v1.VoteOption]bool)
 	for _, option := range msg.Options {
-		if !option.IsValid() {
+		weight, valid := option.ValidWeight()
+		if !valid {
 			return nil, govtypes.ErrInvalidVote.Wrap(option.String())
-		}
-		weight, err := math.LegacyNewDecFromStr(option.Weight)
-		if err != nil {
-			return nil, govtypes.ErrInvalidVote.Wrapf("invalid weight: %s", err)
 		}
 		totalWeight = totalWeight.Add(weight)
 		if usedOptions[option.Option] {
@@ -281,8 +278,23 @@ func (k msgServer) UpdateParams(goCtx context.Context, msg *v1.MsgUpdateParams) 
 		return nil, err
 	}
 
+	// snapshot the params to detect a MinGovernorSelfDelegation change below
+	oldParams, err := k.Params.Get(goCtx)
+	if err != nil {
+		return nil, err
+	}
+
 	if err := k.Params.Set(goCtx, msg.Params); err != nil {
 		return nil, err
+	}
+
+	// recheck active governors when the minimum moves (see EnforceGovernorMinSelfDelegation)
+	oldMinSelfDelegation, _ := math.NewIntFromString(oldParams.MinGovernorSelfDelegation)
+	newMinSelfDelegation, _ := math.NewIntFromString(msg.Params.MinGovernorSelfDelegation)
+	if !oldMinSelfDelegation.Equal(newMinSelfDelegation) {
+		if err := k.EnforceGovernorMinSelfDelegation(ctx); err != nil {
+			return nil, err
+		}
 	}
 
 	return &v1.MsgUpdateParamsResponse{}, nil
