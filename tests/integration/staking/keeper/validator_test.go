@@ -177,27 +177,29 @@ func TestGetValidatorSortingUnmixed(t *testing.T) {
 		keeper.TestingUpdateValidator(f.stakingKeeper, f.sdkCtx, validators[i], true)
 	}
 
-	// first make sure everything made it in to the gotValidator group
+	// first make sure everything made it in to the gotValidator group.
+	// The zero-power validator is not part of the bonded group: the
+	// EndBlocker never bonds a zero-power validator, and
+	// GetBondedValidatorsByPower stops walking the power index at the
+	// first zero-power entry.
 	resValidators, err := f.stakingKeeper.GetBondedValidatorsByPower(f.sdkCtx)
 	assert.NilError(t, err)
-	assert.Equal(t, n, len(resValidators))
+	assert.Equal(t, n-1, len(resValidators))
 	assert.DeepEqual(t, math.NewInt(400).Mul(f.stakingKeeper.PowerReduction(f.sdkCtx)), resValidators[0].BondedTokens())
 	assert.DeepEqual(t, math.NewInt(200).Mul(f.stakingKeeper.PowerReduction(f.sdkCtx)), resValidators[1].BondedTokens())
 	assert.DeepEqual(t, math.NewInt(100).Mul(f.stakingKeeper.PowerReduction(f.sdkCtx)), resValidators[2].BondedTokens())
 	assert.DeepEqual(t, math.NewInt(1).Mul(f.stakingKeeper.PowerReduction(f.sdkCtx)), resValidators[3].BondedTokens())
-	assert.DeepEqual(t, math.NewInt(0), resValidators[4].BondedTokens())
 	assert.Equal(t, validators[3].OperatorAddress, resValidators[0].OperatorAddress, "%v", resValidators)
 	assert.Equal(t, validators[4].OperatorAddress, resValidators[1].OperatorAddress, "%v", resValidators)
 	assert.Equal(t, validators[1].OperatorAddress, resValidators[2].OperatorAddress, "%v", resValidators)
 	assert.Equal(t, validators[2].OperatorAddress, resValidators[3].OperatorAddress, "%v", resValidators)
-	assert.Equal(t, validators[0].OperatorAddress, resValidators[4].OperatorAddress, "%v", resValidators)
 
 	// test a basic increase in voting power
 	validators[3].Tokens = math.NewInt(500).Mul(f.stakingKeeper.PowerReduction(f.sdkCtx))
 	keeper.TestingUpdateValidator(f.stakingKeeper, f.sdkCtx, validators[3], true)
 	resValidators, err = f.stakingKeeper.GetBondedValidatorsByPower(f.sdkCtx)
 	assert.NilError(t, err)
-	assert.Equal(t, len(resValidators), n)
+	assert.Equal(t, len(resValidators), n-1)
 	assert.Assert(ValEq(t, validators[3], resValidators[0]))
 
 	// test a decrease in voting power
@@ -205,7 +207,7 @@ func TestGetValidatorSortingUnmixed(t *testing.T) {
 	keeper.TestingUpdateValidator(f.stakingKeeper, f.sdkCtx, validators[3], true)
 	resValidators, err = f.stakingKeeper.GetBondedValidatorsByPower(f.sdkCtx)
 	assert.NilError(t, err)
-	assert.Equal(t, len(resValidators), n)
+	assert.Equal(t, len(resValidators), n-1)
 	assert.Assert(ValEq(t, validators[3], resValidators[0]))
 	assert.Assert(ValEq(t, validators[4], resValidators[1]))
 
@@ -215,7 +217,7 @@ func TestGetValidatorSortingUnmixed(t *testing.T) {
 	keeper.TestingUpdateValidator(f.stakingKeeper, f.sdkCtx, validators[3], true)
 	resValidators, err = f.stakingKeeper.GetBondedValidatorsByPower(f.sdkCtx)
 	assert.NilError(t, err)
-	assert.Equal(t, len(resValidators), n)
+	assert.Equal(t, len(resValidators), n-1)
 	assert.Assert(ValEq(t, validators[3], resValidators[0]))
 	assert.Assert(ValEq(t, validators[4], resValidators[1]))
 
@@ -224,7 +226,7 @@ func TestGetValidatorSortingUnmixed(t *testing.T) {
 	keeper.TestingUpdateValidator(f.stakingKeeper, f.sdkCtx, validators[4], true)
 	resValidators, err = f.stakingKeeper.GetBondedValidatorsByPower(f.sdkCtx)
 	assert.NilError(t, err)
-	assert.Equal(t, len(resValidators), n)
+	assert.Equal(t, len(resValidators), n-1)
 	assert.Assert(ValEq(t, validators[3], resValidators[0]))
 	assert.Assert(ValEq(t, validators[4], resValidators[1]))
 
@@ -234,12 +236,12 @@ func TestGetValidatorSortingUnmixed(t *testing.T) {
 	keeper.TestingUpdateValidator(f.stakingKeeper, f.sdkCtx, validators[3], true)
 	resValidators, err = f.stakingKeeper.GetBondedValidatorsByPower(f.sdkCtx)
 	assert.NilError(t, err)
-	assert.Equal(t, len(resValidators), n)
+	assert.Equal(t, len(resValidators), n-1)
 	f.sdkCtx = f.sdkCtx.WithBlockHeight(30)
 	keeper.TestingUpdateValidator(f.stakingKeeper, f.sdkCtx, validators[4], true)
 	resValidators, err = f.stakingKeeper.GetBondedValidatorsByPower(f.sdkCtx)
 	assert.NilError(t, err)
-	assert.Equal(t, len(resValidators), n, "%v", resValidators)
+	assert.Equal(t, len(resValidators), n-1, "%v", resValidators)
 	assert.Assert(ValEq(t, validators[3], resValidators[0]))
 	assert.Assert(ValEq(t, validators[4], resValidators[1]))
 }

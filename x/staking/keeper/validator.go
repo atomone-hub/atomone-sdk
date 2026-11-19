@@ -365,13 +365,30 @@ func (k Keeper) GetValidators(ctx context.Context, maxRetrieve uint32) (validato
 	return validators[:i], nil // trim if the array length < maxRetrieve
 }
 
+// maxPreallocatedValidators caps the initial capacity of validator slices
+// grown from the MaxValidators param (see boundedValidatorCapacity).
+const maxPreallocatedValidators = 256
+
+// boundedValidatorCapacity returns an initial capacity for a slice holding up
+// to maxValidators entries. SetParams performs no validation, so the
+// governance-updatable param is not a safe allocation size: a failed
+// allocation here is a fatal out-of-memory inside BeginBlock.
+func boundedValidatorCapacity(maxValidators uint32) int {
+	if maxValidators > maxPreallocatedValidators {
+		return maxPreallocatedValidators
+	}
+	return int(maxValidators)
+}
+
 // GetBondedValidatorsByPower gets the current group of bonded validators sorted by power-rank
 func (k Keeper) GetBondedValidatorsByPower(ctx context.Context) ([]types.Validator, error) {
 	maxValidators, err := k.MaxValidators(ctx)
 	if err != nil {
 		return nil, err
 	}
-	validators := make([]types.Validator, maxValidators)
+
+	// never size the allocation from the param (see boundedValidatorCapacity)
+	validators := make([]types.Validator, 0, boundedValidatorCapacity(maxValidators))
 
 	iterator, err := k.ValidatorsPowerStoreIterator(ctx)
 	if err != nil {
@@ -379,18 +396,26 @@ func (k Keeper) GetBondedValidatorsByPower(ctx context.Context) ([]types.Validat
 	}
 	defer iterator.Close()
 
-	i := 0
-	for ; iterator.Valid() && i < int(maxValidators); iterator.Next() {
+	for ; iterator.Valid() && len(validators) < int(maxValidators); iterator.Next() {
+		// No bonded validator follows a zero-power key once the staking
+		// EndBlocker has run (it force-unbonds validators that drop to zero
+		// power, see ApplyAndReturnValidatorSetUpdates) — the suffix only holds
+		// permanently plantable dust entries, so stop there instead of walking
+		// the whole index. Mid-block, a bonded validator below one power unit
+		// is excluded until staking's EndBlocker runs.
+		if types.IsZeroPowerRankKey(iterator.Key()) {
+			break
+		}
+
 		address := iterator.Value()
 		validator := k.mustGetValidator(ctx, address)
 
 		if validator.IsBonded() {
-			validators[i] = validator
-			i++
+			validators = append(validators, validator)
 		}
 	}
 
-	return validators[:i], nil // trim
+	return validators, nil
 }
 
 // ValidatorsPowerStoreIterator returns an iterator for the current validator power store
@@ -477,7 +502,10 @@ func (k Keeper) GetLastValidators(ctx context.Context) (validators []types.Valid
 	if err != nil {
 		return nil, err
 	}
-	validators = make([]types.Validator, maxValidators)
+
+	// never size the allocation from the param; this runs in BeginBlocker
+	// every block (see boundedValidatorCapacity)
+	validators = make([]types.Validator, 0, boundedValidatorCapacity(maxValidators))
 
 	iterator, err := store.Iterator(types.LastValidatorPowerKey, storetypes.PrefixEndBytes(types.LastValidatorPowerKey))
 	if err != nil {
@@ -485,10 +513,9 @@ func (k Keeper) GetLastValidators(ctx context.Context) (validators []types.Valid
 	}
 	defer iterator.Close()
 
-	i := 0
 	for ; iterator.Valid(); iterator.Next() {
 		// sanity check
-		if i >= int(maxValidators) {
+		if len(validators) >= int(maxValidators) {
 			panic("more validators than maxValidators found")
 		}
 
@@ -498,11 +525,10 @@ func (k Keeper) GetLastValidators(ctx context.Context) (validators []types.Valid
 			return nil, err
 		}
 
-		validators[i] = validator
-		i++
+		validators = append(validators, validator)
 	}
 
-	return validators[:i], nil // trim
+	return validators, nil
 }
 
 // GetUnbondingValidators returns a slice of mature validator addresses that
