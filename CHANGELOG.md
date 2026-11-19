@@ -67,6 +67,10 @@ Ref: https://keepachangelog.com/en/1.0.0/
 * (x/consensus) [#156](https://github.com/atomone-hub/atomone-sdk/pull/156) Reject `Block.MaxBytes` and `Block.MaxGas` below a floor in `UpdateParams` (halt and tx lockout via a passed proposal)
 * (x/gov) [#143](https://github.com/atomone-hub/atomone-sdk/pull/143) Do not deactivate a governor on redelegation (CONSENSUS BREAKING BUGFIX)
 * (x/gov) [#154](https://github.com/atomone-hub/atomone-sdk/pull/154) Do not make a governor deactivated by a validator event wait `GovernorStatusChangePeriod` to reactivate (CONSENSUS BREAKING BUGFIX)
+* (x/staking) [#161](https://github.com/atomone-hub/atomone-sdk/pull/161) Cap `MaxValidators` at 2000 and never size validator allocations from the param (fatal BeginBlock OOM via a passed params proposal)
+* (x/staking) [#161](https://github.com/atomone-hub/atomone-sdk/pull/161) Stop the bonded-validator power-index walks at the zero-power suffix (unmetered DoS via permissionlessly planted dust validators, reached from the gov tally and the epoch hook) (CONSENSUS BREAKING BUGFIX)
+* (x/staking) [#161](https://github.com/atomone-hub/atomone-sdk/pull/161) Compare `StakeAuthorization` allow/deny lists on decoded address bytes (all-uppercase bech32 deny-list bypass) (CONSENSUS BREAKING BUGFIX)
+* (x/staking) [#161](https://github.com/atomone-hub/atomone-sdk/pull/161) Reject `BondDenom` changes in `UpdateParams` (stranded pool balances halt the chain on the first slash or validator kick)
 
 ### State Machine Breaking
 

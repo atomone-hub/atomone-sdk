@@ -37,3 +37,33 @@ func TestValidateParams(t *testing.T) {
 	params.MinCommissionRate = math.LegacyNewDec(2)
 	require.Error(t, params.Validate())
 }
+
+// TestValidateParamsMaxValidatorsBound checks that Params.Validate() — the
+// check MsgUpdateParams runs — rejects MaxValidators above the cap.
+func TestValidateParamsMaxValidatorsBound(t *testing.T) {
+	testCases := []struct {
+		name    string
+		value   uint32
+		expPass bool
+	}{
+		{"zero rejected", 0, false},
+		{"one accepted", 1, true},
+		{"default accepted", types.DefaultMaxValidators, true},
+		{"cap accepted", types.MaxMaxValidators, true},
+		{"cap+1 rejected", types.MaxMaxValidators + 1, false},
+		{"max uint32 rejected (OOM value)", 4294967295, false},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			p := types.DefaultParams()
+			p.MaxValidators = tc.value
+			err := p.Validate()
+			if tc.expPass {
+				require.NoError(t, err)
+			} else {
+				require.Error(t, err)
+			}
+		})
+	}
+}

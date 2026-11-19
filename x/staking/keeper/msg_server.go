@@ -745,6 +745,18 @@ func (k msgServer) UpdateParams(ctx context.Context, msg *types.MsgUpdateParams)
 		return nil, err
 	}
 
+	// BondDenom is immutable: pool movements build coins from the live param
+	// while the pool accounts keep their balances in the current denom, so a
+	// switch makes the next slash or validator kick fail inside Begin/EndBlock
+	// with ErrInsufficientFunds. Genesis and upgrade handlers use SetParams.
+	currParams, err := k.GetParams(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if currParams.BondDenom != "" && msg.Params.BondDenom != currParams.BondDenom {
+		return nil, errorsmod.Wrapf(types.ErrBondDenomImmutable, "cannot change bond denom from %s to %s", currParams.BondDenom, msg.Params.BondDenom)
+	}
+
 	// store params
 	if err := k.SetParams(ctx, msg.Params); err != nil {
 		return nil, err

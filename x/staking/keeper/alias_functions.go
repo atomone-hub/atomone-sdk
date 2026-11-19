@@ -54,6 +54,14 @@ func (k Keeper) IterateBondedValidatorsByPower(ctx context.Context, fn func(inde
 
 	i := int64(0)
 	for ; iterator.Valid() && i < int64(maxValidators); iterator.Next() {
+		// Stop at the zero-power suffix: no bonded validator follows it once
+		// the staking EndBlocker has run, and a bonded validator below one
+		// power unit mid-block is excluded until then (see
+		// GetBondedValidatorsByPower for the full rationale).
+		if types.IsZeroPowerRankKey(iterator.Key()) {
+			break
+		}
+
 		address := iterator.Value()
 		validator := k.mustGetValidator(ctx, address)
 
