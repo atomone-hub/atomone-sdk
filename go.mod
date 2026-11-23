@@ -17,7 +17,7 @@ require (
 	github.com/bits-and-blooms/bitset v1.8.0
 	github.com/chzyer/readline v1.5.1
 	github.com/cockroachdb/errors v1.11.3
-	github.com/cometbft/cometbft v0.38.23
+	github.com/cometbft/cometbft v0.38.26
 	github.com/cosmos/btcutil v1.0.5
 	github.com/cosmos/cosmos-db v1.1.1
 	github.com/cosmos/cosmos-proto v1.0.0-beta.5
@@ -75,6 +75,7 @@ require (
 	github.com/bufbuild/protocompile v0.6.0 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
+	github.com/cloudflare/circl v1.6.3 // indirect
 	github.com/cockroachdb/fifo v0.0.0-20240606204812-0bbfbd93a7ce // indirect
 	github.com/cockroachdb/logtags v0.0.0-20230118201751-21c54148d20b // indirect
 	github.com/cockroachdb/pebble v1.1.2 // indirect

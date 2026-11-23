@@ -16,7 +16,7 @@ require (
 	cosmossdk.io/x/feegrant v0.1.1
 	cosmossdk.io/x/tx v0.13.7 // indirect
 	cosmossdk.io/x/upgrade v0.0.0
-	github.com/cometbft/cometbft v0.38.23
+	github.com/cometbft/cometbft v0.38.26
 	github.com/cosmos/cosmos-db v1.1.1
 	// this version is not used as it is always replaced by the latest Cosmos SDK version
 	github.com/cosmos/cosmos-sdk v0.500.0
@@ -74,6 +74,7 @@ require (
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/chzyer/readline v1.5.1 // indirect
+	github.com/cloudflare/circl v1.6.3 // indirect
 	github.com/cncf/xds/go v0.0.0-20260202195803-dba9d589def2 // indirect
 	github.com/cockroachdb/errors v1.11.3 // indirect
 	github.com/cockroachdb/fifo v0.0.0-20240606204812-0bbfbd93a7ce // indirect

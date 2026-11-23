@@ -14,7 +14,7 @@ require (
 	cosmossdk.io/x/evidence v0.1.1
 	cosmossdk.io/x/feegrant v0.1.1 // indirect
 	cosmossdk.io/x/tx v0.13.7 // indirect
-	github.com/cometbft/cometbft v0.38.23
+	github.com/cometbft/cometbft v0.38.26
 	github.com/cosmos/cosmos-db v1.1.1
 	github.com/cosmos/cosmos-proto v1.0.0-beta.5 // indirect
 	// this version is not used as it is always replaced by the latest Cosmos SDK version
@@ -29,6 +29,8 @@ require (
 	pgregory.net/rapid v1.1.0
 )
 
+require cosmossdk.io/collections v0.4.0
+
 require (
 	cel.dev/expr v0.25.2 // indirect
 	cloud.google.com/go v0.123.0 // indirect
@@ -38,7 +40,6 @@ require (
 	cloud.google.com/go/iam v1.5.3 // indirect
 	cloud.google.com/go/monitoring v1.24.3 // indirect
 	cloud.google.com/go/storage v1.61.3 // indirect
-	cosmossdk.io/collections v0.4.0 // indirect
 	cosmossdk.io/x/circuit v0.1.1 // indirect
 	cosmossdk.io/x/upgrade v0.0.0 // indirect
 	filippo.io/edwards25519 v1.0.0 // indirect
@@ -75,6 +76,7 @@ require (
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/chzyer/readline v1.5.1 // indirect
+	github.com/cloudflare/circl v1.6.3 // indirect
 	github.com/cncf/xds/go v0.0.0-20260202195803-dba9d589def2 // indirect
 	github.com/cockroachdb/errors v1.11.3 // indirect
 	github.com/cockroachdb/fifo v0.0.0-20240606204812-0bbfbd93a7ce // indirect
