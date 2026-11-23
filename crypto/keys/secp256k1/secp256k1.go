@@ -190,6 +190,10 @@ func (pubKey *PubKey) UnmarshalAmino(bz []byte) error {
 	if len(bz) != PubKeySize {
 		return errorsmod.Wrap(errors.ErrInvalidPubKey, "invalid pubkey size")
 	}
+	// A compressed SEC1 point starts with a 0x02 or 0x03 tag byte.
+	if bz[0] != 0x02 && bz[0] != 0x03 {
+		return errorsmod.Wrap(errors.ErrInvalidPubKey, "invalid pubkey SEC1 tag")
+	}
 	pubKey.Key = bz
 
 	return nil

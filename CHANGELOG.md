@@ -71,6 +71,7 @@ Ref: https://keepachangelog.com/en/1.0.0/
 * (x/staking) [#161](https://github.com/atomone-hub/atomone-sdk/pull/161) Stop the bonded-validator power-index walks at the zero-power suffix (unmetered DoS via permissionlessly planted dust validators, reached from the gov tally and the epoch hook) (CONSENSUS BREAKING BUGFIX)
 * (x/staking) [#161](https://github.com/atomone-hub/atomone-sdk/pull/161) Compare `StakeAuthorization` allow/deny lists on decoded address bytes (all-uppercase bech32 deny-list bypass) (CONSENSUS BREAKING BUGFIX)
 * (x/staking) [#161](https://github.com/atomone-hub/atomone-sdk/pull/161) Reject `BondDenom` changes in `UpdateParams` (stranded pool balances halt the chain on the first slash or validator kick)
+* (x/auth, crypto) [#164](https://github.com/atomone-hub/atomone-sdk/pull/164) Reject malformed multisig signer info, bit arrays and secp256k1 public key tags instead of panicking in the ante handler (CONSENSUS BREAKING BUGFIX)
 
 ### State Machine Breaking
 
