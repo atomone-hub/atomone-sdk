@@ -1066,6 +1066,10 @@ self-delegation again (for instance once the validator is bonded again, or after
 redelegating to a bonded validator). A governor that goes below the minimum by
 undelegating its own stake waits for the period as usual.
 
+The same applies when a governance vote raises `min_governor_self_delegation` above a
+governor's bonded self-delegation: the governor is deactivated with `deactivated_by_validator`
+set and can reactivate as soon as it meets the new minimum.
+
 The field is only cleared by the governor's next successful status change. Delegation
 changes made by a governor that is already inactive do not touch it, so a governor
 deactivated by a validator that later undelegates its own stake can still become active
