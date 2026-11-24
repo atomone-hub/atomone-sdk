@@ -208,26 +208,8 @@ func (k Keeper) cancelConsKeyRotation(ctx context.Context, valAddr sdk.ValAddres
 		return err
 	}
 
-	prefix := append(types.ValidatorConsensusKeyRotationRecordIndexKey, valAddr...)
-	iterator, err := store.Iterator(prefix, storetypes.PrefixEndBytes(prefix))
+	indexKeys, queueTime, err := k.consKeyRotationIndexEntries(ctx, valAddr)
 	if err != nil {
-		return err
-	}
-	var (
-		indexKeys [][]byte
-		queueTime []time.Time
-	)
-	for ; iterator.Valid(); iterator.Next() {
-		key := iterator.Key()
-		ts, err := sdk.ParseTimeBytes(key[len(prefix):])
-		if err != nil {
-			iterator.Close()
-			return err
-		}
-		indexKeys = append(indexKeys, key)
-		queueTime = append(queueTime, ts)
-	}
-	if err := iterator.Close(); err != nil {
 		return err
 	}
 
@@ -253,6 +235,35 @@ func (k Keeper) cancelConsKeyRotation(ctx context.Context, valAddr sdk.ValAddres
 	}
 
 	return nil
+}
+
+// consKeyRotationIndexEntries returns the rotation index keys of a validator
+// together with the queue time each of them encodes.
+func (k Keeper) consKeyRotationIndexEntries(ctx context.Context, valAddr sdk.ValAddress) ([][]byte, []time.Time, error) {
+	store := k.storeService.OpenKVStore(ctx)
+
+	prefix := append(types.ValidatorConsensusKeyRotationRecordIndexKey, valAddr...)
+	iterator, err := store.Iterator(prefix, storetypes.PrefixEndBytes(prefix))
+	if err != nil {
+		return nil, nil, err
+	}
+	defer iterator.Close()
+
+	var (
+		keys  [][]byte
+		times []time.Time
+	)
+	for ; iterator.Valid(); iterator.Next() {
+		key := iterator.Key()
+		ts, err := sdk.ParseTimeBytes(key[len(prefix):])
+		if err != nil {
+			return nil, nil, err
+		}
+		keys = append(keys, bytes.Clone(key))
+		times = append(times, ts)
+	}
+
+	return keys, times, nil
 }
 
 // removeFromConsKeyQueue removes the validator address from the rotation queue
