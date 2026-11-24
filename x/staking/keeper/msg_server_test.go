@@ -1271,6 +1271,10 @@ func (m *mockDistributionKeeper) FundCommunityPool(ctx context.Context, amount s
 	return m.err
 }
 
+func (m *mockDistributionKeeper) DistributeFromFeePool(ctx context.Context, amount sdk.Coins, receiveAddr sdk.AccAddress) error {
+	return m.err
+}
+
 func (s *KeeperTestSuite) TestConsKeyRotn() {
 	stakingKeeper, ctx, accountKeeper, bankKeeper := s.stakingKeeper, s.ctx, s.accountKeeper, s.bankKeeper
 

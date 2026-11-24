@@ -194,6 +194,104 @@ func (k Keeper) ExceedsMaxRotations(ctx context.Context, valAddr sdk.ValAddress)
 	return nil
 }
 
+// cancelConsKeyRotation reverts the message-time effects of a consensus key
+// rotation that EndBlock does not apply because the validator is no longer
+// bonded or is jailed: the validator-indexed history entry, the rotation index
+// entry that limits the next rotation and the pending queue entry are deleted,
+// and the rotation fee is returned to the validator operator account from the
+// community pool. A refund that cannot be paid out is logged and does not fail
+// the block.
+func (k Keeper) cancelConsKeyRotation(ctx context.Context, valAddr sdk.ValAddress, history types.ConsPubKeyRotationHistory) error {
+	store := k.storeService.OpenKVStore(ctx)
+
+	if err := store.Delete(types.GetValidatorConsPubKeyRotationHistoryKey(valAddr, history.Height)); err != nil {
+		return err
+	}
+
+	prefix := append(types.ValidatorConsensusKeyRotationRecordIndexKey, valAddr...)
+	iterator, err := store.Iterator(prefix, storetypes.PrefixEndBytes(prefix))
+	if err != nil {
+		return err
+	}
+	var (
+		indexKeys [][]byte
+		queueTime []time.Time
+	)
+	for ; iterator.Valid(); iterator.Next() {
+		key := iterator.Key()
+		ts, err := sdk.ParseTimeBytes(key[len(prefix):])
+		if err != nil {
+			iterator.Close()
+			return err
+		}
+		indexKeys = append(indexKeys, key)
+		queueTime = append(queueTime, ts)
+	}
+	if err := iterator.Close(); err != nil {
+		return err
+	}
+
+	for i, key := range indexKeys {
+		if err := store.Delete(key); err != nil {
+			return err
+		}
+		if err := k.removeFromConsKeyQueue(ctx, queueTime[i], valAddr); err != nil {
+			return err
+		}
+	}
+
+	if history.Fee.IsNil() || !history.Fee.IsPositive() {
+		return nil
+	}
+	if err := k.distributionKeeper.DistributeFromFeePool(ctx, sdk.NewCoins(history.Fee), sdk.AccAddress(valAddr)); err != nil {
+		sdk.UnwrapSDKContext(ctx).Logger().Error(
+			"failed to refund the fee of a skipped consensus key rotation",
+			"validator", history.OperatorAddress,
+			"fee", history.Fee.String(),
+			"error", err,
+		)
+	}
+
+	return nil
+}
+
+// removeFromConsKeyQueue removes the validator address from the rotation queue
+// entry at ts, deleting the entry once it is empty.
+func (k Keeper) removeFromConsKeyQueue(ctx context.Context, ts time.Time, valAddr sdk.ValAddress) error {
+	store := k.storeService.OpenKVStore(ctx)
+	queueKey := types.GetValidatorConsKeyRotationQueueKey(ts)
+
+	valAddrStr, err := k.validatorAddressCodec.BytesToString(valAddr)
+	if err != nil {
+		return err
+	}
+
+	bz, err := store.Get(queueKey)
+	if err != nil {
+		return err
+	}
+	if bz == nil {
+		return nil
+	}
+
+	var addrs types.ValAddrsOfRotatedConsKeys
+	if err := k.cdc.Unmarshal(bz, &addrs); err != nil {
+		return err
+	}
+
+	addrs.Addresses = slices.DeleteFunc(addrs.Addresses, func(a string) bool { return a == valAddrStr })
+	if len(addrs.Addresses) == 0 {
+		return store.Delete(queueKey)
+	}
+
+	out, err := k.cdc.Marshal(&addrs)
+	if err != nil {
+		return err
+	}
+
+	return store.Set(queueKey, out)
+}
+
 // setConsKeyQueue appends the validator address to the rotation queue entry at ts.
 func (k Keeper) setConsKeyQueue(ctx context.Context, ts time.Time, valAddr sdk.ValAddress) error {
 	store := k.storeService.OpenKVStore(ctx)

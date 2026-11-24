@@ -7,6 +7,8 @@ import (
 
 	"gotest.tools/v3/assert"
 
+	storetypes "cosmossdk.io/store/types"
+
 	cryptotypes "github.com/cosmos/cosmos-sdk/crypto/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/x/staking/keeper"
@@ -17,6 +19,27 @@ import (
 type noopDistributionKeeper struct{}
 
 func (noopDistributionKeeper) FundCommunityPool(_ context.Context, _ sdk.Coins, _ sdk.AccAddress) error {
+	return nil
+}
+
+func (noopDistributionKeeper) DistributeFromFeePool(_ context.Context, _ sdk.Coins, _ sdk.AccAddress) error {
+	return nil
+}
+
+// refundRecorder records the fee refunds paid out of the community pool.
+type refundRecorder struct {
+	noopDistributionKeeper
+	err       error
+	refunds   []sdk.Coins
+	receivers []sdk.AccAddress
+}
+
+func (r *refundRecorder) DistributeFromFeePool(_ context.Context, amount sdk.Coins, receiver sdk.AccAddress) error {
+	if r.err != nil {
+		return r.err
+	}
+	r.refunds = append(r.refunds, amount)
+	r.receivers = append(r.receivers, receiver)
 	return nil
 }
 
@@ -175,4 +198,101 @@ func TestRotateConsPubKey_TwiceResolvesFirstKey(t *testing.T) {
 	assert.NilError(t, err)
 	_, err = msgServer.RotateConsPubKey(ctx, reuse)
 	assert.ErrorContains(t, err, "validator already exist for this pubkey")
+}
+
+// jailAfterRotationRequest requests a rotation of the first validator and then
+// jails it, so that the end of the block does not apply the rotation.
+func jailAfterRotationRequest(t *testing.T, f *fixture, msgServer types.MsgServer) (sdk.ValAddress, cryptotypes.PubKey) {
+	t.Helper()
+	ctx := f.sdkCtx
+
+	_, valAddrs, _ := createValidators(t, f, []int64{100, 50, 0})
+	valAddr := valAddrs[0]
+	val, err := f.stakingKeeper.GetValidator(ctx, valAddr)
+	assert.NilError(t, err)
+	oldPubKey := val.ConsensusPubkey.GetCachedValue().(cryptotypes.PubKey)
+
+	msg, err := types.NewMsgRotateConsPubKey(valAddr.String(), PKs[10])
+	assert.NilError(t, err)
+	_, err = msgServer.RotateConsPubKey(ctx, msg)
+	assert.NilError(t, err)
+
+	assert.NilError(t, f.stakingKeeper.Jail(ctx, sdk.ConsAddress(oldPubKey.Address())))
+
+	return valAddr, oldPubKey
+}
+
+func TestRotateConsPubKey_SkippedRotationIsCancelled(t *testing.T) {
+	t.Parallel()
+	f := initFixture(t)
+	ctx := f.sdkCtx
+	recorder := &refundRecorder{}
+	f.stakingKeeper.SetDistributionKeeper(recorder)
+	msgServer := keeper.NewMsgServerImpl(f.stakingKeeper)
+
+	valAddr, oldPubKey := jailAfterRotationRequest(t, f, msgServer)
+	params, err := f.stakingKeeper.GetParams(ctx)
+	assert.NilError(t, err)
+
+	_, err = f.stakingKeeper.ApplyAndReturnValidatorSetUpdates(ctx)
+	assert.NilError(t, err)
+
+	// The consensus key is unchanged.
+	val, err := f.stakingKeeper.GetValidator(ctx, valAddr)
+	assert.NilError(t, err)
+	consAddr, err := val.GetConsAddr()
+	assert.NilError(t, err)
+	assert.DeepEqual(t, oldPubKey.Address().Bytes(), consAddr)
+
+	// The rotation leaves no history, no lock and no queue entry behind.
+	history, err := f.stakingKeeper.GetValidatorConsPubKeyRotationHistory(ctx, valAddr)
+	assert.NilError(t, err)
+	assert.Equal(t, 0, len(history))
+	assert.NilError(t, f.stakingKeeper.ExceedsMaxRotations(ctx, valAddr))
+
+	store := ctx.KVStore(f.keys[types.StoreKey])
+	iter := store.Iterator(types.ValidatorConsensusKeyRotationRecordQueueKey, storetypes.PrefixEndBytes(types.ValidatorConsensusKeyRotationRecordQueueKey))
+	defer iter.Close()
+	assert.Assert(t, !iter.Valid(), "rotation queue entry was not removed")
+
+	// The fee is returned to the operator account.
+	assert.Equal(t, 1, len(recorder.refunds))
+	assert.DeepEqual(t, sdk.NewCoins(params.KeyRotationFee), recorder.refunds[0])
+	assert.DeepEqual(t, sdk.AccAddress(valAddr), recorder.receivers[0])
+}
+
+func TestRotateConsPubKey_SkippedRotationRefundFailureDoesNotFailBlock(t *testing.T) {
+	t.Parallel()
+	f := initFixture(t)
+	ctx := f.sdkCtx
+	f.stakingKeeper.SetDistributionKeeper(&refundRecorder{err: types.ErrNoValidatorFound})
+	msgServer := keeper.NewMsgServerImpl(f.stakingKeeper)
+
+	valAddr, _ := jailAfterRotationRequest(t, f, msgServer)
+
+	_, err := f.stakingKeeper.ApplyAndReturnValidatorSetUpdates(ctx)
+	assert.NilError(t, err)
+	assert.NilError(t, f.stakingKeeper.ExceedsMaxRotations(ctx, valAddr))
+}
+
+func TestRotateConsPubKey_RejectsJailedValidator(t *testing.T) {
+	t.Parallel()
+	f := initFixture(t)
+	ctx := f.sdkCtx
+	f.stakingKeeper.SetDistributionKeeper(noopDistributionKeeper{})
+	msgServer := keeper.NewMsgServerImpl(f.stakingKeeper)
+
+	_, valAddrs, _ := createValidators(t, f, []int64{100, 50, 0})
+	val, err := f.stakingKeeper.GetValidator(ctx, valAddrs[0])
+	assert.NilError(t, err)
+	oldPubKey := val.ConsensusPubkey.GetCachedValue().(cryptotypes.PubKey)
+
+	// The validator is jailed earlier in the block and is still bonded until
+	// the end of the block.
+	assert.NilError(t, f.stakingKeeper.Jail(ctx, sdk.ConsAddress(oldPubKey.Address())))
+
+	msg, err := types.NewMsgRotateConsPubKey(valAddrs[0].String(), PKs[10])
+	assert.NilError(t, err)
+	_, err = msgServer.RotateConsPubKey(ctx, msg)
+	assert.ErrorIs(t, err, types.ErrValidatorJailed)
 }

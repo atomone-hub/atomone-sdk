@@ -51,6 +51,7 @@ Ref: https://keepachangelog.com/en/1.0.0/
 
 ### Bug Fixes
 
+* (x/staking) [#165](https://github.com/atomone-hub/atomone-sdk/pull/165) Refund the fee and clear the rotation lock of a consensus key rotation that is skipped because the validator leaves the bonded set or is jailed in the same block, and reject the rotation of an already jailed validator. The `DistributionKeeper` expected interface gains `DistributeFromFeePool` (CONSENSUS BREAKING BUGFIX)
 * (x/gov) [#160](https://github.com/atomone-hub/atomone-sdk/pull/160) Export the min deposit throttler times as stored instead of the block time of the export context
 * (x/gov) [#144](https://github.com/atomone-hub/atomone-sdk/pull/144) Align the `MsgUpdateGovernorStatus`, `MsgProposeLaw` and `MsgProposeConstitutionAmendment` LegacyAmino registrations with the proto `amino.name`
 * (x/gov) [#130](https://github.com/atomone-hub/atomone-sdk/pull/130) Cap deposit throttler floors to prevent an EndBlocker Int overflow (halt via a passed params-update proposal)

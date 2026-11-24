@@ -325,6 +325,8 @@ func (k Keeper) ApplyAndReturnValidatorSetUpdates(ctx context.Context) (updates 
 			if err := k.updateToNewPubkey(ctx, validator, history.OldConsPubkey, history.NewConsPubkey, history.Fee); err != nil {
 				return nil, err
 			}
+		} else if err := k.cancelConsKeyRotation(ctx, valAddr, history); err != nil {
+			return nil, err
 		}
 	}
 
