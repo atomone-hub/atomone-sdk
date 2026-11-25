@@ -259,6 +259,27 @@ func TestRotateConsPubKey_SkippedRotationIsCancelled(t *testing.T) {
 	assert.Equal(t, 1, len(recorder.refunds))
 	assert.DeepEqual(t, sdk.NewCoins(params.KeyRotationFee), recorder.refunds[0])
 	assert.DeepEqual(t, sdk.AccAddress(valAddr), recorder.receivers[0])
+
+	// Indexers are told about the cancellation and the refunded amount.
+	attrs := cancelRotationEventAttributes(t, ctx)
+	assert.Equal(t, sdk.NewCoins(params.KeyRotationFee).String(), attrs[sdk.AttributeKeyAmount])
+	assert.Assert(t, attrs[types.AttributeKeyValidator] != "")
+}
+
+func cancelRotationEventAttributes(t *testing.T, ctx sdk.Context) map[string]string {
+	t.Helper()
+	var found []sdk.Event
+	for _, e := range ctx.EventManager().Events() {
+		if e.Type == types.EventTypeCancelConsKeyRotation {
+			found = append(found, e)
+		}
+	}
+	assert.Equal(t, 1, len(found))
+	attrs := map[string]string{}
+	for _, a := range found[0].Attributes {
+		attrs[a.Key] = a.Value
+	}
+	return attrs
 }
 
 func TestRotateConsPubKey_SkippedRotationRefundFailureDoesNotFailBlock(t *testing.T) {
@@ -273,6 +294,9 @@ func TestRotateConsPubKey_SkippedRotationRefundFailureDoesNotFailBlock(t *testin
 	_, err := f.stakingKeeper.ApplyAndReturnValidatorSetUpdates(ctx)
 	assert.NilError(t, err)
 	assert.NilError(t, f.stakingKeeper.ExceedsMaxRotations(ctx, valAddr))
+
+	// Nothing was refunded, and the event says so.
+	assert.Equal(t, "", cancelRotationEventAttributes(t, ctx)[sdk.AttributeKeyAmount])
 }
 
 func TestRotateConsPubKey_RejectsJailedValidator(t *testing.T) {

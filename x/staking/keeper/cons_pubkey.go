@@ -200,7 +200,8 @@ func (k Keeper) ExceedsMaxRotations(ctx context.Context, valAddr sdk.ValAddress)
 // entry that limits the next rotation and the pending queue entry are deleted,
 // and the rotation fee is returned to the validator operator account from the
 // community pool. A refund that cannot be paid out is logged and does not fail
-// the block.
+// the block. A cancel_cons_key_rotation event reports the validator and the
+// amount refunded, which is empty when nothing was refunded.
 func (k Keeper) cancelConsKeyRotation(ctx context.Context, valAddr sdk.ValAddress, history types.ConsPubKeyRotationHistory) error {
 	store := k.storeService.OpenKVStore(ctx)
 
@@ -222,17 +223,28 @@ func (k Keeper) cancelConsKeyRotation(ctx context.Context, valAddr sdk.ValAddres
 		}
 	}
 
-	if history.Fee.IsNil() || !history.Fee.IsPositive() {
-		return nil
+	refunded := sdk.NewCoins()
+	if !history.Fee.IsNil() && history.Fee.IsPositive() {
+		fee := sdk.NewCoins(history.Fee)
+		if err := k.distributionKeeper.DistributeFromFeePool(ctx, fee, sdk.AccAddress(valAddr)); err != nil {
+			sdk.UnwrapSDKContext(ctx).Logger().Error(
+				"failed to refund the fee of a skipped consensus key rotation",
+				"validator", history.OperatorAddress,
+				"fee", history.Fee.String(),
+				"error", err,
+			)
+		} else {
+			refunded = fee
+		}
 	}
-	if err := k.distributionKeeper.DistributeFromFeePool(ctx, sdk.NewCoins(history.Fee), sdk.AccAddress(valAddr)); err != nil {
-		sdk.UnwrapSDKContext(ctx).Logger().Error(
-			"failed to refund the fee of a skipped consensus key rotation",
-			"validator", history.OperatorAddress,
-			"fee", history.Fee.String(),
-			"error", err,
-		)
-	}
+
+	sdk.UnwrapSDKContext(ctx).EventManager().EmitEvent(
+		sdk.NewEvent(
+			types.EventTypeCancelConsKeyRotation,
+			sdk.NewAttribute(types.AttributeKeyValidator, history.OperatorAddress),
+			sdk.NewAttribute(sdk.AttributeKeyAmount, refunded.String()),
+		),
+	)
 
 	return nil
 }
