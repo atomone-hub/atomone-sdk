@@ -43,10 +43,12 @@ type BankKeeper interface {
 	BurnCoins(ctx context.Context, name string, amt sdk.Coins) error
 }
 
-// DistributionKeeper defines the expected interface needed to fund the community pool.
+// DistributionKeeper defines the expected interface needed to fund the community pool
+// and to refund a skipped consensus key rotation fee from it.
 // This avoids a cyclic dependency with x/distribution.
 type DistributionKeeper interface {
 	FundCommunityPool(ctx context.Context, amount sdk.Coins, sender sdk.AccAddress) error
+	DistributeFromFeePool(ctx context.Context, amount sdk.Coins, receiveAddr sdk.AccAddress) error
 }
 
 // ValidatorSet expected properties for the set of all validators (noalias)

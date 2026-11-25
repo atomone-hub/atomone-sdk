@@ -770,6 +770,10 @@ func SimulateMsgRotateConsPubKey(txGen client.TxConfig, ak types.AccountKeeper, 
 			return simtypes.NoOpMsg(types.ModuleName, msgType, "validator not bonded."), nil, nil
 		}
 
+		if val.IsJailed() {
+			return simtypes.NoOpMsg(types.ModuleName, msgType, "validator jailed"), nil, nil
+		}
+
 		valAddr := val.GetOperator()
 		valBytes, err := k.ValidatorAddressCodec().StringToBytes(valAddr)
 		if err != nil {

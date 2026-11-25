@@ -265,6 +265,10 @@ func (noopDistributionKeeper) FundCommunityPool(_ context.Context, _ sdk.Coins, 
 	return nil
 }
 
+func (noopDistributionKeeper) DistributeFromFeePool(_ context.Context, _ sdk.Coins, _ sdk.AccAddress) error {
+	return nil
+}
+
 func TestHandleDoubleSign_AfterConsKeyRotation(t *testing.T) {
 	t.Parallel()
 	f := initFixture(t)

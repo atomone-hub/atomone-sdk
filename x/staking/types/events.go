@@ -10,6 +10,7 @@ const (
 	EventTypeUnbond                    = "unbond"
 	EventTypeCancelUnbondingDelegation = "cancel_unbonding_delegation"
 	EventTypeRedelegate                = "redelegate"
+	EventTypeCancelConsKeyRotation     = "cancel_cons_key_rotation"
 
 	AttributeKeyValidator         = "validator"
 	AttributeKeyCommissionRate    = "commission_rate"

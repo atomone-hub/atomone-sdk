@@ -652,6 +652,12 @@ func (k msgServer) RotateConsPubKey(ctx context.Context, msg *types.MsgRotateCon
 		return nil, errorsmod.Wrapf(sdkerrors.ErrInvalidType, "validator status is not bonded, got %x", status)
 	}
 
+	// A jailed validator leaves the bonded set at the end of the block, so
+	// its rotation would never be applied.
+	if validator.IsJailed() {
+		return nil, types.ErrValidatorJailed
+	}
+
 	if err := k.ExceedsMaxRotations(ctx, valAddr); err != nil {
 		return nil, err
 	}
