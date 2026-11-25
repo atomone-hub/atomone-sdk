@@ -49,6 +49,30 @@ func (bA *CompactBitArray) Count() int {
 	return (len(bA.Elems)-1)*8 + int(bA.ExtraBitsStored)
 }
 
+// Validate checks that the bit array has a canonical encoding: ExtraBitsStored
+// is below 8, it is zero when there are no elements, and the unused bits of the
+// last element are cleared. Without it, several distinct encodings express the
+// same set of bits. A nil bit array is valid.
+func (bA *CompactBitArray) Validate() error {
+	if bA == nil {
+		return nil
+	}
+	if bA.ExtraBitsStored >= 8 {
+		return fmt.Errorf("extra bits stored %d must be lower than 8", bA.ExtraBitsStored)
+	}
+	if bA.ExtraBitsStored == 0 {
+		return nil
+	}
+	if len(bA.Elems) == 0 {
+		return errors.New("extra bits stored is set but there are no elements")
+	}
+	if bA.Elems[len(bA.Elems)-1]&(0xFF>>bA.ExtraBitsStored) != 0 {
+		return errors.New("unused bits of the last element must be zero")
+	}
+
+	return nil
+}
+
 // GetIndex returns true if the bit at index i is set; returns false otherwise.
 // The behavior is undefined if i >= bA.Count()
 func (bA *CompactBitArray) GetIndex(i int) bool {

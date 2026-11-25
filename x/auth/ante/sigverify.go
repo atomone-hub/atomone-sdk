@@ -469,9 +469,11 @@ func ConsumeMultisignatureVerificationGas(
 	size := sig.BitArray.Count()
 	pubKeys := pubkey.GetPubKeys()
 	// The bit array comes from the transaction and reaches this gas consumer
-	// before VerifyMultisignature runs its own checks, so bound it here.
-	if len(pubKeys) != size {
-		return fmt.Errorf("bit array size is incorrect, expecting: %d", len(pubKeys))
+	// before VerifyMultisignature runs its own checks, so bound it here. Smaller
+	// sizes, including the empty bit array of a simulated transaction, are left
+	// to VerifyMultisignature.
+	if size > len(pubKeys) {
+		return fmt.Errorf("bit array size is incorrect, expecting at most: %d", len(pubKeys))
 	}
 
 	sigIndex := 0

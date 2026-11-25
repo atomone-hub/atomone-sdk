@@ -29,11 +29,6 @@ func TestConsumeMultisignatureVerificationGasMalformed(t *testing.T) {
 		errMsg string
 	}{
 		{
-			name:   "bit array size differs from key count",
-			bits:   cryptotypes.NewCompactBitArray(3),
-			errMsg: "bit array size is incorrect",
-		},
-		{
 			name: "fewer signatures than set bits",
 			bits: func() *cryptotypes.CompactBitArray {
 				b := cryptotypes.NewCompactBitArray(2)
@@ -43,6 +38,11 @@ func TestConsumeMultisignatureVerificationGasMalformed(t *testing.T) {
 			}(),
 			sigs:   []signing.SignatureData{single},
 			errMsg: "signature size is incorrect",
+		},
+		{
+			name:   "bit array larger than key count",
+			bits:   cryptotypes.NewCompactBitArray(3),
+			errMsg: "bit array size is incorrect",
 		},
 	}
 	for _, tc := range tests {
@@ -54,6 +54,20 @@ func TestConsumeMultisignatureVerificationGasMalformed(t *testing.T) {
 			})
 			require.ErrorContains(t, err, tc.errMsg)
 		})
+	}
+}
+
+// A simulated transaction carries an empty bit array, which must still be
+// accepted when the multisig public key is already on chain.
+func TestConsumeMultisignatureVerificationGasSimulation(t *testing.T) {
+	pks := []cryptotypes.PubKey{secp256k1.GenPrivKey().PubKey(), secp256k1.GenPrivKey().PubKey()}
+	pk := kmultisig.NewLegacyAminoPubKey(1, pks)
+
+	for _, sig := range []*signing.MultiSignatureData{
+		{},
+		{BitArray: &cryptotypes.CompactBitArray{}},
+	} {
+		require.NoError(t, ante.ConsumeMultisignatureVerificationGas(storetypes.NewInfiniteGasMeter(), sig, pk, types.DefaultParams(), 0))
 	}
 }
 

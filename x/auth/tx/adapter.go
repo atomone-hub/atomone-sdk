@@ -60,17 +60,17 @@ func (w *wrapper) GetSigningTxData() txsigning.TxData {
 		modeInfo := &txv1beta1.ModeInfo{}
 		adaptModeInfo(signerInfo.ModeInfo, modeInfo)
 
-		if signerInfo.PublicKey == nil {
-			panic("signerInfo.PublicKey cannot be nil")
-		}
-
 		txSignerInfo := &txv1beta1.SignerInfo{
-			PublicKey: &anypb.Any{
-				TypeUrl: signerInfo.PublicKey.TypeUrl,
-				Value:   signerInfo.PublicKey.Value,
-			},
 			Sequence: signerInfo.Sequence,
 			ModeInfo: modeInfo,
+		}
+		// The public key may be omitted from a SignerInfo when it is already
+		// known, as GetPubKeys tolerates.
+		if signerInfo.PublicKey != nil {
+			txSignerInfo.PublicKey = &anypb.Any{
+				TypeUrl: signerInfo.PublicKey.TypeUrl,
+				Value:   signerInfo.PublicKey.Value,
+			}
 		}
 		txSignerInfos[i] = txSignerInfo
 	}
