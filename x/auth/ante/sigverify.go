@@ -278,6 +278,11 @@ func (svd SigVerificationDecorator) AnteHandle(ctx sdk.Context, tx sdk.Tx, simul
 		return ctx, errorsmod.Wrapf(sdkerrors.ErrUnauthorized, "invalid number of signer;  expected: %d, got %d", len(signers), len(sigs))
 	}
 
+	txPubKeys, err := sigTx.GetPubKeys()
+	if err != nil {
+		return ctx, err
+	}
+
 	for i, sig := range sigs {
 		acc, err := GetSignerAcc(ctx, svd.ak, signers[i])
 		if err != nil {
@@ -308,6 +313,12 @@ func (svd SigVerificationDecorator) AnteHandle(ctx sdk.Context, tx sdk.Tx, simul
 
 		// no need to verify signatures on recheck tx
 		if !simulate && !ctx.IsReCheckTx() && ctx.IsSigverifyTx() {
+			// The signing data adapter requires the public key of every signer
+			// info, so reject its omission here with an error.
+			if txPubKeys[i] == nil {
+				return ctx, errorsmod.Wrapf(sdkerrors.ErrInvalidPubKey, "signer info %d has no public key", i)
+			}
+
 			anyPk, _ := codectypes.NewAnyWithValue(pubKey)
 
 			signerData := txsigning.SignerData{

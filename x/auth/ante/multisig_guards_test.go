@@ -96,3 +96,30 @@ func TestSetPubKeySignerInfoCountMismatch(t *testing.T) {
 	})
 	require.ErrorContains(t, err, "expected 1 signer infos, got 2")
 }
+
+// The signing data adapter needs the public key of every signer info, so a
+// signer info without one is rejected with an error rather than a panic.
+func TestSigVerificationSignerInfoWithoutPubKey(t *testing.T) {
+	suite := SetupTestSuite(t, true)
+	suite.txBuilder = suite.clientCtx.TxConfig.NewTxBuilder()
+
+	_, pub, addr := testdata.KeyTestPubAddr()
+	acc := suite.accountKeeper.NewAccountWithAddress(suite.ctx, addr)
+	require.NoError(t, acc.SetPubKey(pub))
+	suite.accountKeeper.SetAccount(suite.ctx, acc)
+
+	require.NoError(t, suite.txBuilder.SetMsgs(testdata.NewTestMsg(addr)))
+	suite.txBuilder.SetFeeAmount(testdata.NewTestFeeAmount())
+	suite.txBuilder.SetGasLimit(testdata.NewTestGasLimit())
+	require.NoError(t, suite.txBuilder.SetSignatures(signing.SignatureV2{
+		Data:     &signing.SingleSignatureData{SignMode: signing.SignMode_SIGN_MODE_DIRECT, Signature: []byte{1}},
+		Sequence: acc.GetSequence(),
+	}))
+
+	antehandler := sdk.ChainAnteDecorators(ante.NewSigVerificationDecorator(suite.accountKeeper, suite.clientCtx.TxConfig.SignModeHandler()))
+	var err error
+	require.NotPanics(t, func() {
+		_, err = antehandler(suite.ctx.WithIsSigverifyTx(true), suite.txBuilder.GetTx(), false)
+	})
+	require.ErrorContains(t, err, "signer info 0 has no public key")
+}

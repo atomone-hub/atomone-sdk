@@ -66,16 +66,3 @@ func TestModeInfoAndSigToSignatureDataRejectsMalformed(t *testing.T) {
 	_, err = ModeInfoAndSigToSignatureData(modeInfo, sig)
 	require.ErrorContains(t, err, "invalid multisig bit array")
 }
-
-func TestGetSigningTxDataNilPublicKey(t *testing.T) {
-	w := newBuilder(nil)
-	w.tx.AuthInfo.SignerInfos = []*tx.SignerInfo{{ModeInfo: &tx.ModeInfo{Sum: &tx.ModeInfo_Single_{
-		Single: &tx.ModeInfo_Single{Mode: signing.SignMode_SIGN_MODE_DIRECT},
-	}}}}
-
-	require.NotPanics(t, func() {
-		data := w.GetSigningTxData()
-		require.Len(t, data.AuthInfo.SignerInfos, 1)
-		require.Nil(t, data.AuthInfo.SignerInfos[0].PublicKey)
-	})
-}
