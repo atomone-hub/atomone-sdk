@@ -51,6 +51,9 @@ func (m *LegacyAminoPubKey) Bytes() []byte {
 // multiple same signatures in the right order.
 func (m *LegacyAminoPubKey) VerifyMultisignature(getSignBytes multisigtypes.GetSignBytesFunc, sig *signing.MultiSignatureData) error {
 	bitarray := sig.BitArray
+	if err := bitarray.Validate(); err != nil {
+		return fmt.Errorf("invalid bit array: %w", err)
+	}
 	sigs := sig.Signatures
 	size := bitarray.Count()
 	pubKeys := m.GetPubKeys()
@@ -65,6 +68,11 @@ func (m *LegacyAminoPubKey) VerifyMultisignature(getSignBytes multisigtypes.GetS
 	// ensure at least k signatures are set
 	if bitarray.NumTrueBitsBefore(size) < int(m.Threshold) {
 		return fmt.Errorf("not enough signatures set, have %d, expected %d", bitarray.NumTrueBitsBefore(size), int(m.Threshold))
+	}
+	// ensure there is exactly one signature per set bit: a signature without a
+	// bit is never verified and would make the transaction malleable
+	if numSet := bitarray.NumTrueBitsBefore(size); len(sigs) != numSet {
+		return fmt.Errorf("signature size is incorrect %d, expected %d", len(sigs), numSet)
 	}
 	// index in the list of signatures which we are concerned with.
 	sigIndex := 0

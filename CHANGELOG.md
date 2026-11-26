@@ -75,6 +75,7 @@ Ref: https://keepachangelog.com/en/1.0.0/
 * (x/gov) [#162](https://github.com/atomone-hub/atomone-sdk/pull/162) Bound `WeightedVoteOption.Weight` strings to 40 chars before the decimal parse (quadratic unmetered CPU DoS per vote and per tally; also removes a nil-dec panic in `Power`) (CONSENSUS BREAKING BUGFIX)
 * (x/authz) [#162](https://github.com/atomone-hub/atomone-sdk/pull/162) Skip genesis grants expiring exactly at the genesis block time (InitChain panic on every node at restart-from-export)
 * (x/gov) [#162](https://github.com/atomone-hub/atomone-sdk/pull/162) Deactivate active governors below `MinGovernorSelfDelegation` when `UpdateParams` raises it (exported genesis panicked `InitGenesis` on restart) (CONSENSUS BREAKING BUGFIX)
+* (x/auth, crypto) [#164](https://github.com/atomone-hub/atomone-sdk/pull/164) Reject malformed multisig signer info, non-canonical bit arrays, surplus multisig signatures and invalid secp256k1 public key tags instead of panicking or accepting malleable transactions (CONSENSUS BREAKING BUGFIX)
 
 ### State Machine Breaking
 
