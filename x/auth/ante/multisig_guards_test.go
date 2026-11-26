@@ -1,6 +1,7 @@
 package ante_test
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -98,28 +99,45 @@ func TestSetPubKeySignerInfoCountMismatch(t *testing.T) {
 }
 
 // The signing data adapter needs the public key of every signer info, so a
-// signer info without one is rejected with an error rather than a panic.
+// signer info without one is rejected with an error rather than a panic, even
+// when the signer being verified has its key set.
 func TestSigVerificationSignerInfoWithoutPubKey(t *testing.T) {
-	suite := SetupTestSuite(t, true)
-	suite.txBuilder = suite.clientCtx.TxConfig.NewTxBuilder()
+	for _, missing := range []int{0, 1} {
+		t.Run(fmt.Sprintf("signer %d has no public key", missing), func(t *testing.T) {
+			suite := SetupTestSuite(t, true)
+			suite.txBuilder = suite.clientCtx.TxConfig.NewTxBuilder()
 
-	_, pub, addr := testdata.KeyTestPubAddr()
-	acc := suite.accountKeeper.NewAccountWithAddress(suite.ctx, addr)
-	require.NoError(t, acc.SetPubKey(pub))
-	suite.accountKeeper.SetAccount(suite.ctx, acc)
+			var (
+				msgs []sdk.Msg
+				sigs []signing.SignatureV2
+			)
+			for i := 0; i < 2; i++ {
+				_, pub, addr := testdata.KeyTestPubAddr()
+				acc := suite.accountKeeper.NewAccountWithAddress(suite.ctx, addr)
+				require.NoError(t, acc.SetPubKey(pub))
+				suite.accountKeeper.SetAccount(suite.ctx, acc)
 
-	require.NoError(t, suite.txBuilder.SetMsgs(testdata.NewTestMsg(addr)))
-	suite.txBuilder.SetFeeAmount(testdata.NewTestFeeAmount())
-	suite.txBuilder.SetGasLimit(testdata.NewTestGasLimit())
-	require.NoError(t, suite.txBuilder.SetSignatures(signing.SignatureV2{
-		Data:     &signing.SingleSignatureData{SignMode: signing.SignMode_SIGN_MODE_DIRECT, Signature: []byte{1}},
-		Sequence: acc.GetSequence(),
-	}))
+				msgs = append(msgs, testdata.NewTestMsg(addr))
+				sig := signing.SignatureV2{
+					Data:     &signing.SingleSignatureData{SignMode: signing.SignMode_SIGN_MODE_DIRECT, Signature: []byte{1}},
+					Sequence: acc.GetSequence(),
+				}
+				if i != missing {
+					sig.PubKey = pub
+				}
+				sigs = append(sigs, sig)
+			}
+			require.NoError(t, suite.txBuilder.SetMsgs(msgs...))
+			suite.txBuilder.SetFeeAmount(testdata.NewTestFeeAmount())
+			suite.txBuilder.SetGasLimit(testdata.NewTestGasLimit())
+			require.NoError(t, suite.txBuilder.SetSignatures(sigs...))
 
-	antehandler := sdk.ChainAnteDecorators(ante.NewSigVerificationDecorator(suite.accountKeeper, suite.clientCtx.TxConfig.SignModeHandler()))
-	var err error
-	require.NotPanics(t, func() {
-		_, err = antehandler(suite.ctx.WithIsSigverifyTx(true), suite.txBuilder.GetTx(), false)
-	})
-	require.ErrorContains(t, err, "signer info 0 has no public key")
+			antehandler := sdk.ChainAnteDecorators(ante.NewSigVerificationDecorator(suite.accountKeeper, suite.clientCtx.TxConfig.SignModeHandler()))
+			var err error
+			require.NotPanics(t, func() {
+				_, err = antehandler(suite.ctx.WithIsSigverifyTx(true), suite.txBuilder.GetTx(), false)
+			})
+			require.ErrorContains(t, err, fmt.Sprintf("signer info %d has no public key", missing))
+		})
+	}
 }
